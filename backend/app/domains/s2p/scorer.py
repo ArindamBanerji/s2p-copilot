@@ -9,7 +9,7 @@ import numpy as np
 from gae import build_profile_scorer, KernelType, ProfileScorer
 from gae import s2p_calibration_profile
 
-from app.domains.s2p.config import S2PDomainConfig
+from app.domains.s2p.config import S2PDomainConfig, LEARNING_ENABLED
 
 # Module-level scorer singleton
 _scorer: ProfileScorer | None = None
@@ -46,6 +46,36 @@ def _build_scorer(kernel: KernelType = KernelType.L2) -> ProfileScorer:
         kernel=kernel,
         profile=profile,
     )
+
+
+def update_scorer(
+    factor_vector: list[float],
+    category: str,
+    predicted_action: str,
+    analyst_action: str,
+) -> bool:
+    """
+    Update ProfileScorer centroids from analyst outcome.
+    Only fires when LEARNING_ENABLED = True.
+    Uses asymmetric η: confirm→eta_confirm=0.05, override→eta_override=0.01.
+    Returns True if update applied, False if learning disabled.
+    """
+    if not LEARNING_ENABLED:
+        return False
+
+    scorer        = get_scorer()
+    category_idx  = S2PDomainConfig.get_category_index(category)
+    predicted_idx = S2PDomainConfig.get_action_index(predicted_action)
+    analyst_idx   = S2PDomainConfig.get_action_index(analyst_action)
+    correct       = (predicted_action == analyst_action)
+    f             = np.array(factor_vector, dtype=float)
+
+    scorer.update(
+        f, category_idx, predicted_idx,
+        correct=correct,
+        gt_action_index=analyst_idx,
+    )
+    return True
 
 
 def score_event(factor_vector: list[float], category: str) -> dict:

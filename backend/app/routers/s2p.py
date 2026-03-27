@@ -10,7 +10,7 @@ from typing import Optional
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import S2PEvent, compute_factor_vector
-from app.domains.s2p.scorer import score_event
+from app.domains.s2p.scorer import score_event, update_scorer
 
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 
@@ -99,4 +99,56 @@ def score_procurement_event(request: ScoreRequest) -> ScoreResponse:
         factor_vector=factor_vector,
         factor_names=S2PDomainConfig.factors,
         decision_id=decision_id,
+    )
+
+
+class OutcomeRequest(BaseModel):
+    decision_id: str
+    outcome: str            # "confirm" or "override"
+    analyst_action: str     # action analyst chose
+    analyst_id: str
+    factor_vector: list[float]  # original factor vector
+    category: str
+    predicted_action: str       # original model prediction
+
+
+class OutcomeResponse(BaseModel):
+    decision_id: str
+    outcome: str
+    learning_applied: bool
+
+
+@router.post("/outcome")
+def record_outcome(request: OutcomeRequest) -> OutcomeResponse:
+    """
+    Record analyst outcome and optionally update centroids.
+    POST /api/s2p/outcome
+    """
+    if request.outcome not in ("confirm", "override"):
+        raise HTTPException(status_code=422,
+            detail="outcome must be 'confirm' or 'override'")
+
+    if request.analyst_action not in S2PDomainConfig.actions:
+        raise HTTPException(status_code=422,
+            detail=f"analyst_action must be one of {S2PDomainConfig.actions}")
+
+    # Write to Neo4j (fault-tolerant)
+    try:
+        from app.db.neo4j import neo4j_client
+        from app.domains.s2p.graph import write_s2p_outcome
+        write_s2p_outcome(neo4j_client, request.decision_id,
+            request.outcome, request.analyst_action, request.analyst_id)
+    except Exception:
+        pass  # Neo4j unavailable — outcome still processed
+
+    # Update centroids
+    learning_applied = update_scorer(
+        request.factor_vector, request.category,
+        request.predicted_action, request.analyst_action,
+    )
+
+    return OutcomeResponse(
+        decision_id=request.decision_id,
+        outcome=request.outcome,
+        learning_applied=learning_applied,
     )

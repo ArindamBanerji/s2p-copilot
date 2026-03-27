@@ -62,6 +62,39 @@ def write_s2p_decision(
         return record["decision_id"]
 
 
+def write_s2p_outcome(
+    driver,
+    decision_id: str,
+    outcome: str,
+    analyst_action: str,
+    analyst_id: str,
+) -> bool:
+    """
+    Write analyst outcome to existing S2PDecision node.
+    Returns True if decision found and updated, False if not found.
+    """
+    query = """
+    MATCH (d:S2PDecision {decision_id: $decision_id})
+    SET d.outcome         = $outcome,
+        d.analyst_action  = $analyst_action,
+        d.analyst_id      = $analyst_id,
+        d.outcome_ts      = $outcome_ts
+    RETURN d.decision_id AS decision_id
+    """
+    outcome_ts = datetime.now(timezone.utc).isoformat()
+
+    with driver.session() as session:
+        result = session.run(query,
+            decision_id    = decision_id,
+            outcome        = outcome,
+            analyst_action = analyst_action,
+            analyst_id     = analyst_id,
+            outcome_ts     = outcome_ts,
+        )
+        record = result.single()
+        return record is not None
+
+
 def get_s2p_decision(driver, decision_id: str) -> Optional[dict]:
     """Retrieve a decision by ID. Returns None if not found."""
     query = """

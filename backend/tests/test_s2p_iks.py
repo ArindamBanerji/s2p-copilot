@@ -39,4 +39,4 @@ def test_iks_value_in_valid_range():
 def test_iks_cold_start_value():
     reset_scorer()  # fresh scorer — no decisions, mu=0.5=mu_zero → drift=0
     response = client.get("/api/s2p/iks")
-    assert response.json()["iks"] == 100.0
+    assert response.json()["iks"] == 0.0

@@ -86,14 +86,10 @@ def get_s2p_iks() -> dict:
     """
     Compute S2P IKS from current scorer state.
 
-    S2P uses the "alignment with prior" interpretation:
-      IKS = 100 × (1 - mean_drift / D_MAX), clamped [0, 100].
-    Cold start (no decisions): drift=0 → IKS=100.
-
-    The framework's compute_iks() returns the drift score
-    (0=cold start, 100=maximum drift). S2P inverts this so
-    IKS=100 means "fully aligned with prior / no learning yet"
-    and IKS=0 means "maximally drifted from prior".
+    Aligned with SOC/framework direction:
+      IKS = drift score = 100 × min(mean_drift / D_MAX, 1.0)
+    Cold start (no decisions): drift=0 → IKS=0.
+    Grows as analyst decisions move centroids from the prior.
     """
     scorer  = get_scorer()
     mu_zero = np.full_like(scorer.mu, 0.5)
@@ -102,8 +98,8 @@ def get_s2p_iks() -> dict:
     # where drift_score = 100 × min(mean_drift / d_max, 1.0)
     iks_result = _compute_iks(scorer.mu, mu_zero, S2P_D_MAX)
 
-    # S2P formula: IKS = 100 - drift_score  (100 at cold start)
-    iks_value = max(0.0, 100.0 - iks_result["current"])
+    # Direct delegation — no inversion (aligned with SOC)
+    iks_value = iks_result["current"]
 
     return {
         "iks":            round(iks_value, 1),
@@ -121,7 +117,7 @@ def _interpret_iks(iks: float) -> str:
     elif iks >= 50:
         return "Moderate institutional knowledge. Calibration in progress."
     elif iks >= 20:
-        return "Early stage. More analyst decisions needed."
+        return "Early learning. Centroids moving from prior."
     else:
         return "Cold start. Awaiting first analyst decisions."
 

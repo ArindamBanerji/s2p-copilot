@@ -38,6 +38,7 @@ class ScoreResponse(BaseModel):
     probabilities: list[float]
     factor_vector: list[float]
     factor_names: list[str]
+    decision_id: str
 
 
 @router.post("/score")
@@ -70,6 +71,24 @@ def score_procurement_event(request: ScoreRequest) -> ScoreResponse:
     factor_vector = compute_factor_vector(event)
     result = score_event(factor_vector, request.category)
 
+    try:
+        from app.db.neo4j import neo4j_client
+        from app.domains.s2p.graph import write_s2p_decision
+        decision_id = write_s2p_decision(
+            neo4j_client,
+            event_id=request.event_id,
+            category=request.category,
+            action=result["action"],
+            action_index=result["action_index"],
+            confidence=result["confidence"],
+            factor_vector=factor_vector,
+            factor_names=S2PDomainConfig.factors,
+            supplier_id=request.supplier_id,
+            amount=request.amount,
+        )
+    except Exception:
+        decision_id = f"S2P-{request.event_id}-local"
+
     return ScoreResponse(
         event_id=request.event_id,
         category=request.category,
@@ -79,4 +98,5 @@ def score_procurement_event(request: ScoreRequest) -> ScoreResponse:
         probabilities=result["probabilities"],
         factor_vector=factor_vector,
         factor_names=S2PDomainConfig.factors,
+        decision_id=decision_id,
     )

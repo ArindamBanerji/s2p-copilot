@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /c/Users/baner/CopyFolder/IoT_thoughts/python-projects/kaggle_experiments/claude_projects/s2p-copilot remote -v)",
+      "Bash(git -C /c/Users/baner/CopyFolder/IoT_thoughts/python-projects/kaggle_experiments/claude_projects/s2p-copilot log --oneline -3)",
+      "Bash(SOC=/c/Users/baner/CopyFolder/IoT_thoughts/python-projects/kaggle_experiments/claude_projects/gen-ai-roi-demo-v4-v50/backend/app/framework DEST=/c/Users/baner/CopyFolder/IoT_thoughts/python-projects/kaggle_experiments/claude_projects/s2p-copilot/backend/app/framework cp \"$SOC/__init__.py\" \"$DEST/__init__.py\" cp \"$SOC/agent.py\" \"$DEST/agent.py\" cp \"$SOC/audit.py\" \"$DEST/audit.py\" cp \"$SOC/checkpoint.py\" \"$DEST/checkpoint.py\" cp \"$SOC/composite_gate.py\" \"$DEST/composite_gate.py\" cp \"$SOC/convergence_math.py\" \"$DEST/convergence_math.py\" cp \"$SOC/decision_history.py\" \"$DEST/decision_history.py\" cp \"$SOC/economics.py\" \"$DEST/economics.py\" cp \"$SOC/event_bus.py\" \"$DEST/event_bus.py\" cp \"$SOC/feedback_base.py\" \"$DEST/feedback_base.py\" cp \"$SOC/feedback_store.py\" \"$DEST/feedback_store.py\" cp \"$SOC/iks_base.py\" \"$DEST/iks_base.py\" cp \"$SOC/intervention_controls.py\" \"$DEST/intervention_controls.py\" cp \"$SOC/learning_state.py\" \"$DEST/learning_state.py\" cp \"$SOC/narrative_base.py\" \"$DEST/narrative_base.py\" cp \"$SOC/ols_status.py\" \"$DEST/ols_status.py\" cp \"$SOC/provenance.py\" \"$DEST/provenance.py\" cp \"$SOC/shadow_mode.py\" \"$DEST/shadow_mode.py\" cp \"$SOC/similar_cases_base.py\" \"$DEST/similar_cases_base.py\" ls \"$DEST\")",
+      "Bash(python -c \"import gae; print\\(gae.__version__\\)\")",
+      "Bash(python -m pip show gae)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(pip show:*)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

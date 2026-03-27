@@ -152,3 +152,24 @@ def record_outcome(request: OutcomeRequest) -> OutcomeResponse:
         outcome=request.outcome,
         learning_applied=learning_applied,
     )
+
+
+@router.get("/iks")
+def get_iks() -> dict:
+    """
+    GET /api/s2p/iks
+    Returns current S2P Institutional Knowledge Score.
+    """
+    from app.domains.s2p.scorer import get_s2p_iks
+    result = get_s2p_iks()
+
+    # Optionally enrich with Neo4j decision count
+    try:
+        from app.db.neo4j import neo4j_client
+        with neo4j_client.session() as session:
+            r = session.run("MATCH (d:S2PDecision) RETURN count(d) AS n")
+            result["decisions"] = r.single()["n"]
+    except Exception:
+        pass  # Neo4j unavailable — use placeholder 0
+
+    return result

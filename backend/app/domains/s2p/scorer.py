@@ -10,6 +10,10 @@ from gae import build_profile_scorer, KernelType, ProfileScorer
 from gae import s2p_calibration_profile
 
 from app.domains.s2p.config import S2PDomainConfig, LEARNING_ENABLED
+from app.framework.iks_base import compute_iks as _compute_iks
+
+# S2P D_MAX — same as SOC (PROD-1 validated)
+S2P_D_MAX = 0.20
 
 # Module-level scorer singleton
 _scorer: ProfileScorer | None = None
@@ -76,6 +80,50 @@ def update_scorer(
         gt_action_index=analyst_idx,
     )
     return True
+
+
+def get_s2p_iks() -> dict:
+    """
+    Compute S2P IKS from current scorer state.
+
+    S2P uses the "alignment with prior" interpretation:
+      IKS = 100 × (1 - mean_drift / D_MAX), clamped [0, 100].
+    Cold start (no decisions): drift=0 → IKS=100.
+
+    The framework's compute_iks() returns the drift score
+    (0=cold start, 100=maximum drift). S2P inverts this so
+    IKS=100 means "fully aligned with prior / no learning yet"
+    and IKS=0 means "maximally drifted from prior".
+    """
+    scorer  = get_scorer()
+    mu_zero = np.full_like(scorer.mu, 0.5)
+
+    # Framework returns {"current": drift_score, "mean_drift": ..., "estimated": bool}
+    # where drift_score = 100 × min(mean_drift / d_max, 1.0)
+    iks_result = _compute_iks(scorer.mu, mu_zero, S2P_D_MAX)
+
+    # S2P formula: IKS = 100 - drift_score  (100 at cold start)
+    iks_value = max(0.0, 100.0 - iks_result["current"])
+
+    return {
+        "iks":            round(iks_value, 1),
+        "d_max":          S2P_D_MAX,
+        "mean_drift":     iks_result["mean_drift"],
+        "decisions":      0,    # placeholder — Neo4j count added by endpoint
+        "domain":         "s2p",
+        "interpretation": _interpret_iks(iks_value),
+    }
+
+
+def _interpret_iks(iks: float) -> str:
+    if iks >= 80:
+        return "High institutional knowledge. Scorer well-calibrated."
+    elif iks >= 50:
+        return "Moderate institutional knowledge. Calibration in progress."
+    elif iks >= 20:
+        return "Early stage. More analyst decisions needed."
+    else:
+        return "Cold start. Awaiting first analyst decisions."
 
 
 def score_event(factor_vector: list[float], category: str) -> dict:

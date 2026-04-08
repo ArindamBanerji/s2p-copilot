@@ -173,3 +173,69 @@ def get_iks() -> dict:
         pass  # Neo4j unavailable — use placeholder 0
 
     return result
+
+
+@router.get("/learning-gate")
+def get_learning_gate() -> dict:
+    """
+    GET /api/s2p/learning-gate
+    Returns S2P Learning Activation Gate status.
+    """
+    from app.services.s2p_learning_gate import (
+        evaluate_s2p_learning_gate,
+        MIN_VERIFIED_DECISIONS,
+        MIN_OVERRIDE_PRECISION,
+        S2P_SIGMA_GREEN,
+        S2P_SIGMA_AMBER,
+    )
+
+    verified_decisions = 0
+    override_precision = 0.0
+
+    # Read decision counts from Neo4j (fault-tolerant)
+    try:
+        from app.db.neo4j import neo4j_client
+        with neo4j_client.session() as session:
+            # Verified decisions: S2PDecision nodes with outcome set
+            r = session.run(
+                "MATCH (d:S2PDecision) WHERE d.outcome IS NOT NULL "
+                "RETURN count(d) AS verified"
+            )
+            verified_decisions = int(r.single()["verified"] or 0)
+
+            # Override precision: correct overrides / total overrides
+            r2 = session.run(
+                "MATCH (d:S2PDecision) WHERE d.outcome = 'override' "
+                "RETURN count(d) AS total_overrides, "
+                "sum(CASE WHEN d.action = d.analyst_action THEN 1 ELSE 0 END) "
+                "AS correct_overrides"
+            )
+            rec = r2.single()
+            total_ov = int(rec["total_overrides"] or 0)
+            correct_ov = int(rec["correct_overrides"] or 0)
+            if total_ov > 0:
+                override_precision = correct_ov / total_ov
+    except Exception:
+        pass  # Neo4j unavailable — fall back to cold-start defaults
+
+    gate = evaluate_s2p_learning_gate(
+        verified_decisions=verified_decisions,
+        override_precision=override_precision,
+    )
+
+    return {
+        "status":               gate.status,
+        "learning_active":      gate.learning_active,
+        "verified_decisions":   gate.verified_decisions,
+        "override_precision":   gate.override_precision,
+        "sigma_max":            gate.sigma_max,
+        "reason":               gate.reason,
+        "recommendation":       gate.recommendation,
+        "gate_opened_at":       gate.gate_opened_at,
+        "thresholds": {
+            "min_verified_decisions": MIN_VERIFIED_DECISIONS,
+            "min_override_precision": MIN_OVERRIDE_PRECISION,
+            "sigma_green":            S2P_SIGMA_GREEN,
+            "sigma_amber":            S2P_SIGMA_AMBER,
+        },
+    }

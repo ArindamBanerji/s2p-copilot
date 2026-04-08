@@ -1,0 +1,182 @@
+[
+  {
+    "scenario_id": "PO-001",
+    "supplier": "TechCorp SaaS",
+    "description": "Annual SaaS renewal, 3-year vendor, SOC 2 Type II certified",
+    "contract_value_usd": 125000,
+    "factors": {
+      "financial_health": 0.85,
+      "compliance_score": 0.90,
+      "concentration_risk": 0.20,
+      "geo_political_risk": 0.10,
+      "process_adherence": 0.95,
+      "esg_score": 0.80,
+      "track_record": 0.90,
+      "market_alternatives": 0.85
+    },
+    "expected_action": "approve",
+    "ground_truth_correct": true
+  },
+  {
+    "scenario_id": "PO-002",
+    "supplier": "StartupCo",
+    "description": "New AI startup, 78% of budget concentration, no audit history",
+    "contract_value_usd": 890000,
+    "factors": {
+      "financial_health": 0.45,
+      "compliance_score": 0.50,
+      "concentration_risk": 0.85,
+      "geo_political_risk": 0.20,
+      "process_adherence": 0.70,
+      "esg_score": 0.60,
+      "track_record": 0.25,
+      "market_alternatives": 0.30
+    },
+    "expected_action": "defer",
+    "ground_truth_correct": true
+  },
+  {
+    "scenario_id": "PO-003",
+    "supplier": "OffshoreManuf",
+    "description": "Manufacturing in sanctioned-adjacent region, FCPA exposure",
+    "contract_value_usd": 2100000,
+    "factors": {
+      "financial_health": 0.70,
+      "compliance_score": 0.25,
+      "concentration_risk": 0.40,
+      "geo_political_risk": 0.90,
+      "process_adherence": 0.60,
+      "esg_score": 0.35,
+      "track_record": 0.55,
+      "market_alternatives": 0.65
+    },
+    "expected_action": "reject",
+    "ground_truth_correct": true
+  },
+  {
+    "scenario_id": "PO-004",
+    "supplier": "RegionalBank",
+    "description": "Treasury services provider, recent credit downgrade",
+    "contract_value_usd": 450000,
+    "factors": {
+      "financial_health": 0.35,
+      "compliance_score": 0.75,
+      "concentration_risk": 0.50,
+      "geo_political_risk": 0.15,
+      "process_adherence": 0.85,
+      "esg_score": 0.70,
+      "track_record": 0.65,
+      "market_alternatives": 0.80
+    },
+    "expected_action": "defer",
+    "ground_truth_correct": true
+  },
+  {
+    "scenario_id": "PO-005",
+    "supplier": "CriticalSole",
+    "description": "Sole source, no alternatives, critical component supplier",
+    "contract_value_usd": 780000,
+    "factors": {
+      "financial_health": 0.75,
+      "compliance_score": 0.80,
+      "concentration_risk": 0.95,
+      "geo_political_risk": 0.30,
+      "process_adherence": 0.88,
+      "esg_score": 0.72,
+      "track_record": 0.82,
+      "market_alternatives": 0.05
+    },
+    "expected_action": "defer",
+    "ground_truth_correct": true
+  },
+  {
+    "scenario_id": "PO-006",
+    "supplier": "GreenChem",
+    "description": "Chemical supplier, ESG violations in EU jurisdiction",
+    "contract_value_usd": 320000,
+    "factors": {
+      "financial_health": 0.80,
+      "compliance_score": 0.60,
+      "concentration_risk": 0.35,
+      "geo_political_risk": 0.40,
+      "process_adherence": 0.75,
+      "esg_score": 0.20,
+      "track_record": 0.70,
+      "market_alternatives": 0.75
+    },
+    "expected_action": "defer",
+    "ground_truth_correct": true
+  },
+  {
+    "scenario_id": "PO-007",
+    "supplier": "FastTrack",
+    "description": "Vendor attempting to bypass 3-bid process, rushed timeline",
+    "contract_value_usd": 95000,
+    "factors": {
+      "financial_health": 0.72,
+      "compliance_score": 0.45,
+      "concentration_risk": 0.25,
+      "geo_political_risk": 0.10,
+      "process_adherence": 0.15,
+      "esg_score": 0.65,
+      "track_record": 0.60,
+      "market_alternatives": 0.90
+    },
+    "expected_action": "reject",
+    "ground_truth_correct": true
+  },
+  {
+    "scenario_id": "PO-008",
+    "supplier": "EstablishedERP",
+    "description": "SAP renewal, 8-year relationship, clean audit history",
+    "contract_value_usd": 1200000,
+    "factors": {
+      "financial_health": 0.92,
+      "compliance_score": 0.95,
+      "concentration_risk": 0.30,
+      "geo_political_risk": 0.05,
+      "process_adherence": 0.98,
+      "esg_score": 0.88,
+      "track_record": 0.97,
+      "market_alternatives": 0.70
+    },
+    "expected_action": "approve",
+    "ground_truth_correct": true
+  },
+  {
+    "scenario_id": "PO-009",
+    "supplier": "NewEntrant",
+    "description": "New market entrant, no procurement history, competitive pricing",
+    "contract_value_usd": 180000,
+    "factors": {
+      "financial_health": 0.55,
+      "compliance_score": 0.65,
+      "concentration_risk": 0.40,
+      "geo_political_risk": 0.20,
+      "process_adherence": 0.70,
+      "esg_score": 0.60,
+      "track_record": 0.10,
+      "market_alternatives": 0.88
+    },
+    "expected_action": "defer",
+    "ground_truth_correct": true
+  },
+  {
+    "scenario_id": "PO-010",
+    "supplier": "EmergencyPO",
+    "description": "Emergency flood relief supplies, pre-approved vendor list",
+    "contract_value_usd": 45000,
+    "factors": {
+      "financial_health": 0.78,
+      "compliance_score": 0.82,
+      "concentration_risk": 0.15,
+      "geo_political_risk": 0.10,
+      "process_adherence": 0.90,
+      "esg_score": 0.75,
+      "track_record": 0.80,
+      "market_alternatives": 0.70
+    },
+    "expected_action": "approve",
+    "ground_truth_correct": true
+  }
+]

@@ -10,7 +10,9 @@
       "Bash(pip install:*)",
       "Bash(pip show:*)",
       "Bash(git rm:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }

@@ -48,7 +48,7 @@ class TestNoSOCImports:
 
     def test_s2p_config_has_no_soc_constants(self):
         """S2P config source must not contain SOC-specific constant names."""
-        config_path = pathlib.Path("app/domains/s2p/config.py")
+        config_path = pathlib.Path(__file__).resolve().parent.parent / "app" / "domains" / "s2p" / "config.py"
         source = config_path.read_text(encoding="utf-8")
 
         soc_tokens = [

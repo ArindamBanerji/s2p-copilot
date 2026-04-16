@@ -15,6 +15,6 @@
 - S2P categories are procurement domain; SOC security categories must never appear
 
 ## Verification after any change
-1. `python -m pytest tests/ -v`  (70+ tests must pass)
+1. `cd backend && python -m pytest tests/ -v`  (70+ tests must pass)
 2. Playwright: `npx playwright test -g "s2p" --reporter=list`
 3. If router prefix /api/s2p/ changes: update gen-ai-roi-demo-v4-v50/main.py mount point

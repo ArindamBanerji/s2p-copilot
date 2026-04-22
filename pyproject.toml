@@ -8,6 +8,7 @@ dependencies = [
     "neo4j>=5.0.0",
     "numpy>=1.24.0",
     "graph-attention-engine @ git+https://github.com/ArindamBanerji/graph-attention-engine.git",
+    # Also requires: pip install -e ../ci-platform
 ]
 
 [project.optional-dependencies]

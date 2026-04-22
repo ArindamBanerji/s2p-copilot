@@ -42,7 +42,7 @@ class CheckpointService:
         str — the new checkpoint_id (UUID)
         """
         checkpoint_id  = str(uuid.uuid4())
-        mu_snapshot    = scorer.mu.tolist()
+        mu_snapshot    = scorer.centroids.tolist()
         counts_snapshot = scorer.counts.tolist() if hasattr(scorer, "counts") else []
         decision_count  = int(getattr(scorer, "decision_count", 0))
 
@@ -131,7 +131,7 @@ class CheckpointService:
         mu_str = cp.get("mu_snapshot") or "[]"
         try:
             mu_restored       = np.array(json.loads(mu_str), dtype=np.float64)
-            scorer.mu[:]      = mu_restored
+            scorer.centroids = mu_restored
         except Exception as exc:
             log.error("[CHECKPOINT] mu restore failed: %s", exc)
             return {"error": f"mu restore failed: {exc}"}

@@ -205,8 +205,8 @@ class TestS2PScoring:
             S2PDomainConfig.n_actions,
             S2PDomainConfig.n_factors,
         )
-        assert scorer.mu.shape == expected_shape, (
-            f"Centroid shape {scorer.mu.shape} != expected {expected_shape}"
+        assert scorer.centroids.shape == expected_shape, (
+            f"Centroid shape {scorer.centroids.shape} != expected {expected_shape}"
         )
 
     def test_score_output_length_matches_n_actions(self):
@@ -241,7 +241,7 @@ class TestS2PIndependence:
         from app.domains.s2p.config import S2PDomainConfig
 
         s2p_scorer = get_scorer()
-        s2p_shape = s2p_scorer.mu.shape  # (6, 4, 6)
+        s2p_shape = s2p_scorer.centroids.shape  # (5, 5, 8)
 
         # Hypothetical fraud/SOC domain: 3 categories, 5 actions, 4 factors
         other_categories = ["fraud_type_a", "fraud_type_b", "fraud_type_c"]
@@ -259,9 +259,9 @@ class TestS2PIndependence:
             kernel=KernelType.L2,
         )
 
-        assert s2p_shape != other_scorer.mu.shape, (
+        assert s2p_shape != other_scorer.centroids.shape, (
             f"S2P scorer shape {s2p_shape} matches other-domain scorer shape "
-            f"{other_scorer.mu.shape} — DomainConfig isolation may be broken"
+            f"{other_scorer.centroids.shape} — DomainConfig isolation may be broken"
         )
 
     def test_s2p_config_values_are_procurement_specific(self):

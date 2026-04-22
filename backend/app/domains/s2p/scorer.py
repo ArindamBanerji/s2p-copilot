@@ -92,11 +92,11 @@ def get_s2p_iks() -> dict:
     Grows as analyst decisions move centroids from the prior.
     """
     scorer  = get_scorer()
-    mu_zero = np.full_like(scorer.mu, 0.5)
+    mu_zero = np.full_like(scorer.centroids, 0.5)
 
     # Framework returns {"current": drift_score, "mean_drift": ..., "estimated": bool}
     # where drift_score = 100 × min(mean_drift / d_max, 1.0)
-    iks_result = _compute_iks(scorer.mu, mu_zero, S2P_D_MAX)
+    iks_result = _compute_iks(scorer.centroids, mu_zero, S2P_D_MAX)
 
     # Direct delegation — no inversion (aligned with SOC)
     iks_value = iks_result["current"]

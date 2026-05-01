@@ -1,0 +1,202 @@
+[
+  {
+    "supplier_id": "SUP-001",
+    "supplier_name": "Chen-Lin Mfg",
+    "region": "APAC",
+    "otif": {
+      "q1_q2": 0.94,
+      "q3": 0.72
+    },
+    "exception_rate": {
+      "baseline": 0.03,
+      "current": 0.11
+    },
+    "lead_time": {
+      "contractual": 14,
+      "actual_q4": 21
+    },
+    "financial_health_trend": "declining",
+    "format_compliance_pct": 0.92,
+    "total_invoices_ytd": 1200
+  },
+  {
+    "supplier_id": "SUP-002",
+    "supplier_name": "Hartwell Corp",
+    "region": "NA",
+    "otif": {
+      "q1_q2": 0.97,
+      "q3": 0.96
+    },
+    "exception_rate": {
+      "baseline": 0.02,
+      "current": 0.02
+    },
+    "lead_time": {
+      "contractual": 7,
+      "actual_q4": 8
+    },
+    "financial_health_trend": "stable",
+    "format_compliance_pct": 0.98,
+    "total_invoices_ytd": 3400
+  },
+  {
+    "supplier_id": "SUP-003",
+    "supplier_name": "Rhine-Stahl GmbH",
+    "region": "EU",
+    "otif": {
+      "q1_q2": 0.91,
+      "q3": 0.88
+    },
+    "exception_rate": {
+      "baseline": 0.05,
+      "current": 0.04
+    },
+    "lead_time": {
+      "contractual": 21,
+      "actual_q4": 24
+    },
+    "financial_health_trend": "stable",
+    "format_compliance_pct": 0.95,
+    "total_invoices_ytd": 800
+  },
+  {
+    "supplier_id": "SUP-004",
+    "supplier_name": "Pacifica Logistics",
+    "region": "APAC",
+    "otif": {
+      "q1_q2": 0.89,
+      "q3": 0.65
+    },
+    "exception_rate": {
+      "baseline": 0.07,
+      "current": 0.15
+    },
+    "lead_time": {
+      "contractual": 28,
+      "actual_q4": 42
+    },
+    "financial_health_trend": "declining",
+    "format_compliance_pct": 0.88,
+    "total_invoices_ytd": 600
+  },
+  {
+    "supplier_id": "SUP-005",
+    "supplier_name": "NovaTech Solutions",
+    "region": "NA",
+    "otif": {
+      "q1_q2": 0.96,
+      "q3": 0.95
+    },
+    "exception_rate": {
+      "baseline": 0.01,
+      "current": 0.01
+    },
+    "lead_time": {
+      "contractual": 5,
+      "actual_q4": 6
+    },
+    "financial_health_trend": "improving",
+    "format_compliance_pct": 0.99,
+    "total_invoices_ytd": 4200
+  },
+  {
+    "supplier_id": "SUP-006",
+    "supplier_name": "Meridian Supply Co",
+    "region": "LATAM",
+    "otif": {
+      "q1_q2": 0.85,
+      "q3": 0.8
+    },
+    "exception_rate": {
+      "baseline": 0.08,
+      "current": 0.09
+    },
+    "lead_time": {
+      "contractual": 18,
+      "actual_q4": 22
+    },
+    "financial_health_trend": "stable",
+    "format_compliance_pct": 0.9,
+    "total_invoices_ytd": 950
+  },
+  {
+    "supplier_id": "SUP-007",
+    "supplier_name": "Boreal Industries",
+    "region": "EU",
+    "otif": {
+      "q1_q2": 0.93,
+      "q3": 0.91
+    },
+    "exception_rate": {
+      "baseline": 0.04,
+      "current": 0.03
+    },
+    "lead_time": {
+      "contractual": 10,
+      "actual_q4": 12
+    },
+    "financial_health_trend": "improving",
+    "format_compliance_pct": 0.96,
+    "total_invoices_ytd": 2100
+  },
+  {
+    "supplier_id": "SUP-008",
+    "supplier_name": "Sahara Trading",
+    "region": "MEA",
+    "otif": {
+      "q1_q2": 0.82,
+      "q3": 0.7
+    },
+    "exception_rate": {
+      "baseline": 0.1,
+      "current": 0.18
+    },
+    "lead_time": {
+      "contractual": 35,
+      "actual_q4": 50
+    },
+    "financial_health_trend": "declining",
+    "format_compliance_pct": 0.82,
+    "total_invoices_ytd": 400
+  },
+  {
+    "supplier_id": "SUP-009",
+    "supplier_name": "Summit Electronics",
+    "region": "NA",
+    "otif": {
+      "q1_q2": 0.98,
+      "q3": 0.97
+    },
+    "exception_rate": {
+      "baseline": 0.01,
+      "current": 0.02
+    },
+    "lead_time": {
+      "contractual": 4,
+      "actual_q4": 5
+    },
+    "financial_health_trend": "stable",
+    "format_compliance_pct": 0.97,
+    "total_invoices_ytd": 5600
+  },
+  {
+    "supplier_id": "SUP-010",
+    "supplier_name": "Yangtze Materials",
+    "region": "APAC",
+    "otif": {
+      "q1_q2": 0.9,
+      "q3": 0.78
+    },
+    "exception_rate": {
+      "baseline": 0.06,
+      "current": 0.12
+    },
+    "lead_time": {
+      "contractual": 16,
+      "actual_q4": 25
+    },
+    "financial_health_trend": "declining",
+    "format_compliance_pct": 0.85,
+    "total_invoices_ytd": 1500
+  }
+]

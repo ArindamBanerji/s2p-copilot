@@ -29,7 +29,7 @@ and domain-specific actions.
 ### Architecture
 - Shares FastAPI backend with gen-ai-roi-demo-v4-v50 (mounted at /api/s2p/)
 - Uses GAE ProfileScorer with S2P DomainConfig
-- S2P tensor: (5, 5, 8) = 200 values
+- S2P tensor: (5, 5, 7) = 175 values
 - penalty_ratio = 5.0 (NOT SOC's 20.0)
 
 ### Consumed by
@@ -43,10 +43,10 @@ and domain-specific actions.
 S2P is an independent domain. It must never depend on SOC-specific code.
 
 - **Never** import from `domains.soc` or any SOC config file.
-- **Never** use SOC tensor dimensions (6,4,6) — S2P is (5,5,8).
+- **Never** use SOC tensor dimensions — S2P is (5,5,7).
 - **Never** use SOC constants (SOC_PROFILE_CENTROIDS, SOC_SCORING_ACTIONS).
 - penalty_ratio = 5.0, not SOC's 20.0.
-- BACKLOG-051: spec says (5,5,8), verify actual config.py matches.
+- The legacy six-category, four-action, six-factor S2P tensor has been removed; verify config.py remains canonical (5,5,7).
 
 ---
 

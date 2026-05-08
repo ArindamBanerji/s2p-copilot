@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 from fastapi import APIRouter
 
-from app.domains.s2p.config import S2PDomainConfigV2
+from app.domains.s2p.config import S2PDomainConfig
 from app.services.synthetic_invoices import SyntheticInvoice, SyntheticInvoiceGenerator
 
 router = APIRouter(prefix="/api/s2p/preview", tags=["s2p-preview"])
@@ -31,10 +31,10 @@ def _get_gae_version() -> str:
 
 
 def _get_config_list(attr_name: str, method_name: str) -> list[str]:
-    method = getattr(S2PDomainConfigV2, method_name, None)
+    method = getattr(S2PDomainConfig, method_name, None)
     if callable(method):
         return list(method())
-    return list(getattr(S2PDomainConfigV2, attr_name))
+    return list(getattr(S2PDomainConfig, attr_name))
 
 
 def _get_category_list() -> list[str]:
@@ -50,7 +50,7 @@ def _get_factor_list() -> list[str]:
 
 
 def _get_canonical_factor_list() -> list[str]:
-    return list(S2PDomainConfigV2.canonical_factors)
+    return list(S2PDomainConfig.canonical_factors)
 
 
 def _get_scorer():
@@ -59,9 +59,9 @@ def _get_scorer():
         from gae import ProfileScorer
 
         _scorer = ProfileScorer(
-            mu=S2PDomainConfigV2.get_profile_centroids(),
+            mu=S2PDomainConfig.get_profile_centroids(),
             actions=_get_action_list(),
-            profile=S2PDomainConfigV2.get_calibration_profile(),
+            profile=S2PDomainConfig.get_calibration_profile(),
             categories=_get_category_list(),
             eta_override=0.01,
         )
@@ -108,6 +108,80 @@ def _get_scored_invoices(n: int = 50, seed: int = 42) -> list[dict[str, Any]]:
         _invoices = generator.generate(n)
         _scored_invoices = [_score_invoice(invoice) for invoice in _invoices]
     return list(_scored_invoices)
+
+
+def _get_preview_simulation_scorer():
+    from gae import ProfileScorer
+
+    rng = np.random.default_rng(42)
+    converged = S2PDomainConfig.get_profile_centroids()
+    bootstrap_mu = np.clip(
+        0.5 + 0.4 * (converged - 0.5) + rng.normal(0.0, 0.03, converged.shape),
+        0.0,
+        1.0,
+    )
+    return ProfileScorer(
+        mu=bootstrap_mu,
+        actions=_get_action_list(),
+        profile=S2PDomainConfig.get_calibration_profile(),
+        categories=_get_category_list(),
+        eta_override=0.01,
+    )
+
+
+def _build_compounding_trajectory(
+    n: int = 1000,
+    steps: int = 20,
+    seed: int = 42,
+) -> dict[str, Any]:
+    scorer = _get_preview_simulation_scorer()
+    generator = SyntheticInvoiceGenerator(seed=seed, noise_level=0.12)
+    invoices = generator.generate(n)
+    checkpoints = {
+        max(1, round((index + 1) * len(invoices) / steps))
+        for index in range(steps)
+    }
+
+    points: list[dict[str, Any]] = []
+    correct_count = 0
+    confidence_total = 0.0
+
+    for decision_number, invoice in enumerate(invoices, start=1):
+        factor_vector = np.array(invoice.factor_vector, dtype=float)
+        result = scorer.score(
+            factor_vector,
+            category_index=invoice.category_index,
+        )
+        action_index = int(getattr(result, "action_index"))
+        confidence = float(getattr(result, "confidence"))
+        correct = action_index == int(invoice.ground_truth_action_index)
+
+        correct_count += int(correct)
+        confidence_total += confidence
+        scorer.update(
+            factor_vector,
+            category_index=invoice.category_index,
+            action_index=action_index,
+            correct=correct,
+            gt_action_index=int(invoice.ground_truth_action_index),
+            confidence=confidence,
+        )
+
+        if decision_number in checkpoints:
+            points.append(
+                {
+                    "decisions": decision_number,
+                    "decision_number": decision_number,
+                    "accuracy": float(round(correct_count / decision_number, 4)),
+                    "confidence": float(round(confidence_total / decision_number, 4)),
+                    "batch": len(points) + 1,
+                }
+            )
+
+    return {
+        "points": points,
+        "total_decisions": len(invoices),
+    }
 
 
 def _get_supplier_fixture() -> list[dict[str, Any]]:
@@ -182,24 +256,17 @@ def preview_conservation() -> dict[str, Any]:
 
 @router.get("/compounding")
 def preview_compounding() -> dict[str, Any]:
-    points = []
-    initial_accuracy = 0.72
-    for batch in range(20):
-        decisions = (batch + 1) * 50
-        accuracy = initial_accuracy + (0.90 - initial_accuracy) * (batch / 19)
-        points.append(
-            {
-                "decisions": int(decisions),
-                "accuracy": float(round(accuracy, 4)),
-                "batch": int(batch + 1),
-            }
-        )
+    simulation = _build_compounding_trajectory()
+    points = simulation["points"]
+    initial_accuracy = float(points[0]["accuracy"]) if points else 0.0
+    current_accuracy = float(points[-1]["accuracy"]) if points else 0.0
 
     return {
         "initial_accuracy": initial_accuracy,
-        "current_accuracy": float(points[-1]["accuracy"]),
-        "total_decisions": 1000,
-        "source": "synthetic_demo",
+        "current_accuracy": current_accuracy,
+        "total_decisions": simulation["total_decisions"],
+        "source": "s2p_preview_simulation",
+        "tensor_shape": [5, 5, 7],
         "engine_version": _get_gae_version(),
         "trajectory": points,
     }
@@ -229,4 +296,71 @@ def preview_config() -> dict[str, Any]:
         "canonical_factors": _get_canonical_factor_list(),
         "penalty_ratio": 5.0,
         "engine_version": _get_gae_version(),
+        "platform_comparison": {
+            "soc": {
+                "domain": "Security Operations",
+                "tensor": "SOC production tensor",
+                "categories": 6,
+                "actions": 4,
+                "factors": 6,
+                "penalty_ratio": "20:1",
+                "conservation": "active",
+            },
+            "s2p": {
+                "domain": "Source-to-Pay",
+                "tensor": "(5, 5, 7)",
+                "categories": 5,
+                "actions": 5,
+                "factors": 7,
+                "penalty_ratio": "5:1",
+                "conservation": "active",
+            },
+            "shared": {
+                "engine_version": "0.7.23",
+                "conservation_law": "α·q·V ≥ θ_min",
+                "learning_strategy": "ContinuousStrategy",
+                "message": "Two domains on one engine. Same math. Different parameters. Same conservation law.",
+            },
+        },
+        "cross_copilot_signals": {
+            "description": "Operational patterns inherited from SOC AgentEvolver",
+            "signals": [
+                {
+                    "pattern": "Tighten threshold during anomaly cluster",
+                    "source_copilot": "SOC",
+                    "source_rule": "RULE-CAMPAIGN-ESCALATE",
+                    "adapted_as": "RULE-S2P-EXCEPTION-CLUSTER",
+                    "adaptation": (
+                        "Campaign detection → supplier exception spike detection. "
+                        "When 3+ exceptions from same supplier in 7 days, "
+                        "tighten auto-approve threshold by 15%."
+                    ),
+                    "warm_start_prior": 0.757,
+                    "warm_start_source": "SOC shadow win rate (75.7%, 25 comparisons)",
+                },
+                {
+                    "pattern": "Drift-triggered recalibration",
+                    "source_copilot": "SOC",
+                    "source_rule": "RULE-DRIFT-THRESHOLD",
+                    "adapted_as": "RULE-S2P-COMMODITY-DRIFT",
+                    "adaptation": (
+                        "Per-category accuracy drift → per-commodity accuracy drift. "
+                        "When commodity index correlation factor σ increases >20%, "
+                        "trigger scoring threshold review."
+                    ),
+                    "warm_start_prior": 0.68,
+                    "warm_start_source": "SOC shadow win rate (68%, 25 comparisons)",
+                },
+            ],
+            "network_effect": (
+                "Each new copilot starts at IKS 12 instead of IKS 0. "
+                "Structural patterns (not domain-specific centroids) transfer "
+                "across copilots via AgentEvolver rule templates."
+            ),
+            "status": "designed_capability",
+            "note": (
+                "Cross-copilot signal transfer is architecturally validated. "
+                "Production activation requires S2P pilot data."
+            ),
+        },
     }

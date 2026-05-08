@@ -5,10 +5,8 @@ Enforces the multi-copilot principle: a procurement copilot must be
 buildable by registering a DomainConfig — not by forking SOC.
 S2P must have zero SOC dependencies and correct tensor dimensions.
 
-Actual S2P tensor: (6, 4, 6) = 144 values.
-  N_CATEGORIES=6, N_ACTIONS=4, N_FACTORS=6, PENALTY_RATIO=5.0
-Note: CLAUDE.md spec describes (5,5,8) with A=5; actual impl uses (6,4,6)
-with A=4. Tests verify the REAL code, not the unimplemented spec.
+Actual S2P tensor: (5, 5, 7) = 175 values.
+  N_CATEGORIES=5, N_ACTIONS=5, N_FACTORS=7, PENALTY_RATIO=5.0
 
 Run from backend/:
     pytest tests/test_domain_isolation.py -v
@@ -95,36 +93,35 @@ class TestNoSOCImports:
 class TestTensorDimensions:
     """S2P tensor dimensions must match actual config constants."""
 
-    def test_s2p_tensor_shape_is_6_4_6(self):
+    def test_s2p_tensor_shape_is_5_5_7(self):
         """
-        S2P tensor is (N_CATEGORIES=6, N_ACTIONS=4, N_FACTORS=6) = 144 values.
-        This is the implemented shape — distinct from any generic/SOC config.
+        S2P tensor is (N_CATEGORIES=5, N_ACTIONS=5, N_FACTORS=7) = 175 values.
         """
         from app.domains.s2p.config import S2PDomainConfig
 
-        assert S2PDomainConfig.n_categories == 6
-        assert S2PDomainConfig.n_actions == 4
-        assert S2PDomainConfig.n_factors == 6
+        assert S2PDomainConfig.n_categories == 5
+        assert S2PDomainConfig.n_actions == 5
+        assert S2PDomainConfig.n_factors == 7
         total = (
             S2PDomainConfig.n_categories
             * S2PDomainConfig.n_actions
             * S2PDomainConfig.n_factors
         )
-        assert total == 144
+        assert total == 175
 
-    def test_s2p_has_4_actions_not_soc_count(self):
-        """
-        S2P defines 4 actions: approve, escalate, reject, review.
-        (CLAUDE.md spec targets A=5; current implementation uses A=4.)
-        The test anchors the real count so regressions are caught.
-        """
+    def test_s2p_has_5_canonical_actions(self):
         from app.domains.s2p.config import S2PDomainConfig, S2P_ACTIONS
 
-        assert S2PDomainConfig.n_actions == 4
-        assert len(S2P_ACTIONS) == 4
-        # Verify the exact procurement verbs — no security verbs
+        assert S2PDomainConfig.n_actions == 5
+        assert len(S2P_ACTIONS) == 5
         for action in S2P_ACTIONS:
-            assert action in {"approve", "escalate", "reject", "review"}, (
+            assert action in {
+                "auto_approve",
+                "hold_for_review",
+                "escalate_to_buyer",
+                "flag_leakage",
+                "refer_to_specialist",
+            }, (
                 f"Unexpected S2P action '{action}'"
             )
 
@@ -140,14 +137,12 @@ class TestTensorDimensions:
         """S2P categories are procurement domain; SOC categories must be absent."""
         from app.domains.s2p.config import S2P_CATEGORIES
 
-        # Required S2P procurement categories
         required = {
-            "maverick_spend",
-            "supplier_risk",
-            "contract_breach",
-            "budget_overrun",
-            "approval_bypass",
-            "data_quality",
+            "price_variance",
+            "quantity_mismatch",
+            "duplicate_risk",
+            "contract_gap",
+            "format_compliance",
         }
         assert required == set(S2P_CATEGORIES), (
             f"S2P categories deviated from expected set: {set(S2P_CATEGORIES)}"
@@ -173,7 +168,7 @@ class TestTensorDimensions:
 # ============================================================================
 
 class TestS2PScoring:
-    """S2P scorer wiring tests using actual (6,4,6) configuration."""
+    """S2P scorer wiring tests using canonical (5,5,7) configuration."""
 
     def setup_method(self):
         from app.domains.s2p.scorer import reset_scorer
@@ -210,7 +205,7 @@ class TestS2PScoring:
         )
 
     def test_score_output_length_matches_n_actions(self):
-        """score_event returns one probability per action (len == n_actions == 4)."""
+        """score_event returns one probability per action."""
         from app.domains.s2p.scorer import score_event
         from app.domains.s2p.config import S2PDomainConfig
 
@@ -241,12 +236,12 @@ class TestS2PIndependence:
         from app.domains.s2p.config import S2PDomainConfig
 
         s2p_scorer = get_scorer()
-        s2p_shape = s2p_scorer.centroids.shape  # (5, 5, 8)
+        s2p_shape = s2p_scorer.centroids.shape
 
         # Hypothetical fraud/SOC domain: 3 categories, 5 actions, 4 factors
         other_categories = ["fraud_type_a", "fraud_type_b", "fraud_type_c"]
         other_actions = ["block", "flag", "allow", "review", "escalate"]  # 5
-        other_n_factors = 4  # 4 ≠ 6
+        other_n_factors = 4
         other_centroids = {
             c: {a: [0.5] * other_n_factors for a in other_actions}
             for c in other_categories

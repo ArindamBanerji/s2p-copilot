@@ -1,78 +1,70 @@
 """
-tests/test_s2p_factors.py — S2P factor computer tests.
-
-Run from backend/:
-    pytest tests/test_s2p_factors.py -v
+tests/test_s2p_factors.py - canonical S2P factor computer tests.
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.domains.s2p.factors import (
     S2PEvent,
-    SpendCategoryMatchFactor,
-    SpendAnomalyFactor,
-    VendorTrustFactor,
+    MatchStatusFactor,
+    AmountVarianceRatioFactor,
+    SupplierExceptionHistoryFactor,
+    TaxRegulatoryComplianceFactor,
     S2P_FACTOR_COMPUTERS,
     compute_factor_vector,
 )
 
 
 def test_factor_vector_length():
-    event = S2PEvent(event_id="E001", category="maverick_spend",
+    event = S2PEvent(event_id="E001", category="price_variance",
                      amount=5000.0, supplier_id="SUP-001")
     vector = compute_factor_vector(event)
-    assert len(vector) == 6
+    assert len(vector) == 7
     assert all(0.0 <= v <= 1.0 for v in vector)
 
 
-def test_spend_category_match_direct_match():
-    event = S2PEvent(event_id="E002", category="supplier_risk",
+def test_match_status_direct_match():
+    event = S2PEvent(event_id="E002", category="price_variance",
                      amount=1000.0, supplier_id="SUP-002",
-                     approved_categories=["supplier_risk", "contract_breach"],
+                     approved_categories=["price_variance", "contract_gap"],
                      contract_id="C-001")
-    factor = SpendCategoryMatchFactor()
-    assert factor.compute(event) >= 0.8  # direct match → high value
+    assert MatchStatusFactor().compute(event) >= 0.8
 
 
-def test_spend_category_match_mismatch():
-    event = S2PEvent(event_id="E003", category="maverick_spend",
+def test_match_status_mismatch():
+    event = S2PEvent(event_id="E003", category="price_variance",
                      amount=1000.0, supplier_id="SUP-003",
-                     approved_categories=["supplier_risk"],
+                     approved_categories=["contract_gap"],
                      contract_id="C-001")
-    factor = SpendCategoryMatchFactor()
-    assert factor.compute(event) <= 0.2  # mismatch → low value
+    assert MatchStatusFactor().compute(event) <= 0.2
 
 
-def test_spend_anomaly_normal_spend():
-    event = S2PEvent(event_id="E004", category="budget_overrun",
-                     amount=1000.0, supplier_id="SUP-004",
-                     historical_spend_mean=1000.0,
-                     historical_spend_std=100.0)
-    factor = SpendAnomalyFactor()
-    assert factor.compute(event) >= 0.9  # z=0 → near 1.0
+def test_amount_variance_ratio_uses_existing_amount_fields():
+    event = S2PEvent(event_id="E004", category="price_variance",
+                     amount=1200.0, supplier_id="SUP-004",
+                     historical_spend_mean=1000.0)
+    assert AmountVarianceRatioFactor().compute(event) == 0.2
 
 
-def test_spend_anomaly_extreme_outlier():
-    event = S2PEvent(event_id="E005", category="budget_overrun",
-                     amount=10000.0, supplier_id="SUP-005",
-                     historical_spend_mean=1000.0,
-                     historical_spend_std=100.0)
-    factor = SpendAnomalyFactor()
-    assert factor.compute(event) <= 0.2  # z=90 → near 0.1
+def test_supplier_exception_history_from_vendor_history():
+    event = S2PEvent(event_id="E005", category="quantity_mismatch",
+                     amount=500.0, supplier_id="SUP-005",
+                     vendor_decisions=100, vendor_approvals=82)
+    assert abs(SupplierExceptionHistoryFactor().compute(event) - 0.18) < 1e-9
 
 
-def test_vendor_trust_cold_start():
-    event = S2PEvent(event_id="E006", category="data_quality",
+def test_explicit_canonical_factor_overrides_are_clamped():
+    event = S2PEvent(event_id="E006", category="format_compliance",
                      amount=500.0, supplier_id="SUP-006",
-                     vendor_decisions=0, vendor_approvals=0)
-    factor = VendorTrustFactor()
-    assert factor.compute(event) == 0.5  # cold start → neutral
+                     tax_regulatory_compliance=1.5)
+    assert TaxRegulatoryComplianceFactor().compute(event) == 1.0
 
 
 def test_factor_names_match_config():
     from app.domains.s2p.config import S2P_FACTORS
+
     names = [fc.name for fc in S2P_FACTOR_COMPUTERS]
-    assert names == S2P_FACTORS  # order must match exactly
+    assert names == S2P_FACTORS

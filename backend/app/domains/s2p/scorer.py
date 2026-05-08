@@ -1,13 +1,10 @@
 """
-S2P scorer — wires S2PDomainConfig + GAE ProfileScorer.
+S2P scorer - wires canonical S2PDomainConfig + GAE ProfileScorer.
 Module-level singleton pattern (same as SOC gae_state.py).
-Cold start: L2 kernel, uniform 0.5 centroids.
-DiagonalKernel: after P28 Phase 2 measures per-factor sigma.
 """
 
 import numpy as np
-from gae import build_profile_scorer, KernelType, ProfileScorer
-from gae import s2p_calibration_profile
+from gae import ProfileScorer
 
 from app.domains.s2p.config import S2PDomainConfig, LEARNING_ENABLED
 from app.framework.iks_base import compute_iks as _compute_iks
@@ -36,19 +33,14 @@ def reset_scorer() -> None:
     _initialized = False
 
 
-def _build_scorer(kernel: KernelType = KernelType.L2) -> ProfileScorer:
-    """
-    Build a fresh S2P ProfileScorer from S2PDomainConfig.
-    kernel: L2 (cold start) or DIAGONAL (after P28 qualification).
-    """
-    profile = s2p_calibration_profile()
-    return build_profile_scorer(
-        categories=S2PDomainConfig.categories,
+def _build_scorer() -> ProfileScorer:
+    """Build a fresh S2P ProfileScorer from canonical S2PDomainConfig."""
+    return ProfileScorer(
+        mu=S2PDomainConfig.get_profile_centroids(),
         actions=S2PDomainConfig.actions,
-        centroids=S2PDomainConfig.get_initial_centroids(),
-        n_factors=S2PDomainConfig.n_factors,
-        kernel=kernel,
-        profile=profile,
+        profile=S2PDomainConfig.get_calibration_profile(),
+        categories=S2PDomainConfig.categories,
+        eta_override=S2PDomainConfig.eta_override,
     )
 
 
@@ -88,11 +80,26 @@ def get_s2p_iks() -> dict:
 
     Aligned with SOC/framework direction:
       IKS = drift score = 100 × min(mean_drift / D_MAX, 1.0)
-    Cold start (no decisions): drift=0 → IKS=0.
-    Grows as analyst decisions move centroids from the prior.
+    Grows as analyst decisions move centroids from the expert prior.
+    Expert centroids are initialization, not accumulated institutional knowledge.
     """
-    scorer  = get_scorer()
-    mu_zero = np.full_like(scorer.centroids, 0.5)
+    if not LEARNING_ENABLED:
+        return {
+            "iks": 0.0,
+            "d_max": S2P_D_MAX,
+            "mean_drift": 0.0,
+            "decisions": 0,    # placeholder — Neo4j count added by endpoint
+            "domain": "s2p",
+            "status": "CALIBRATING",
+            "learning_active": False,
+            "interpretation": (
+                "Cold start. S2P learning is disabled; verified outcomes have "
+                "not been applied to institutional knowledge."
+            ),
+        }
+
+    scorer = get_scorer()
+    mu_zero = S2PDomainConfig.get_profile_centroids()
 
     # Framework returns {"current": drift_score, "mean_drift": ..., "estimated": bool}
     # where drift_score = 100 × min(mean_drift / d_max, 1.0)
@@ -107,6 +114,8 @@ def get_s2p_iks() -> dict:
         "mean_drift":     iks_result["mean_drift"],
         "decisions":      0,    # placeholder — Neo4j count added by endpoint
         "domain":         "s2p",
+        "status":         "ACTIVE",
+        "learning_active": True,
         "interpretation": _interpret_iks(iks_value),
     }
 

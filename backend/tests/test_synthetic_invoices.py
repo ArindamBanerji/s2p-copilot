@@ -12,23 +12,23 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from app.domains.s2p.config import S2PDomainConfigV2
+from app.domains.s2p.config import S2PDomainConfig
 from app.services.synthetic_invoices import SyntheticInvoiceGenerator
 
 
 def _v2_factors():
-    method = getattr(S2PDomainConfigV2, "get_factors", None)
-    return list(method()) if callable(method) else list(S2PDomainConfigV2.factors)
+    method = getattr(S2PDomainConfig, "get_factors", None)
+    return list(method()) if callable(method) else list(S2PDomainConfig.factors)
 
 
 def _v2_categories():
-    method = getattr(S2PDomainConfigV2, "get_categories", None)
-    return list(method()) if callable(method) else list(S2PDomainConfigV2.categories)
+    method = getattr(S2PDomainConfig, "get_categories", None)
+    return list(method()) if callable(method) else list(S2PDomainConfig.categories)
 
 
 def _v2_actions():
-    method = getattr(S2PDomainConfigV2, "get_actions", None)
-    return list(method()) if callable(method) else list(S2PDomainConfigV2.actions)
+    method = getattr(S2PDomainConfig, "get_actions", None)
+    return list(method()) if callable(method) else list(S2PDomainConfig.actions)
 
 
 def _fixture_path() -> Path:
@@ -187,11 +187,11 @@ def test_scorer_accepts_generated_vectors():
     generator = SyntheticInvoiceGenerator(seed=7)
     invoice = generator.generate(1)[0]
     scorer = ProfileScorer(
-        mu=S2PDomainConfigV2.get_profile_centroids(),
+        mu=S2PDomainConfig.get_profile_centroids(),
         actions=_v2_actions(),
-        profile=S2PDomainConfigV2.get_calibration_profile(),
+        profile=S2PDomainConfig.get_calibration_profile(),
         categories=_v2_categories(),
-        eta_override=S2PDomainConfigV2.eta_override,
+        eta_override=S2PDomainConfig.eta_override,
     )
 
     result = scorer.score(
@@ -212,7 +212,7 @@ def test_fixture_file_exists_and_valid():
 def test_oracle_quality_nearest_centroid_above_80_percent():
     generator = SyntheticInvoiceGenerator(seed=7, noise_level=0.08)
     invoices = generator.generate(5000)
-    centroids = S2PDomainConfigV2.get_profile_centroids()
+    centroids = S2PDomainConfig.get_profile_centroids()
 
     correct = 0
     for invoice in invoices:

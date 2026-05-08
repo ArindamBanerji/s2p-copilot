@@ -27,6 +27,13 @@ class ScoreRequest(BaseModel):
     historical_spend_std: float = 1.0
     vendor_decisions: int = 0
     vendor_approvals: int = 0
+    match_status: Optional[float] = None
+    amount_variance_ratio: Optional[float] = None
+    duplicate_score: Optional[float] = None
+    supplier_exception_history: Optional[float] = None
+    payment_terms_impact: Optional[float] = None
+    commodity_index_correlation: Optional[float] = None
+    tax_regulatory_compliance: Optional[float] = None
 
 
 class ScoreResponse(BaseModel):
@@ -66,6 +73,13 @@ def score_procurement_event(request: ScoreRequest) -> ScoreResponse:
         historical_spend_std=request.historical_spend_std,
         vendor_decisions=request.vendor_decisions,
         vendor_approvals=request.vendor_approvals,
+        match_status=request.match_status,
+        amount_variance_ratio=request.amount_variance_ratio,
+        duplicate_score=request.duplicate_score,
+        supplier_exception_history=request.supplier_exception_history,
+        payment_terms_impact=request.payment_terms_impact,
+        commodity_index_correlation=request.commodity_index_correlation,
+        tax_regulatory_compliance=request.tax_regulatory_compliance,
     )
 
     factor_vector = compute_factor_vector(event)
@@ -131,6 +145,10 @@ def record_outcome(request: OutcomeRequest) -> OutcomeResponse:
     if request.analyst_action not in S2PDomainConfig.actions:
         raise HTTPException(status_code=422,
             detail=f"analyst_action must be one of {S2PDomainConfig.actions}")
+
+    if len(request.factor_vector) != S2PDomainConfig.n_factors:
+        raise HTTPException(status_code=422,
+            detail=f"factor_vector must contain {S2PDomainConfig.n_factors} values")
 
     # Write to Neo4j (fault-tolerant)
     try:

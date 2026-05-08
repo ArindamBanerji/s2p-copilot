@@ -17,9 +17,16 @@ client = TestClient(app)
 
 VALID_REQUEST = {
     "event_id": "E001",
-    "category": "supplier_risk",
+    "category": "price_variance",
     "amount": 5000.0,
     "supplier_id": "SUP-001",
+    "match_status": 0.92,
+    "amount_variance_ratio": 0.08,
+    "duplicate_score": 0.04,
+    "supplier_exception_history": 0.05,
+    "payment_terms_impact": 0.48,
+    "commodity_index_correlation": 0.76,
+    "tax_regulatory_compliance": 0.90,
 }
 
 
@@ -39,17 +46,38 @@ def test_score_response_has_required_fields():
 def test_score_action_is_valid_s2p_action():
     response = client.post("/api/s2p/score", json=VALID_REQUEST)
     action = response.json()["action"]
-    assert action in ["approve", "escalate", "reject", "review"]
+    assert action in [
+        "auto_approve",
+        "hold_for_review",
+        "escalate_to_buyer",
+        "flag_leakage",
+        "refer_to_specialist",
+    ]
 
 
 def test_score_factor_vector_length():
     response = client.post("/api/s2p/score", json=VALID_REQUEST)
     data = response.json()
-    assert len(data["factor_vector"]) == 6
-    assert len(data["factor_names"]) == 6
+    assert len(data["factor_vector"]) == 7
+    assert len(data["factor_names"]) == 7
+    assert data["factor_names"] == [
+        "match_status",
+        "amount_variance_ratio",
+        "duplicate_score",
+        "supplier_exception_history",
+        "payment_terms_impact",
+        "commodity_index_correlation",
+        "tax_regulatory_compliance",
+    ]
 
 
 def test_score_invalid_category_returns_422():
     bad_request = {**VALID_REQUEST, "category": "lateral_movement"}
+    response = client.post("/api/s2p/score", json=bad_request)
+    assert response.status_code == 422
+
+
+def test_score_legacy_category_returns_422():
+    bad_request = {**VALID_REQUEST, "category": "supplier_risk"}
     response = client.post("/api/s2p/score", json=bad_request)
     assert response.status_code == 422

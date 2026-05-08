@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
 
-from app.domains.s2p.config import S2PDomainConfigV2
+from app.domains.s2p.config import S2PDomainConfig
 from app.main import app
 
 client = TestClient(app)
@@ -69,7 +69,7 @@ def test_queue_scorer_metadata():
     scorer = _queue().json()["scorer"]
     assert scorer["engine"] == "Graph Attention Engine"
     assert scorer["tensor_shape"] == "(5, 5, 7)"
-    assert scorer["factors"] == S2PDomainConfigV2.factors
+    assert scorer["factors"] == S2PDomainConfig.factors
     assert "version" in scorer
 
 
@@ -104,13 +104,39 @@ def test_compounding_trajectory_has_20_points():
 
 def test_compounding_accuracy_increases():
     trajectory = client.get("/api/s2p/preview/compounding").json()["trajectory"]
-    assert trajectory[-1]["accuracy"] > trajectory[0]["accuracy"]
+    assert trajectory[-1]["accuracy"] > trajectory[0]["accuracy"] + 0.01
 
 
 def test_compounding_initial_accuracy():
     data = client.get("/api/s2p/preview/compounding").json()
-    assert data["initial_accuracy"] == 0.72
-    assert data["trajectory"][0]["accuracy"] == 0.72
+    assert data["initial_accuracy"] == data["trajectory"][0]["accuracy"]
+    assert data["source"] == "s2p_preview_simulation"
+    assert data["source"] != "synthetic_demo"
+
+
+def test_compounding_uses_s2p_tensor_shape():
+    data = client.get("/api/s2p/preview/compounding").json()
+    assert data["tensor_shape"] == [5, 5, 7]
+
+
+def test_compounding_accuracy_values_in_range():
+    trajectory = client.get("/api/s2p/preview/compounding").json()["trajectory"]
+    assert all(0.0 <= point["accuracy"] <= 1.0 for point in trajectory)
+
+
+def test_compounding_points_ordered_by_decision_number():
+    trajectory = client.get("/api/s2p/preview/compounding").json()["trajectory"]
+    decision_numbers = [point["decision_number"] for point in trajectory]
+    assert decision_numbers == sorted(decision_numbers)
+    assert all(point["decisions"] == point["decision_number"] for point in trajectory)
+
+
+def test_compounding_last_segment_improves_over_first_segment():
+    trajectory = client.get("/api/s2p/preview/compounding").json()["trajectory"]
+    segment_size = max(1, len(trajectory) // 5)
+    first_avg = sum(point["accuracy"] for point in trajectory[:segment_size]) / segment_size
+    last_avg = sum(point["accuracy"] for point in trajectory[-segment_size:]) / segment_size
+    assert last_avg > first_avg + 0.01
 
 
 def test_suppliers_returns_200():
@@ -155,12 +181,12 @@ def test_config_tensor_shape():
 def test_config_factors_count_7():
     data = client.get("/api/s2p/preview/config").json()
     assert len(data["factors"]) == 7
-    assert data["factors"] == S2PDomainConfigV2.factors
+    assert data["factors"] == S2PDomainConfig.factors
 
 
 def test_queue_actions_are_v2():
     invoices = _queue(50).json()["invoices"]
-    v2_actions = set(S2PDomainConfigV2.actions)
+    v2_actions = set(S2PDomainConfig.actions)
     legacy_actions = {"approve", "escalate", "reject", "review"}
     assert all(invoice["recommended_action"] in v2_actions for invoice in invoices)
     assert all(invoice["recommended_action"] not in legacy_actions for invoice in invoices)
@@ -168,7 +194,7 @@ def test_queue_actions_are_v2():
 
 def test_queue_categories_are_v2():
     invoices = _queue(50).json()["invoices"]
-    v2_categories = set(S2PDomainConfigV2.categories)
+    v2_categories = set(S2PDomainConfig.categories)
     legacy_categories = {
         "maverick_spend",
         "supplier_risk",
@@ -181,19 +207,26 @@ def test_queue_categories_are_v2():
     assert all(invoice["category"] not in legacy_categories for invoice in invoices)
 
 
-def test_no_legacy_endpoint_collision():
-    legacy_payload = {
+def test_score_endpoint_is_canonical_too():
+    canonical_payload = {
         "event_id": "E001",
-        "category": "supplier_risk",
+        "category": "price_variance",
         "amount": 5000.0,
         "supplier_id": "SUP-001",
+        "match_status": 0.9,
+        "amount_variance_ratio": 0.08,
+        "duplicate_score": 0.04,
+        "supplier_exception_history": 0.05,
+        "payment_terms_impact": 0.48,
+        "commodity_index_correlation": 0.76,
+        "tax_regulatory_compliance": 0.90,
     }
-    legacy = client.post("/api/s2p/score", json=legacy_payload)
+    score = client.post("/api/s2p/score", json=canonical_payload)
     preview = client.get("/api/s2p/preview/queue")
 
-    assert legacy.status_code == 200
+    assert score.status_code == 200
     assert preview.status_code == 200
-    assert len(legacy.json()["factor_vector"]) == 6
+    assert len(score.json()["factor_vector"]) == 7
     assert len(preview.json()["invoices"][0]["factor_vector"]) == 7
 
 

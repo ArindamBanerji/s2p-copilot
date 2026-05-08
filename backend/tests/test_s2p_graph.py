@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.domains.s2p.graph import write_s2p_decision, get_s2p_decision
 from app.domains.s2p.config import S2P_FACTORS
 
-FACTOR_VECTOR = [0.9, 0.8, 0.85, 0.9, 0.5, 0.8]
+FACTOR_VECTOR = [0.9, 0.08, 0.04, 0.05, 0.48, 0.76, 0.90]
 
 
 def _make_driver(return_none=False):
@@ -40,7 +40,7 @@ def _make_driver(return_none=False):
 def test_write_s2p_decision_returns_decision_id():
     mock_driver = _make_driver()
     result = write_s2p_decision(
-        mock_driver, "E001", "supplier_risk", "approve", 0, 0.85,
+        mock_driver, "E001", "price_variance", "auto_approve", 0, 0.85,
         FACTOR_VECTOR, S2P_FACTORS, "SUP-001", 5000.0,
     )
     assert result.startswith("S2P-E001-")
@@ -49,7 +49,7 @@ def test_write_s2p_decision_returns_decision_id():
 def test_decision_id_format():
     mock_driver = _make_driver()
     result = write_s2p_decision(
-        mock_driver, "E001", "supplier_risk", "approve", 0, 0.85,
+        mock_driver, "E001", "price_variance", "auto_approve", 0, 0.85,
         FACTOR_VECTOR, S2P_FACTORS, "SUP-001", 5000.0,
     )
     assert result.startswith("S2P-")
@@ -61,8 +61,15 @@ def test_score_endpoint_includes_decision_id():
     from app.main import app
     client = TestClient(app)
     response = client.post("/api/s2p/score", json={
-        "event_id": "E099", "category": "maverick_spend",
+        "event_id": "E099", "category": "price_variance",
         "amount": 1000.0, "supplier_id": "SUP-099",
+        "match_status": 0.9,
+        "amount_variance_ratio": 0.08,
+        "duplicate_score": 0.04,
+        "supplier_exception_history": 0.05,
+        "payment_terms_impact": 0.48,
+        "commodity_index_correlation": 0.76,
+        "tax_regulatory_compliance": 0.90,
     })
     assert response.status_code == 200
     data = response.json()

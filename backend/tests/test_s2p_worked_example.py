@@ -4,7 +4,8 @@ tests/test_s2p_worked_example.py — Block 3.8 Procurement Approval worked examp
 Actual API schema (POST /api/s2p/score):
   Request:  event_id, category, amount, supplier_id, supplier_risk_rating, ...
   Response: action, confidence, factor_vector, factor_names, probabilities, decision_id
-  Actions:  approve | escalate | reject | review  (S2P domain)
+  Actions:  auto_approve | hold_for_review | escalate_to_buyer |
+            flag_leakage | refer_to_specialist  (S2P domain)
 
 scenarios.json uses a richer 8-factor format (financial_health, track_record, etc.)
 that is mapped to the S2P API fields by _to_api_payload().
@@ -35,21 +36,29 @@ SCENARIOS_PATH = (
 
 # S2P actions that map to "defer" in scenario ground truth
 ACTION_MAP = {
-    "approve":  "approve",
-    "escalate": "defer",
-    "reject":   "reject",
-    "review":   "defer",
+    "auto_approve": "approve",
+    "hold_for_review": "defer",
+    "escalate_to_buyer": "defer",
+    "flag_leakage": "reject",
+    "refer_to_specialist": "defer",
 }
 
 # Simple payloads for standalone tests (no scenarios.json needed)
 _LOW_RISK_PAYLOAD = {
     "event_id": "PO-001",
-    "category": "supplier_risk",
+    "category": "price_variance",
     "amount": 125000.0,
     "supplier_id": "SUP-PO-001",
     "supplier_risk_rating": 0.85,
     "contract_id": "PO-001-C",
-    "approved_categories": ["supplier_risk"],
+    "approved_categories": ["price_variance"],
+    "match_status": 0.92,
+    "amount_variance_ratio": 0.08,
+    "duplicate_score": 0.04,
+    "supplier_exception_history": 0.05,
+    "payment_terms_impact": 0.48,
+    "commodity_index_correlation": 0.76,
+    "tax_regulatory_compliance": 0.90,
     "historical_spend_mean": 112500.0,
     "historical_spend_std": 12500.0,
     "vendor_decisions": 100,
@@ -58,12 +67,19 @@ _LOW_RISK_PAYLOAD = {
 
 _HIGH_RISK_PAYLOAD = {
     "event_id": "PO-008",
-    "category": "supplier_risk",
+    "category": "price_variance",
     "amount": 1200000.0,
     "supplier_id": "SUP-PO-008",
     "supplier_risk_rating": 0.92,
     "contract_id": "PO-008-C",
-    "approved_categories": ["supplier_risk"],
+    "approved_categories": ["price_variance"],
+    "match_status": 0.50,
+    "amount_variance_ratio": 0.60,
+    "duplicate_score": 0.15,
+    "supplier_exception_history": 0.30,
+    "payment_terms_impact": 0.60,
+    "commodity_index_correlation": 0.30,
+    "tax_regulatory_compliance": 0.70,
     "historical_spend_mean": 1080000.0,
     "historical_spend_std": 120000.0,
     "vendor_decisions": 100,
@@ -72,7 +88,7 @@ _HIGH_RISK_PAYLOAD = {
 
 _COMPLIANCE_RISK_PAYLOAD = {
     "event_id": "PO-003",
-    "category": "contract_breach",
+    "category": "contract_gap",
     "amount": 2100000.0,
     "supplier_id": "SUP-PO-003",
     "supplier_risk_rating": 0.70,
@@ -89,15 +105,15 @@ def _to_api_payload(s: dict) -> dict:
     amount = float(s["contract_value_usd"])
 
     if f["process_adherence"] < 0.50:
-        category = "approval_bypass"
+        category = "format_compliance"
     elif f["compliance_score"] < 0.40 or f["geo_political_risk"] > 0.70:
-        category = "contract_breach"
+        category = "contract_gap"
     elif f["concentration_risk"] > 0.80:
-        category = "supplier_risk"
+        category = "duplicate_risk"
     elif f["financial_health"] < 0.40:
-        category = "supplier_risk"
+        category = "quantity_mismatch"
     else:
-        category = "supplier_risk"
+        category = "price_variance"
 
     track = f["track_record"]
     vendor_decisions = 100 if track > 0.50 else 20
@@ -116,6 +132,13 @@ def _to_api_payload(s: dict) -> dict:
         "historical_spend_std":  max(amount * 0.10, 1.0),
         "vendor_decisions":      vendor_decisions,
         "vendor_approvals":      vendor_approvals,
+        "match_status":          f["process_adherence"],
+        "amount_variance_ratio":  min(abs(amount - amount * 0.90) / max(amount * 0.90, 1.0), 1.0),
+        "duplicate_score":       f["concentration_risk"],
+        "supplier_exception_history": 1.0 - f["track_record"],
+        "payment_terms_impact":  1.0 - f["compliance_score"],
+        "commodity_index_correlation": f["geo_political_risk"],
+        "tax_regulatory_compliance": f["compliance_score"],
     }
 
 
@@ -146,8 +169,8 @@ def test_s2p_score_factor_breakdown_present():
     data = resp.json()
     assert "factor_vector" in data
     assert "factor_names" in data
-    assert len(data["factor_vector"]) == 6
-    assert len(data["factor_names"]) == 6
+    assert len(data["factor_vector"]) == 7
+    assert len(data["factor_names"]) == 7
 
 
 def test_s2p_score_all_10_scenarios_return_valid_action():
@@ -170,7 +193,7 @@ def test_s2p_score_all_10_scenarios_return_valid_action():
 
 
 def test_s2p_score_above_random_baseline():
-    """At least 3/10 scenarios correct — above 1/4 random baseline (4 actions)."""
+    """At least 3/10 scenarios correct — above 1/5 random baseline (5 actions)."""
     if not SCENARIOS_PATH.exists():
         pytest.skip("scenarios.json not found")
 

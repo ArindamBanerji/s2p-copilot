@@ -1,137 +1,141 @@
 """
 S2P Factor Computers.
-Each factor takes procurement event context and returns float in [0.0, 1.0].
-0.0 = high risk signal. 1.0 = low risk / neutral.
-Analogous to SOC factors but procurement domain.
+Each factor takes invoice exception context and returns float in [0.0, 1.0].
+Index order must match S2PDomainConfig.factors.
 """
 
 from dataclasses import dataclass, field
 from typing import Optional
 import numpy as np
 
+from app.domains.s2p.config import S2PDomainConfig
+
 
 @dataclass
 class S2PEvent:
     """
-    Procurement event context passed to all factor computers.
-    Analogous to SOC AlertContext.
+    Invoice exception context passed to all factor computers.
+
+    Existing procurement fields are kept as request inputs, but the computed
+    vector is always the canonical seven-factor S2P invoice vector.
     """
     event_id: str
-    category: str                              # S2P_CATEGORIES member
-    amount: float                              # spend amount in USD
+    category: str
+    amount: float
     supplier_id: str
     contract_id: Optional[str] = None
-    approved_categories: list = field(default_factory=list)  # categories in contract
-    supplier_risk_rating: float = 0.5          # 0=high risk, 1=low risk
+    approved_categories: list = field(default_factory=list)
+    supplier_risk_rating: float = 0.5
     historical_spend_mean: float = 0.0
     historical_spend_std: float = 1.0
     days_since_last_audit: int = 90
-    vendor_decisions: int = 0                  # historical decisions for vendor
-    vendor_approvals: int = 0                  # historical approvals for vendor
+    vendor_decisions: int = 0
+    vendor_approvals: int = 0
+
+    match_status: Optional[float] = None
+    amount_variance_ratio: Optional[float] = None
+    duplicate_score: Optional[float] = None
+    supplier_exception_history: Optional[float] = None
+    payment_terms_impact: Optional[float] = None
+    commodity_index_correlation: Optional[float] = None
+    tax_regulatory_compliance: Optional[float] = None
 
 
-class SpendCategoryMatchFactor:
-    """
-    Factor: does spend category match approved contract categories?
-    High match → 1.0 (low risk). No match → 0.0 (high risk).
-    """
-    name = "spend_category_match"
+def _clamp(value: float) -> float:
+    return float(np.clip(value, 0.0, 1.0))
+
+
+class MatchStatusFactor:
+    name = "match_status"
 
     def compute(self, event: S2PEvent) -> float:
+        if event.match_status is not None:
+            return _clamp(event.match_status)
         if not event.approved_categories or not event.contract_id:
-            return 0.5  # no contract — neutral
-        if event.category in event.approved_categories:
-            return 0.9  # direct match — low risk
-        return 0.1      # category mismatch — high risk
+            return 0.5
+        return 0.9 if event.category in event.approved_categories else 0.1
 
 
-class SupplierRiskScoreFactor:
-    """
-    Factor: vendor risk rating from supplier risk register.
-    Passes through supplier_risk_rating (0=high risk, 1=low risk).
-    """
-    name = "supplier_risk_score"
+class AmountVarianceRatioFactor:
+    name = "amount_variance_ratio"
 
     def compute(self, event: S2PEvent) -> float:
-        return float(np.clip(event.supplier_risk_rating, 0.0, 1.0))
+        if event.amount_variance_ratio is not None:
+            return _clamp(event.amount_variance_ratio)
+        if event.historical_spend_mean <= 0:
+            return 0.3
+        ratio = abs(event.amount - event.historical_spend_mean) / max(
+            abs(event.historical_spend_mean),
+            1.0,
+        )
+        return _clamp(ratio)
 
 
-class ContractComplianceFactor:
-    """
-    Factor: is spend within contract terms?
-    Has contract + category match → high compliance.
-    No contract → neutral.
-    """
-    name = "contract_compliance"
-
-    def compute(self, event: S2PEvent) -> float:
-        if not event.contract_id:
-            return 0.5  # no contract — neutral
-        if event.approved_categories and event.category in event.approved_categories:
-            return 0.85  # in-contract spend
-        return 0.15      # out-of-contract spend
-
-
-class SpendAnomalyFactor:
-    """
-    Factor: is this spend amount anomalous vs historical baseline?
-    Uses z-score against historical mean/std.
-    High z-score → anomalous → low value (high risk).
-    """
-    name = "spend_anomaly"
+class DuplicateScoreFactor:
+    name = "duplicate_score"
 
     def compute(self, event: S2PEvent) -> float:
-        if event.historical_spend_std == 0:
-            return 0.5  # no history — neutral
-        z = abs(event.amount - event.historical_spend_mean) / event.historical_spend_std
-        # z=0 → 1.0 (normal). z≥3 → 0.1 (anomalous).
-        return float(np.clip(1.0 - (z / 3.0) * 0.9, 0.1, 1.0))
+        if event.duplicate_score is not None:
+            return _clamp(event.duplicate_score)
+        return 0.05
 
 
-class PatternHistoryFactor:
-    """
-    Factor: historical pattern score for this category (W2 analog).
-    Accumulates over time as decisions are verified.
-    Cold start: 0.5 (neutral). Warms up with W2 edges.
-    """
-    name = "pattern_history"
+class SupplierExceptionHistoryFactor:
+    name = "supplier_exception_history"
 
     def compute(self, event: S2PEvent) -> float:
-        # Cold start — returns neutral until W2 graph accumulates
-        # In production: query TRIGGERED_EVOLUTION edges for category
+        if event.supplier_exception_history is not None:
+            return _clamp(event.supplier_exception_history)
+        if event.vendor_decisions <= 0:
+            return _clamp(1.0 - event.supplier_risk_rating)
+        exception_rate = 1.0 - (event.vendor_approvals / event.vendor_decisions)
+        return _clamp(exception_rate)
+
+
+class PaymentTermsImpactFactor:
+    name = "payment_terms_impact"
+
+    def compute(self, event: S2PEvent) -> float:
+        if event.payment_terms_impact is not None:
+            return _clamp(event.payment_terms_impact)
         return 0.5
 
 
-class VendorTrustFactor:
-    """
-    Factor: accumulated vendor reliability from decision history.
-    High approval rate → high trust → high value.
-    Cold start: 0.5 (neutral).
-    """
-    name = "vendor_trust"
+class CommodityIndexCorrelationFactor:
+    name = "commodity_index_correlation"
 
     def compute(self, event: S2PEvent) -> float:
-        if event.vendor_decisions == 0:
-            return 0.5  # cold start — neutral
-        approval_rate = event.vendor_approvals / event.vendor_decisions
-        return float(np.clip(approval_rate, 0.0, 1.0))
+        if event.commodity_index_correlation is not None:
+            return _clamp(event.commodity_index_correlation)
+        return 0.5
 
 
-# Factor registry — ordered to match S2P_FACTORS index order
+class TaxRegulatoryComplianceFactor:
+    name = "tax_regulatory_compliance"
+
+    def compute(self, event: S2PEvent) -> float:
+        if event.tax_regulatory_compliance is not None:
+            return _clamp(event.tax_regulatory_compliance)
+        return 0.9
+
+
 S2P_FACTOR_COMPUTERS = [
-    SpendCategoryMatchFactor(),
-    SupplierRiskScoreFactor(),
-    ContractComplianceFactor(),
-    SpendAnomalyFactor(),
-    PatternHistoryFactor(),
-    VendorTrustFactor(),
+    MatchStatusFactor(),
+    AmountVarianceRatioFactor(),
+    DuplicateScoreFactor(),
+    SupplierExceptionHistoryFactor(),
+    PaymentTermsImpactFactor(),
+    CommodityIndexCorrelationFactor(),
+    TaxRegulatoryComplianceFactor(),
 ]
 
 
 def compute_factor_vector(event: S2PEvent) -> list[float]:
     """
-    Compute all 6 factors for a procurement event.
-    Returns list of 6 floats in [0.0, 1.0].
-    Index order matches S2P_FACTORS in config.py.
+    Compute all canonical S2P factors for an invoice event.
+    Returns seven floats in S2PDomainConfig.factors order.
     """
-    return [fc.compute(event) for fc in S2P_FACTOR_COMPUTERS]
+    values = [fc.compute(event) for fc in S2P_FACTOR_COMPUTERS]
+    if [fc.name for fc in S2P_FACTOR_COMPUTERS] != S2PDomainConfig.factors:
+        raise RuntimeError("S2P factor computer order does not match config")
+    return values

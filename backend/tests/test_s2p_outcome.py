@@ -18,11 +18,11 @@ client = TestClient(app)
 BASE = {
     "decision_id":      "S2P-E001-2026-01-01T00-00-00",
     "outcome":          "confirm",
-    "analyst_action":   "approve",
+    "analyst_action":   "auto_approve",
     "analyst_id":       "A001",
-    "factor_vector":    [0.9, 0.8, 0.85, 0.9, 0.5, 0.8],
-    "category":         "supplier_risk",
-    "predicted_action": "approve",
+    "factor_vector":    [0.9, 0.08, 0.04, 0.05, 0.48, 0.76, 0.90],
+    "category":         "price_variance",
+    "predicted_action": "auto_approve",
 }
 
 
@@ -33,8 +33,8 @@ def test_outcome_endpoint_confirm_returns_200():
 
 
 def test_outcome_endpoint_override_returns_200():
-    payload = {**BASE, "outcome": "override", "analyst_action": "escalate",
-               "predicted_action": "approve"}
+    payload = {**BASE, "outcome": "override", "analyst_action": "hold_for_review",
+               "predicted_action": "auto_approve"}
     response = client.post("/api/s2p/outcome", json=payload)
     assert response.status_code == 200
 
@@ -52,5 +52,17 @@ def test_invalid_outcome_returns_422():
 
 def test_invalid_analyst_action_returns_422():
     payload = {**BASE, "analyst_action": "suppress"}   # SOC action
+    response = client.post("/api/s2p/outcome", json=payload)
+    assert response.status_code == 422
+
+
+def test_legacy_analyst_action_returns_422():
+    payload = {**BASE, "analyst_action": "approve"}
+    response = client.post("/api/s2p/outcome", json=payload)
+    assert response.status_code == 422
+
+
+def test_invalid_factor_vector_length_returns_422():
+    payload = {**BASE, "factor_vector": [0.5] * 4}
     response = client.post("/api/s2p/outcome", json=payload)
     assert response.status_code == 422

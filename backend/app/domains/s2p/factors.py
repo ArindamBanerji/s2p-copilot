@@ -1,24 +1,21 @@
-"""
-S2P Factor Computers.
-Each factor takes invoice exception context and returns float in [0.0, 1.0].
-Index order must match S2PDomainConfig.factors.
-"""
+"""S2P factor computers with graph-first and fixture-fallback behavior."""
 
-from dataclasses import dataclass, field
-from typing import Optional
-import numpy as np
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+import logging
+import re
+from typing import Any, Optional
 
 from app.domains.s2p.config import S2PDomainConfig
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
 class S2PEvent:
-    """
-    Invoice exception context passed to all factor computers.
+    """Backward-compatible request event used by the existing score endpoint."""
 
-    Existing procurement fields are kept as request inputs, but the computed
-    vector is always the canonical seven-factor S2P invoice vector.
-    """
     event_id: str
     category: str
     amount: float
@@ -41,101 +38,300 @@ class S2PEvent:
     tax_regulatory_compliance: Optional[float] = None
 
 
-def _clamp(value: float) -> float:
-    return float(np.clip(value, 0.0, 1.0))
+def _as_invoice(invoice: dict[str, Any] | S2PEvent) -> dict[str, Any]:
+    if isinstance(invoice, S2PEvent):
+        data = asdict(invoice)
+        data["invoice_id"] = data.get("event_id")
+        data["factors"] = {
+            name: data.get(name)
+            for name in S2PDomainConfig.factors
+            if data.get(name) is not None
+        }
+        return data
+    return invoice
 
 
-class MatchStatusFactor:
+def _clamp(value: Any, default: float = 0.5) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = float(default)
+    return float(max(0.0, min(number, 1.0)))
+
+
+def _fallback(invoice: dict[str, Any], name: str, default: float) -> float:
+    if name in invoice and invoice.get(name) is not None:
+        return _clamp(invoice.get(name), default)
+    factors = invoice.get("factors")
+    if isinstance(factors, dict) and factors.get(name) is not None:
+        return _clamp(factors.get(name), default)
+    return _clamp(default, default)
+
+
+def _neighbors(context: dict[str, Any] | list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if context is None:
+        return []
+    if isinstance(context, list):
+        return [entry for entry in context if isinstance(entry, dict)]
+    if isinstance(context, dict):
+        raw = context.get("neighbors", [])
+        if isinstance(raw, list):
+            return [entry for entry in raw if isinstance(entry, dict)]
+    return []
+
+
+def _node(entry: dict[str, Any]) -> dict[str, Any]:
+    raw = entry.get("node", entry)
+    if isinstance(raw, dict):
+        return raw
+    return {}
+
+
+def _label(node: dict[str, Any]) -> str:
+    label = node.get("_label") or node.get("label") or node.get("type")
+    if isinstance(label, str):
+        return label
+    labels = node.get("labels")
+    if isinstance(labels, list) and labels:
+        return str(labels[0])
+    return ""
+
+
+def _has_label_or_key(node: dict[str, Any], label: str, key: str) -> bool:
+    return _label(node) == label or node.get(key) is not None
+
+
+def _graph_has_context(context: dict[str, Any] | list[dict[str, Any]] | None) -> bool:
+    return bool(_neighbors(context))
+
+
+def _amount(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _payment_days(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    match = re.search(r"\d+", str(value))
+    if match:
+        return int(match.group(0))
+    return None
+
+
+class MatchStatus:
     name = "match_status"
 
-    def compute(self, event: S2PEvent) -> float:
-        if event.match_status is not None:
-            return _clamp(event.match_status)
-        if not event.approved_categories or not event.contract_id:
-            return 0.5
-        return 0.9 if event.category in event.approved_categories else 0.1
+    def compute(
+        self,
+        invoice: dict[str, Any] | S2PEvent,
+        context: dict[str, Any] | list[dict[str, Any]] | None = None,
+    ) -> float:
+        invoice = _as_invoice(invoice)
+        nodes = [_node(entry) for entry in _neighbors(context)]
+        if nodes:
+            has_po = any(_has_label_or_key(node, "PurchaseOrder", "po_id") for node in nodes)
+            has_gr = any(_has_label_or_key(node, "GoodsReceipt", "gr_id") for node in nodes)
+            if has_po and has_gr:
+                return 0.1
+            if has_po:
+                return 0.6
+            return 0.9
+
+        if isinstance(invoice.get("approved_categories"), list) and invoice.get("contract_id"):
+            return 0.9 if invoice.get("category") in invoice["approved_categories"] else 0.1
+        return _fallback(invoice, self.name, 0.5)
 
 
-class AmountVarianceRatioFactor:
+class AmountVarianceRatio:
     name = "amount_variance_ratio"
 
-    def compute(self, event: S2PEvent) -> float:
-        if event.amount_variance_ratio is not None:
-            return _clamp(event.amount_variance_ratio)
-        if event.historical_spend_mean <= 0:
-            return 0.3
-        ratio = abs(event.amount - event.historical_spend_mean) / max(
-            abs(event.historical_spend_mean),
-            1.0,
-        )
-        return _clamp(ratio)
+    def compute(
+        self,
+        invoice: dict[str, Any] | S2PEvent,
+        context: dict[str, Any] | list[dict[str, Any]] | None = None,
+    ) -> float:
+        invoice = _as_invoice(invoice)
+        inv_amount = _amount(invoice.get("amount"))
+        for entry in _neighbors(context):
+            node = _node(entry)
+            if not _has_label_or_key(node, "PurchaseOrder", "po_id"):
+                continue
+            po_amount = _amount(
+                node.get("amount")
+                or node.get("total_amount")
+                or node.get("po_amount")
+                or node.get("net_amount")
+            )
+            if inv_amount is not None and po_amount is not None:
+                return _clamp(abs(inv_amount - po_amount) / max(abs(po_amount), 1.0))
+
+        if invoice.get("variance_pct") is not None:
+            return _clamp(abs(float(invoice["variance_pct"])) / 100.0)
+        if invoice.get("historical_spend_mean", 0) > 0:
+            mean = float(invoice["historical_spend_mean"])
+            return _clamp(abs(float(invoice.get("amount", 0.0)) - mean) / max(abs(mean), 1.0))
+        return _fallback(invoice, self.name, 0.3)
 
 
-class DuplicateScoreFactor:
+class DuplicateScore:
     name = "duplicate_score"
 
-    def compute(self, event: S2PEvent) -> float:
-        if event.duplicate_score is not None:
-            return _clamp(event.duplicate_score)
-        return 0.05
+    def compute(
+        self,
+        invoice: dict[str, Any] | S2PEvent,
+        context: dict[str, Any] | list[dict[str, Any]] | None = None,
+    ) -> float:
+        invoice = _as_invoice(invoice)
+        if _graph_has_context(context):
+            current_id = invoice.get("invoice_id") or invoice.get("event_id")
+            current_amount = _amount(invoice.get("amount"))
+            best = 0.0
+            for entry in _neighbors(context):
+                node = _node(entry)
+                if not _has_label_or_key(node, "Invoice", "invoice_id"):
+                    continue
+                if node.get("invoice_id") == current_id:
+                    continue
+                other_amount = _amount(node.get("amount"))
+                if current_amount is None or other_amount is None:
+                    continue
+                denominator = max(abs(current_amount), abs(other_amount), 1.0)
+                best = max(best, 1.0 - abs(current_amount - other_amount) / denominator)
+            return _clamp(best, 0.0)
+        return _fallback(invoice, self.name, 0.05)
 
 
-class SupplierExceptionHistoryFactor:
+class SupplierExceptionHistory:
     name = "supplier_exception_history"
 
-    def compute(self, event: S2PEvent) -> float:
-        if event.supplier_exception_history is not None:
-            return _clamp(event.supplier_exception_history)
-        if event.vendor_decisions <= 0:
-            return _clamp(1.0 - event.supplier_risk_rating)
-        exception_rate = 1.0 - (event.vendor_approvals / event.vendor_decisions)
-        return _clamp(exception_rate)
+    def compute(
+        self,
+        invoice: dict[str, Any] | S2PEvent,
+        context: dict[str, Any] | list[dict[str, Any]] | None = None,
+    ) -> float:
+        invoice = _as_invoice(invoice)
+        for entry in _neighbors(context):
+            node = _node(entry)
+            if _has_label_or_key(node, "Supplier", "supplier_id") and node.get("exception_rate") is not None:
+                return _clamp(node.get("exception_rate"))
+        if invoice.get("vendor_decisions", 0) > 0:
+            exception_rate = 1.0 - (
+                float(invoice.get("vendor_approvals", 0)) / float(invoice["vendor_decisions"])
+            )
+            return _clamp(exception_rate)
+        if invoice.get("supplier_risk_rating") is not None:
+            return _clamp(1.0 - float(invoice.get("supplier_risk_rating", 0.5)))
+        return _fallback(invoice, self.name, 0.5)
 
 
-class PaymentTermsImpactFactor:
+class PaymentTermsImpact:
     name = "payment_terms_impact"
 
-    def compute(self, event: S2PEvent) -> float:
-        if event.payment_terms_impact is not None:
-            return _clamp(event.payment_terms_impact)
-        return 0.5
+    def compute(
+        self,
+        invoice: dict[str, Any] | S2PEvent,
+        context: dict[str, Any] | list[dict[str, Any]] | None = None,
+    ) -> float:
+        invoice = _as_invoice(invoice)
+        actual_days = _payment_days(invoice.get("payment_days"))
+        if actual_days is None:
+            metadata = invoice.get("metadata")
+            if isinstance(metadata, dict):
+                actual_days = _payment_days(metadata.get("payment_days"))
+        if actual_days is None:
+            return _fallback(invoice, self.name, 0.5)
+
+        for entry in _neighbors(context):
+            node = _node(entry)
+            if not _has_label_or_key(node, "Supplier", "supplier_id"):
+                continue
+            standard_days = _payment_days(node.get("payment_terms")) or 30
+            return _clamp(abs(actual_days - standard_days) / max(standard_days, 1))
+        return _fallback(invoice, self.name, 0.5)
 
 
-class CommodityIndexCorrelationFactor:
+class CommodityIndexCorrelation:
     name = "commodity_index_correlation"
 
-    def compute(self, event: S2PEvent) -> float:
-        if event.commodity_index_correlation is not None:
-            return _clamp(event.commodity_index_correlation)
-        return 0.5
+    def compute(
+        self,
+        invoice: dict[str, Any] | S2PEvent,
+        context: dict[str, Any] | list[dict[str, Any]] | None = None,
+    ) -> float:
+        invoice = _as_invoice(invoice)
+        for entry in _neighbors(context):
+            node = _node(entry)
+            if _has_label_or_key(node, "Commodity", "commodity_id") and node.get("volatility") is not None:
+                return _clamp(node.get("volatility"))
+        return _fallback(invoice, self.name, 0.5)
 
 
-class TaxRegulatoryComplianceFactor:
+class TaxRegulatoryCompliance:
     name = "tax_regulatory_compliance"
 
-    def compute(self, event: S2PEvent) -> float:
-        if event.tax_regulatory_compliance is not None:
-            return _clamp(event.tax_regulatory_compliance)
-        return 0.9
+    def compute(
+        self,
+        invoice: dict[str, Any] | S2PEvent,
+        context: dict[str, Any] | list[dict[str, Any]] | None = None,
+    ) -> float:
+        invoice = _as_invoice(invoice)
+        nodes = [_node(entry) for entry in _neighbors(context)]
+        if nodes:
+            has_contract = any(_has_label_or_key(node, "Contract", "contract_id") for node in nodes)
+            return 0.15 if has_contract else 0.8
+        metadata = invoice.get("metadata")
+        if isinstance(metadata, dict) and metadata.get("tax_code") and metadata.get("withholding_tax") is not None:
+            return 0.1
+        return _fallback(invoice, self.name, 0.9)
 
 
-S2P_FACTOR_COMPUTERS = [
-    MatchStatusFactor(),
-    AmountVarianceRatioFactor(),
-    DuplicateScoreFactor(),
-    SupplierExceptionHistoryFactor(),
-    PaymentTermsImpactFactor(),
-    CommodityIndexCorrelationFactor(),
-    TaxRegulatoryComplianceFactor(),
+ALL_FACTORS = [
+    MatchStatus(),
+    AmountVarianceRatio(),
+    DuplicateScore(),
+    SupplierExceptionHistory(),
+    PaymentTermsImpact(),
+    CommodityIndexCorrelation(),
+    TaxRegulatoryCompliance(),
 ]
+FACTOR_NAMES = [factor.name for factor in ALL_FACTORS]
+
+# Backward-compatible names used by existing tests and router code.
+MatchStatusFactor = MatchStatus
+AmountVarianceRatioFactor = AmountVarianceRatio
+DuplicateScoreFactor = DuplicateScore
+SupplierExceptionHistoryFactor = SupplierExceptionHistory
+PaymentTermsImpactFactor = PaymentTermsImpact
+CommodityIndexCorrelationFactor = CommodityIndexCorrelation
+TaxRegulatoryComplianceFactor = TaxRegulatoryCompliance
+S2P_FACTOR_COMPUTERS = ALL_FACTORS
+
+
+def compute_all_factors(
+    invoice: dict[str, Any] | S2PEvent,
+    context: dict[str, Any] | list[dict[str, Any]] | None = None,
+) -> dict[str, float]:
+    """Compute all canonical S2P factors, never raising from individual factors."""
+    invoice_dict = _as_invoice(invoice)
+    values: dict[str, float] = {}
+    for factor in ALL_FACTORS:
+        try:
+            value = factor.compute(invoice_dict, context)
+        except Exception as exc:
+            log.warning("S2P factor %s failed: %s", factor.name, exc)
+            value = _fallback(invoice_dict, factor.name, 0.5)
+        values[factor.name] = _clamp(value)
+    return values
 
 
 def compute_factor_vector(event: S2PEvent) -> list[float]:
-    """
-    Compute all canonical S2P factors for an invoice event.
-    Returns seven floats in S2PDomainConfig.factors order.
-    """
-    values = [fc.compute(event) for fc in S2P_FACTOR_COMPUTERS]
-    if [fc.name for fc in S2P_FACTOR_COMPUTERS] != S2PDomainConfig.factors:
+    """Compute the canonical seven-factor vector in S2PDomainConfig order."""
+    if FACTOR_NAMES != S2PDomainConfig.factors:
         raise RuntimeError("S2P factor computer order does not match config")
-    return values
+    factors = compute_all_factors(event)
+    return [factors[name] for name in S2PDomainConfig.factors]

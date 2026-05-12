@@ -4,15 +4,111 @@ Framework endpoints are in framework_router.py (copied from SOC).
 This file: S2P procurement domain endpoints only.
 """
 
-from fastapi import APIRouter, HTTPException
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
 from app.domains.s2p.config import S2PDomainConfig
-from app.domains.s2p.factors import S2PEvent, compute_factor_vector
+from app.domains.s2p.factors import S2PEvent, compute_all_factors
 from app.domains.s2p.scorer import score_event, update_scorer
 
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
+
+DATA_DIR = Path(__file__).resolve().parents[3] / "data"
+
+
+def _load_synthetic_invoices() -> list[dict]:
+    path = DATA_DIR / "synthetic_invoices.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return data if isinstance(data, list) else []
+
+
+def _find_invoice(event_id_or_invoice_id: str) -> dict | None:
+    for invoice in _load_synthetic_invoices():
+        if not isinstance(invoice, dict):
+            continue
+        if invoice.get("invoice_id") == event_id_or_invoice_id:
+            return invoice
+        if invoice.get("event_id") == event_id_or_invoice_id:
+            return invoice
+    return None
+
+
+def _resolve_graph_context(invoice_id: str, http_request: Request):
+    state = getattr(http_request.app, "state", None)
+    graph_store = getattr(state, "graph_store", None)
+    if graph_store is None:
+        scorer = getattr(state, "scorer", None)
+        graph_store = getattr(scorer, "graph_store", None)
+    if graph_store is None or not hasattr(graph_store, "query_context"):
+        return None
+    try:
+        context_raw = graph_store.query_context(invoice_id, 2)
+    except Exception:
+        return None
+    if isinstance(context_raw, list):
+        return {"neighbors": context_raw}
+    if isinstance(context_raw, dict):
+        return context_raw
+    return None
+
+
+def _request_fields_set(request: ScoreRequest) -> set[str]:
+    fields = getattr(request, "model_fields_set", None)
+    if fields is not None:
+        return set(fields)
+    return set(getattr(request, "__fields_set__", set()))
+
+
+def _invoice_from_request(request: ScoreRequest, fixture_invoice: dict | None) -> dict:
+    if fixture_invoice:
+        invoice = dict(fixture_invoice)
+        invoice["event_id"] = request.event_id
+    else:
+        invoice = {"event_id": request.event_id, "invoice_id": request.event_id}
+
+    invoice["category"] = request.category
+    invoice["amount"] = request.amount
+    invoice["supplier_id"] = request.supplier_id
+    if request.contract_id is not None:
+        invoice["contract_id"] = request.contract_id
+    request_fields = _request_fields_set(request)
+    optional_fields = (
+        "approved_categories",
+        "supplier_risk_rating",
+        "historical_spend_mean",
+        "historical_spend_std",
+        "vendor_decisions",
+        "vendor_approvals",
+    )
+    for field in optional_fields:
+        if fixture_invoice and field not in request_fields:
+            continue
+        value = getattr(request, field)
+        if field == "approved_categories":
+            value = value or []
+        invoice[field] = value
+
+    explicit_factors = {
+        name: getattr(request, name)
+        for name in S2PDomainConfig.factors
+        if getattr(request, name) is not None
+    }
+    if explicit_factors:
+        factors = dict(invoice.get("factors") or {})
+        factors.update(explicit_factors)
+        invoice["factors"] = factors
+        for name, value in explicit_factors.items():
+            invoice[name] = value
+    return invoice
 
 
 class ScoreRequest(BaseModel):
@@ -49,7 +145,7 @@ class ScoreResponse(BaseModel):
 
 
 @router.post("/score")
-def score_procurement_event(request: ScoreRequest) -> ScoreResponse:
+def score_procurement_event(request: ScoreRequest, http_request: Request) -> ScoreResponse:
     """
     Score a procurement event and return recommended action.
     POST /api/s2p/score
@@ -82,7 +178,12 @@ def score_procurement_event(request: ScoreRequest) -> ScoreResponse:
         tax_regulatory_compliance=request.tax_regulatory_compliance,
     )
 
-    factor_vector = compute_factor_vector(event)
+    fixture_invoice = _find_invoice(request.event_id)
+    invoice = _invoice_from_request(request, fixture_invoice)
+    lookup_id = invoice.get("invoice_id") or request.event_id
+    context = _resolve_graph_context(lookup_id, http_request)
+    computed_factors = compute_all_factors(invoice, context=context)
+    factor_vector = [computed_factors[name] for name in S2PDomainConfig.factors]
     result = score_event(factor_vector, request.category)
 
     try:

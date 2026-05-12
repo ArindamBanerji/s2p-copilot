@@ -7,7 +7,7 @@ whether a decision qualifies for auto-approval.
 Validated by DISC-1: 70.4% coverage at 85% precision (synthetic calibration).
 
 Safety invariants (non-negotiable):
-  - suppress action requires confidence >= 0.95 (asymmetric safety gate)
+  - auto_approve action requires confidence >= 0.95 (asymmetric safety gate)
   - maturity gate: category must have >= 50 prior decisions
   - confidence threshold: >= 0.70
   - margin threshold: top-1 vs top-2 probability gap >= 0.30
@@ -38,18 +38,17 @@ class CompositeDiscriminant:
     CONFIDENCE_THRESHOLD      = 0.70
     MARGIN_THRESHOLD          = 0.30
     MIN_CAT_COUNT             = 50
-    SUPPRESS_SAFETY_THRESHOLD = 0.95
+    AUTO_APPROVE_SAFETY_THRESHOLD = 0.95
 
-    # Phase 0b per-category confidence thresholds (A=4 calibration).
+    # S2P per-category confidence thresholds.
     # Derived from cross-experiment validation; tighter categories get higher thresholds.
     # Falls back to CONFIDENCE_THRESHOLD (0.70) for any unmapped category.
     CATEGORY_CONFIDENCE_THRESHOLDS: dict = {
-        "credential_access":    0.62,
-        "data_exfiltration":    0.67,
-        "lateral_movement":     0.62,
-        "threat_intel_match":   0.69,
-        "cloud_infrastructure": 0.65,
-        "insider_threat":       0.70,
+        "price_variance":      0.85,
+        "quantity_mismatch":   0.82,
+        "duplicate_risk":      0.90,
+        "contract_gap":        0.80,
+        "format_compliance":   0.88,
     }
 
     # P22 Intervention Controls — EU AI Act Article 14.
@@ -66,7 +65,7 @@ class CompositeDiscriminant:
         decision_position: float,
         neo4j_service: Any,
         actions: list | None = None,
-        suppress_action_name: str = "suppress",
+        protected_action_name: str = "auto_approve",
     ) -> dict:
         """Evaluate whether a decision should be auto-approved.
 
@@ -74,15 +73,15 @@ class CompositeDiscriminant:
         ----------
         score_result      : ProfileScorer.score() result
                             (.probabilities, .distances, .confidence, .action_index)
-        category          : alert category string (e.g. "credential_access")
-        factor_vector     : numpy array shape (6,) or list
+        category          : domain category string (e.g. "price_variance")
+        factor_vector     : domain factor vector as a numpy array or list
         decision_position : position in session (0-1); 0.0 for live triage
         neo4j_service     : object with async run_query()
         actions           : ordered list of action name strings; used to resolve
-                            action_index to a name for the suppress safety gate.
+                            action_index to a name for the protected action gate.
                             Pass the domain's action list (e.g. SCORER_ACTIONS).
-                            If None or empty, suppress gate is skipped safely.
-        suppress_action_name : name of the suppress action (default 'suppress').
+                            If None or empty, protected action gate is skipped safely.
+        protected_action_name : name of the protected action (default 'auto_approve').
                             Override for domains that use a different label.
 
         Returns
@@ -165,7 +164,7 @@ class CompositeDiscriminant:
                 f"cat_count {cat_count} < {CompositeDiscriminant.MIN_CAT_COUNT} (maturity gate)"
             )
 
-        # Asymmetric safety: suppress requires a higher confidence bar
+        # Asymmetric safety: auto_approve requires a higher confidence bar
         action_idx = getattr(score_result, "action_index", -1)
         _actions = actions or []
         if _actions:
@@ -173,11 +172,11 @@ class CompositeDiscriminant:
         else:
             # Fallback: ProfileScorer result may carry action_name directly
             action_name = getattr(score_result, "action_name", None)
-        if action_name == suppress_action_name:
-            if confidence < CompositeDiscriminant.SUPPRESS_SAFETY_THRESHOLD:
+        if action_name == protected_action_name:
+            if confidence < CompositeDiscriminant.AUTO_APPROVE_SAFETY_THRESHOLD:
                 auto_approve = False
                 reason_codes.append(
-                    f"suppress requires confidence >= {CompositeDiscriminant.SUPPRESS_SAFETY_THRESHOLD}"
+                    f"{protected_action_name} requires confidence >= {CompositeDiscriminant.AUTO_APPROVE_SAFETY_THRESHOLD}"
                 )
 
         if not reason_codes:

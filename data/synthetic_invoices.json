@@ -1,0 +1,2102 @@
+[
+  {
+    "invoice_id": "S2P-INV-0001",
+    "supplier_id": "SUP-001",
+    "supplier_name": "Aster Industrial Chemicals",
+    "po_number": "PO-20260001",
+    "amount": 22426.73,
+    "currency": "USD",
+    "category": "contract_gap",
+    "ground_truth_action": "escalate_to_buyer",
+    "factors": {
+      "match_status": 0.698,
+      "amount_variance_ratio": 0.142,
+      "duplicate_score": 0.065,
+      "supplier_exception_history": 0.164,
+      "payment_terms_impact": 0.859,
+      "commodity_index_correlation": 0.194,
+      "tax_regulatory_compliance": 0.586
+    },
+    "metadata": {
+      "invoice_date": "2026-01-07",
+      "due_date": "2026-02-06",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "indexed metals line 1",
+          "quantity": 12,
+          "unit_price": 1019.4
+        },
+        {
+          "line": 2,
+          "description": "indexed metals line 2",
+          "quantity": 14,
+          "unit_price": 934.45
+        }
+      ],
+      "commodity": "indexed metals",
+      "contract_ref": "CTR-001-CON"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0002",
+    "supplier_id": "SUP-002",
+    "supplier_name": "Pacifica Logistics",
+    "po_number": "PO-20260002",
+    "amount": 9752.58,
+    "currency": "USD",
+    "category": "quantity_mismatch",
+    "ground_truth_action": "escalate_to_buyer",
+    "factors": {
+      "match_status": 0.477,
+      "amount_variance_ratio": 0.577,
+      "duplicate_score": 0.157,
+      "supplier_exception_history": 0.314,
+      "payment_terms_impact": 0.584,
+      "commodity_index_correlation": 0.316,
+      "tax_regulatory_compliance": 0.678
+    },
+    "metadata": {
+      "invoice_date": "2026-01-09",
+      "due_date": "2026-02-08",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "pallets line 1",
+          "quantity": 13,
+          "unit_price": 295.53
+        },
+        {
+          "line": 2,
+          "description": "pallets line 2",
+          "quantity": 16,
+          "unit_price": 270.9
+        },
+        {
+          "line": 3,
+          "description": "pallets line 3",
+          "quantity": 19,
+          "unit_price": 250.07
+        }
+      ],
+      "commodity": "pallets",
+      "contract_ref": "CTR-002-QUA"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0003",
+    "supplier_id": "SUP-003",
+    "supplier_name": "Northstar Packaging",
+    "po_number": "PO-20260003",
+    "amount": 3781.7,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.953,
+      "amount_variance_ratio": 0.04,
+      "duplicate_score": 0.007,
+      "supplier_exception_history": 0.033,
+      "payment_terms_impact": 0.515,
+      "commodity_index_correlation": 0.822,
+      "tax_regulatory_compliance": 0.938
+    },
+    "metadata": {
+      "invoice_date": "2026-01-11",
+      "due_date": "2026-02-10",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "resin line 1",
+          "quantity": 14,
+          "unit_price": 85.95
+        },
+        {
+          "line": 2,
+          "description": "resin line 2",
+          "quantity": 18,
+          "unit_price": 78.79
+        },
+        {
+          "line": 3,
+          "description": "resin line 3",
+          "quantity": 22,
+          "unit_price": 72.72
+        },
+        {
+          "line": 4,
+          "description": "resin line 4",
+          "quantity": 26,
+          "unit_price": 67.53
+        }
+      ],
+      "commodity": "resin",
+      "contract_ref": "CTR-003-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0004",
+    "supplier_id": "SUP-004",
+    "supplier_name": "Novatek IT Services",
+    "po_number": "PO-20260004",
+    "amount": 30171.46,
+    "currency": "USD",
+    "category": "contract_gap",
+    "ground_truth_action": "refer_to_specialist",
+    "factors": {
+      "match_status": 0.352,
+      "amount_variance_ratio": 0.414,
+      "duplicate_score": 0.282,
+      "supplier_exception_history": 0.494,
+      "payment_terms_impact": 0.42,
+      "commodity_index_correlation": 0.397,
+      "tax_regulatory_compliance": 0.477
+    },
+    "metadata": {
+      "invoice_date": "2026-01-13",
+      "due_date": "2026-02-12",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "indexed metals line 1",
+          "quantity": 15,
+          "unit_price": 2742.86
+        }
+      ],
+      "commodity": "indexed metals",
+      "contract_ref": "CTR-004-CON"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0005",
+    "supplier_id": "SUP-005",
+    "supplier_name": "Yangtze Raw Materials",
+    "po_number": "PO-20260005",
+    "amount": 41289.58,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.972,
+      "amount_variance_ratio": 0.062,
+      "duplicate_score": 0.039,
+      "supplier_exception_history": 0.051,
+      "payment_terms_impact": 0.52,
+      "commodity_index_correlation": 0.785,
+      "tax_regulatory_compliance": 0.939
+    },
+    "metadata": {
+      "invoice_date": "2026-01-15",
+      "due_date": "2026-02-14",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "resin line 1",
+          "quantity": 16,
+          "unit_price": 1876.8
+        },
+        {
+          "line": 2,
+          "description": "resin line 2",
+          "quantity": 22,
+          "unit_price": 1720.4
+        }
+      ],
+      "commodity": "resin",
+      "contract_ref": "CTR-005-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0006",
+    "supplier_id": "SUP-006",
+    "supplier_name": "Meridian Office Services",
+    "po_number": "PO-20260006",
+    "amount": 1402.74,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "hold_for_review",
+    "factors": {
+      "match_status": 0.685,
+      "amount_variance_ratio": 0.341,
+      "duplicate_score": 0.083,
+      "supplier_exception_history": 0.132,
+      "payment_terms_impact": 0.413,
+      "commodity_index_correlation": 0.524,
+      "tax_regulatory_compliance": 0.793
+    },
+    "metadata": {
+      "invoice_date": "2026-01-17",
+      "due_date": "2026-02-16",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "steel coil line 1",
+          "quantity": 17,
+          "unit_price": 42.51
+        },
+        {
+          "line": 2,
+          "description": "steel coil line 2",
+          "quantity": 24,
+          "unit_price": 38.97
+        },
+        {
+          "line": 3,
+          "description": "steel coil line 3",
+          "quantity": 31,
+          "unit_price": 35.97
+        }
+      ],
+      "commodity": "steel coil",
+      "contract_ref": "CTR-006-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0007",
+    "supplier_id": "SUP-007",
+    "supplier_name": "Boreal Equipment Maintenance",
+    "po_number": "PO-20260007",
+    "amount": 14965.97,
+    "currency": "USD",
+    "category": "quantity_mismatch",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.916,
+      "amount_variance_ratio": 0.064,
+      "duplicate_score": 0.021,
+      "supplier_exception_history": 0.027,
+      "payment_terms_impact": 0.484,
+      "commodity_index_correlation": 0.799,
+      "tax_regulatory_compliance": 0.964
+    },
+    "metadata": {
+      "invoice_date": "2026-01-19",
+      "due_date": "2026-02-18",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "maintenance kits line 1",
+          "quantity": 11,
+          "unit_price": 340.14
+        },
+        {
+          "line": 2,
+          "description": "maintenance kits line 2",
+          "quantity": 12,
+          "unit_price": 311.79
+        },
+        {
+          "line": 3,
+          "description": "maintenance kits line 3",
+          "quantity": 13,
+          "unit_price": 287.81
+        },
+        {
+          "line": 4,
+          "description": "maintenance kits line 4",
+          "quantity": 14,
+          "unit_price": 267.25
+        }
+      ],
+      "commodity": "maintenance kits",
+      "contract_ref": "CTR-007-QUA"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0008",
+    "supplier_id": "SUP-008",
+    "supplier_name": "Gridline Utilities",
+    "po_number": "PO-20260008",
+    "amount": 18887.12,
+    "currency": "USD",
+    "category": "quantity_mismatch",
+    "ground_truth_action": "hold_for_review",
+    "factors": {
+      "match_status": 0.68,
+      "amount_variance_ratio": 0.315,
+      "duplicate_score": 0.115,
+      "supplier_exception_history": 0.186,
+      "payment_terms_impact": 0.386,
+      "commodity_index_correlation": 0.487,
+      "tax_regulatory_compliance": 0.776
+    },
+    "metadata": {
+      "invoice_date": "2026-01-21",
+      "due_date": "2026-01-21",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "chemicals line 1",
+          "quantity": 12,
+          "unit_price": 1717.01
+        }
+      ],
+      "commodity": "chemicals",
+      "contract_ref": "CTR-008-QUA"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0009",
+    "supplier_id": "SUP-009",
+    "supplier_name": "Rhine-Stahl Metals",
+    "po_number": "PO-20260009",
+    "amount": 42303.0,
+    "currency": "USD",
+    "category": "duplicate_risk",
+    "ground_truth_action": "hold_for_review",
+    "factors": {
+      "match_status": 0.626,
+      "amount_variance_ratio": 0.285,
+      "duplicate_score": 0.45,
+      "supplier_exception_history": 0.168,
+      "payment_terms_impact": 0.36,
+      "commodity_index_correlation": 0.509,
+      "tax_regulatory_compliance": 0.76
+    },
+    "metadata": {
+      "invoice_date": "2026-01-23",
+      "due_date": "2026-02-22",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "freight surcharge line 1",
+          "quantity": 13,
+          "unit_price": 1922.86
+        },
+        {
+          "line": 2,
+          "description": "freight surcharge line 2",
+          "quantity": 16,
+          "unit_price": 1762.62
+        }
+      ],
+      "commodity": "freight surcharge",
+      "contract_ref": "CTR-009-DUP"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0010",
+    "supplier_id": "SUP-010",
+    "supplier_name": "Helix Lab Supplies",
+    "po_number": "PO-20260010",
+    "amount": 8564.69,
+    "currency": "USD",
+    "category": "quantity_mismatch",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.95,
+      "amount_variance_ratio": 0.069,
+      "duplicate_score": 0.047,
+      "supplier_exception_history": 0.059,
+      "payment_terms_impact": 0.494,
+      "commodity_index_correlation": 0.785,
+      "tax_regulatory_compliance": 0.952
+    },
+    "metadata": {
+      "invoice_date": "2026-01-25",
+      "due_date": "2026-02-24",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "maintenance kits line 1",
+          "quantity": 14,
+          "unit_price": 259.54
+        },
+        {
+          "line": 2,
+          "description": "maintenance kits line 2",
+          "quantity": 18,
+          "unit_price": 237.91
+        },
+        {
+          "line": 3,
+          "description": "maintenance kits line 3",
+          "quantity": 22,
+          "unit_price": 219.61
+        }
+      ],
+      "commodity": "maintenance kits",
+      "contract_ref": "CTR-010-QUA"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0011",
+    "supplier_id": "SUP-001",
+    "supplier_name": "Aster Industrial Chemicals",
+    "po_number": "PO-20260011",
+    "amount": 19775.3,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.931,
+      "amount_variance_ratio": 0.062,
+      "duplicate_score": 0.0,
+      "supplier_exception_history": 0.119,
+      "payment_terms_impact": 0.492,
+      "commodity_index_correlation": 0.818,
+      "tax_regulatory_compliance": 0.972
+    },
+    "metadata": {
+      "invoice_date": "2026-01-27",
+      "due_date": "2026-02-26",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "resin line 1",
+          "quantity": 15,
+          "unit_price": 449.44
+        },
+        {
+          "line": 2,
+          "description": "resin line 2",
+          "quantity": 20,
+          "unit_price": 411.99
+        },
+        {
+          "line": 3,
+          "description": "resin line 3",
+          "quantity": 25,
+          "unit_price": 380.29
+        },
+        {
+          "line": 4,
+          "description": "resin line 4",
+          "quantity": 30,
+          "unit_price": 353.13
+        }
+      ],
+      "commodity": "resin",
+      "contract_ref": "CTR-001-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0012",
+    "supplier_id": "SUP-002",
+    "supplier_name": "Pacifica Logistics",
+    "po_number": "PO-20260012",
+    "amount": 10677.15,
+    "currency": "USD",
+    "category": "duplicate_risk",
+    "ground_truth_action": "hold_for_review",
+    "factors": {
+      "match_status": 0.626,
+      "amount_variance_ratio": 0.323,
+      "duplicate_score": 0.45,
+      "supplier_exception_history": 0.178,
+      "payment_terms_impact": 0.364,
+      "commodity_index_correlation": 0.508,
+      "tax_regulatory_compliance": 0.793
+    },
+    "metadata": {
+      "invoice_date": "2026-01-29",
+      "due_date": "2026-02-28",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "freight surcharge line 1",
+          "quantity": 16,
+          "unit_price": 970.65
+        }
+      ],
+      "commodity": "freight surcharge",
+      "contract_ref": "CTR-002-DUP"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0013",
+    "supplier_id": "SUP-003",
+    "supplier_name": "Northstar Packaging",
+    "po_number": "PO-20260013",
+    "amount": 5057.38,
+    "currency": "USD",
+    "category": "format_compliance",
+    "ground_truth_action": "hold_for_review",
+    "factors": {
+      "match_status": 0.664,
+      "amount_variance_ratio": 0.313,
+      "duplicate_score": 0.116,
+      "supplier_exception_history": 0.185,
+      "payment_terms_impact": 0.372,
+      "commodity_index_correlation": 0.507,
+      "tax_regulatory_compliance": 0.68
+    },
+    "metadata": {
+      "invoice_date": "2026-01-31",
+      "due_date": "2026-03-02",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "utility charges line 1",
+          "quantity": 17,
+          "unit_price": 229.88
+        },
+        {
+          "line": 2,
+          "description": "utility charges line 2",
+          "quantity": 24,
+          "unit_price": 210.72
+        }
+      ],
+      "commodity": "utility charges",
+      "contract_ref": "CTR-003-FOR"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0014",
+    "supplier_id": "SUP-004",
+    "supplier_name": "Novatek IT Services",
+    "po_number": "PO-20260014",
+    "amount": 17536.79,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.947,
+      "amount_variance_ratio": 0.05,
+      "duplicate_score": 0.028,
+      "supplier_exception_history": 0.023,
+      "payment_terms_impact": 0.52,
+      "commodity_index_correlation": 0.803,
+      "tax_regulatory_compliance": 0.931
+    },
+    "metadata": {
+      "invoice_date": "2026-02-02",
+      "due_date": "2026-03-04",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "steel coil line 1",
+          "quantity": 11,
+          "unit_price": 531.42
+        },
+        {
+          "line": 2,
+          "description": "steel coil line 2",
+          "quantity": 12,
+          "unit_price": 487.13
+        },
+        {
+          "line": 3,
+          "description": "steel coil line 3",
+          "quantity": 13,
+          "unit_price": 449.66
+        }
+      ],
+      "commodity": "steel coil",
+      "contract_ref": "CTR-004-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0015",
+    "supplier_id": "SUP-005",
+    "supplier_name": "Yangtze Raw Materials",
+    "po_number": "PO-20260015",
+    "amount": 39332.42,
+    "currency": "USD",
+    "category": "format_compliance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.918,
+      "amount_variance_ratio": 0.037,
+      "duplicate_score": 0.051,
+      "supplier_exception_history": 0.071,
+      "payment_terms_impact": 0.465,
+      "commodity_index_correlation": 0.797,
+      "tax_regulatory_compliance": 0.839
+    },
+    "metadata": {
+      "invoice_date": "2026-02-04",
+      "due_date": "2026-03-06",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "regulated reagents line 1",
+          "quantity": 12,
+          "unit_price": 893.92
+        },
+        {
+          "line": 2,
+          "description": "regulated reagents line 2",
+          "quantity": 14,
+          "unit_price": 819.43
+        },
+        {
+          "line": 3,
+          "description": "regulated reagents line 3",
+          "quantity": 16,
+          "unit_price": 756.39
+        },
+        {
+          "line": 4,
+          "description": "regulated reagents line 4",
+          "quantity": 18,
+          "unit_price": 702.36
+        }
+      ],
+      "commodity": "regulated reagents",
+      "contract_ref": "CTR-005-FOR"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0016",
+    "supplier_id": "SUP-006",
+    "supplier_name": "Meridian Office Services",
+    "po_number": "PO-20260016",
+    "amount": 1978.95,
+    "currency": "USD",
+    "category": "contract_gap",
+    "ground_truth_action": "escalate_to_buyer",
+    "factors": {
+      "match_status": 0.676,
+      "amount_variance_ratio": 0.156,
+      "duplicate_score": 0.036,
+      "supplier_exception_history": 0.146,
+      "payment_terms_impact": 0.851,
+      "commodity_index_correlation": 0.22,
+      "tax_regulatory_compliance": 0.6
+    },
+    "metadata": {
+      "invoice_date": "2026-02-06",
+      "due_date": "2026-03-08",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "spot logistics line 1",
+          "quantity": 13,
+          "unit_price": 179.9
+        }
+      ],
+      "commodity": "spot logistics",
+      "contract_ref": "CTR-006-CON"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0017",
+    "supplier_id": "SUP-007",
+    "supplier_name": "Boreal Equipment Maintenance",
+    "po_number": "PO-20260017",
+    "amount": 16622.98,
+    "currency": "USD",
+    "category": "duplicate_risk",
+    "ground_truth_action": "flag_leakage",
+    "factors": {
+      "match_status": 0.866,
+      "amount_variance_ratio": 0.103,
+      "duplicate_score": 0.888,
+      "supplier_exception_history": 0.394,
+      "payment_terms_impact": 0.288,
+      "commodity_index_correlation": 0.524,
+      "tax_regulatory_compliance": 0.809
+    },
+    "metadata": {
+      "invoice_date": "2026-02-08",
+      "due_date": "2026-03-10",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "consulting hours line 1",
+          "quantity": 14,
+          "unit_price": 755.59
+        },
+        {
+          "line": 2,
+          "description": "consulting hours line 2",
+          "quantity": 18,
+          "unit_price": 692.62
+        }
+      ],
+      "commodity": "consulting hours",
+      "contract_ref": "CTR-007-DUP"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0018",
+    "supplier_id": "SUP-008",
+    "supplier_name": "Gridline Utilities",
+    "po_number": "PO-20260018",
+    "amount": 20096.36,
+    "currency": "USD",
+    "category": "quantity_mismatch",
+    "ground_truth_action": "hold_for_review",
+    "factors": {
+      "match_status": 0.697,
+      "amount_variance_ratio": 0.284,
+      "duplicate_score": 0.127,
+      "supplier_exception_history": 0.151,
+      "payment_terms_impact": 0.408,
+      "commodity_index_correlation": 0.487,
+      "tax_regulatory_compliance": 0.769
+    },
+    "metadata": {
+      "invoice_date": "2026-02-10",
+      "due_date": "2026-02-10",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "chemicals line 1",
+          "quantity": 15,
+          "unit_price": 608.98
+        },
+        {
+          "line": 2,
+          "description": "chemicals line 2",
+          "quantity": 20,
+          "unit_price": 558.23
+        },
+        {
+          "line": 3,
+          "description": "chemicals line 3",
+          "quantity": 25,
+          "unit_price": 515.29
+        }
+      ],
+      "commodity": "chemicals",
+      "contract_ref": "CTR-008-QUA"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0019",
+    "supplier_id": "SUP-009",
+    "supplier_name": "Rhine-Stahl Metals",
+    "po_number": "PO-20260019",
+    "amount": 35644.26,
+    "currency": "USD",
+    "category": "duplicate_risk",
+    "ground_truth_action": "hold_for_review",
+    "factors": {
+      "match_status": 0.668,
+      "amount_variance_ratio": 0.317,
+      "duplicate_score": 0.45,
+      "supplier_exception_history": 0.2,
+      "payment_terms_impact": 0.378,
+      "commodity_index_correlation": 0.506,
+      "tax_regulatory_compliance": 0.769
+    },
+    "metadata": {
+      "invoice_date": "2026-02-12",
+      "due_date": "2026-03-14",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "lab consumables line 1",
+          "quantity": 16,
+          "unit_price": 810.1
+        },
+        {
+          "line": 2,
+          "description": "lab consumables line 2",
+          "quantity": 22,
+          "unit_price": 742.59
+        },
+        {
+          "line": 3,
+          "description": "lab consumables line 3",
+          "quantity": 28,
+          "unit_price": 685.47
+        },
+        {
+          "line": 4,
+          "description": "lab consumables line 4",
+          "quantity": 34,
+          "unit_price": 636.5
+        }
+      ],
+      "commodity": "lab consumables",
+      "contract_ref": "CTR-009-DUP"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0020",
+    "supplier_id": "SUP-010",
+    "supplier_name": "Helix Lab Supplies",
+    "po_number": "PO-20260020",
+    "amount": 7241.13,
+    "currency": "USD",
+    "category": "duplicate_risk",
+    "ground_truth_action": "flag_leakage",
+    "factors": {
+      "match_status": 0.86,
+      "amount_variance_ratio": 0.092,
+      "duplicate_score": 0.899,
+      "supplier_exception_history": 0.391,
+      "payment_terms_impact": 0.297,
+      "commodity_index_correlation": 0.514,
+      "tax_regulatory_compliance": 0.824
+    },
+    "metadata": {
+      "invoice_date": "2026-02-14",
+      "due_date": "2026-03-16",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "freight surcharge line 1",
+          "quantity": 17,
+          "unit_price": 658.28
+        }
+      ],
+      "commodity": "freight surcharge",
+      "contract_ref": "CTR-010-DUP"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0021",
+    "supplier_id": "SUP-001",
+    "supplier_name": "Aster Industrial Chemicals",
+    "po_number": "PO-20260021",
+    "amount": 21477.17,
+    "currency": "USD",
+    "category": "format_compliance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.915,
+      "amount_variance_ratio": 0.031,
+      "duplicate_score": 0.036,
+      "supplier_exception_history": 0.086,
+      "payment_terms_impact": 0.464,
+      "commodity_index_correlation": 0.777,
+      "tax_regulatory_compliance": 0.839
+    },
+    "metadata": {
+      "invoice_date": "2026-02-16",
+      "due_date": "2026-03-18",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "utility charges line 1",
+          "quantity": 11,
+          "unit_price": 976.23
+        },
+        {
+          "line": 2,
+          "description": "utility charges line 2",
+          "quantity": 12,
+          "unit_price": 894.88
+        }
+      ],
+      "commodity": "utility charges",
+      "contract_ref": "CTR-001-FOR"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0022",
+    "supplier_id": "SUP-002",
+    "supplier_name": "Pacifica Logistics",
+    "po_number": "PO-20260022",
+    "amount": 8110.87,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "flag_leakage",
+    "factors": {
+      "match_status": 0.899,
+      "amount_variance_ratio": 0.415,
+      "duplicate_score": 0.042,
+      "supplier_exception_history": 0.345,
+      "payment_terms_impact": 0.679,
+      "commodity_index_correlation": 0.125,
+      "tax_regulatory_compliance": 0.827
+    },
+    "metadata": {
+      "invoice_date": "2026-02-18",
+      "due_date": "2026-03-20",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "cloud seats line 1",
+          "quantity": 12,
+          "unit_price": 245.78
+        },
+        {
+          "line": 2,
+          "description": "cloud seats line 2",
+          "quantity": 14,
+          "unit_price": 225.3
+        },
+        {
+          "line": 3,
+          "description": "cloud seats line 3",
+          "quantity": 16,
+          "unit_price": 207.97
+        }
+      ],
+      "commodity": "cloud seats",
+      "contract_ref": "CTR-002-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0023",
+    "supplier_id": "SUP-003",
+    "supplier_name": "Northstar Packaging",
+    "po_number": "PO-20260023",
+    "amount": 4340.5,
+    "currency": "USD",
+    "category": "contract_gap",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.937,
+      "amount_variance_ratio": 0.055,
+      "duplicate_score": 0.025,
+      "supplier_exception_history": 0.043,
+      "payment_terms_impact": 0.588,
+      "commodity_index_correlation": 0.771,
+      "tax_regulatory_compliance": 0.904
+    },
+    "metadata": {
+      "invoice_date": "2026-02-20",
+      "due_date": "2026-03-22",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "managed services line 1",
+          "quantity": 13,
+          "unit_price": 98.65
+        },
+        {
+          "line": 2,
+          "description": "managed services line 2",
+          "quantity": 16,
+          "unit_price": 90.43
+        },
+        {
+          "line": 3,
+          "description": "managed services line 3",
+          "quantity": 19,
+          "unit_price": 83.47
+        },
+        {
+          "line": 4,
+          "description": "managed services line 4",
+          "quantity": 22,
+          "unit_price": 77.51
+        }
+      ],
+      "commodity": "managed services",
+      "contract_ref": "CTR-003-CON"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0024",
+    "supplier_id": "SUP-004",
+    "supplier_name": "Novatek IT Services",
+    "po_number": "PO-20260024",
+    "amount": 27275.81,
+    "currency": "USD",
+    "category": "quantity_mismatch",
+    "ground_truth_action": "hold_for_review",
+    "factors": {
+      "match_status": 0.686,
+      "amount_variance_ratio": 0.279,
+      "duplicate_score": 0.121,
+      "supplier_exception_history": 0.16,
+      "payment_terms_impact": 0.38,
+      "commodity_index_correlation": 0.478,
+      "tax_regulatory_compliance": 0.8
+    },
+    "metadata": {
+      "invoice_date": "2026-02-22",
+      "due_date": "2026-03-24",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "chemicals line 1",
+          "quantity": 14,
+          "unit_price": 2479.62
+        }
+      ],
+      "commodity": "chemicals",
+      "contract_ref": "CTR-004-QUA"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0025",
+    "supplier_id": "SUP-005",
+    "supplier_name": "Yangtze Raw Materials",
+    "po_number": "PO-20260025",
+    "amount": 43679.15,
+    "currency": "USD",
+    "category": "format_compliance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.916,
+      "amount_variance_ratio": 0.039,
+      "duplicate_score": 0.034,
+      "supplier_exception_history": 0.091,
+      "payment_terms_impact": 0.466,
+      "commodity_index_correlation": 0.805,
+      "tax_regulatory_compliance": 0.838
+    },
+    "metadata": {
+      "invoice_date": "2026-02-24",
+      "due_date": "2026-03-26",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "utility charges line 1",
+          "quantity": 15,
+          "unit_price": 1985.42
+        },
+        {
+          "line": 2,
+          "description": "utility charges line 2",
+          "quantity": 20,
+          "unit_price": 1819.96
+        }
+      ],
+      "commodity": "utility charges",
+      "contract_ref": "CTR-005-FOR"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0026",
+    "supplier_id": "SUP-006",
+    "supplier_name": "Meridian Office Services",
+    "po_number": "PO-20260026",
+    "amount": 1976.74,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.927,
+      "amount_variance_ratio": 0.065,
+      "duplicate_score": 0.023,
+      "supplier_exception_history": 0.026,
+      "payment_terms_impact": 0.517,
+      "commodity_index_correlation": 0.785,
+      "tax_regulatory_compliance": 0.967
+    },
+    "metadata": {
+      "invoice_date": "2026-02-26",
+      "due_date": "2026-03-28",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "cloud seats line 1",
+          "quantity": 16,
+          "unit_price": 59.9
+        },
+        {
+          "line": 2,
+          "description": "cloud seats line 2",
+          "quantity": 22,
+          "unit_price": 54.91
+        },
+        {
+          "line": 3,
+          "description": "cloud seats line 3",
+          "quantity": 28,
+          "unit_price": 50.69
+        }
+      ],
+      "commodity": "cloud seats",
+      "contract_ref": "CTR-006-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0027",
+    "supplier_id": "SUP-007",
+    "supplier_name": "Boreal Equipment Maintenance",
+    "po_number": "PO-20260027",
+    "amount": 18160.44,
+    "currency": "USD",
+    "category": "quantity_mismatch",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.954,
+      "amount_variance_ratio": 0.033,
+      "duplicate_score": 0.014,
+      "supplier_exception_history": 0.03,
+      "payment_terms_impact": 0.476,
+      "commodity_index_correlation": 0.788,
+      "tax_regulatory_compliance": 0.938
+    },
+    "metadata": {
+      "invoice_date": "2026-02-28",
+      "due_date": "2026-03-30",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "pallets line 1",
+          "quantity": 17,
+          "unit_price": 412.74
+        },
+        {
+          "line": 2,
+          "description": "pallets line 2",
+          "quantity": 24,
+          "unit_price": 378.34
+        },
+        {
+          "line": 3,
+          "description": "pallets line 3",
+          "quantity": 31,
+          "unit_price": 349.24
+        },
+        {
+          "line": 4,
+          "description": "pallets line 4",
+          "quantity": 38,
+          "unit_price": 324.29
+        }
+      ],
+      "commodity": "pallets",
+      "contract_ref": "CTR-007-QUA"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0028",
+    "supplier_id": "SUP-008",
+    "supplier_name": "Gridline Utilities",
+    "po_number": "PO-20260028",
+    "amount": 20463.91,
+    "currency": "USD",
+    "category": "duplicate_risk",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.906,
+      "amount_variance_ratio": 0.045,
+      "duplicate_score": 0.45,
+      "supplier_exception_history": 0.047,
+      "payment_terms_impact": 0.498,
+      "commodity_index_correlation": 0.795,
+      "tax_regulatory_compliance": 0.93
+    },
+    "metadata": {
+      "invoice_date": "2026-03-02",
+      "due_date": "2026-03-02",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "consulting hours line 1",
+          "quantity": 11,
+          "unit_price": 1860.36
+        }
+      ],
+      "commodity": "consulting hours",
+      "contract_ref": "CTR-008-DUP"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0029",
+    "supplier_id": "SUP-009",
+    "supplier_name": "Rhine-Stahl Metals",
+    "po_number": "PO-20260029",
+    "amount": 57867.41,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.93,
+      "amount_variance_ratio": 0.07,
+      "duplicate_score": 0.017,
+      "supplier_exception_history": 0.037,
+      "payment_terms_impact": 0.497,
+      "commodity_index_correlation": 0.813,
+      "tax_regulatory_compliance": 0.94
+    },
+    "metadata": {
+      "invoice_date": "2026-03-04",
+      "due_date": "2026-04-03",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "steel coil line 1",
+          "quantity": 12,
+          "unit_price": 2630.34
+        },
+        {
+          "line": 2,
+          "description": "steel coil line 2",
+          "quantity": 14,
+          "unit_price": 2411.14
+        }
+      ],
+      "commodity": "steel coil",
+      "contract_ref": "CTR-009-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0030",
+    "supplier_id": "SUP-010",
+    "supplier_name": "Helix Lab Supplies",
+    "po_number": "PO-20260030",
+    "amount": 8056.89,
+    "currency": "USD",
+    "category": "quantity_mismatch",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.945,
+      "amount_variance_ratio": 0.048,
+      "duplicate_score": 0.012,
+      "supplier_exception_history": 0.044,
+      "payment_terms_impact": 0.523,
+      "commodity_index_correlation": 0.811,
+      "tax_regulatory_compliance": 0.933
+    },
+    "metadata": {
+      "invoice_date": "2026-03-06",
+      "due_date": "2026-04-05",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "maintenance kits line 1",
+          "quantity": 13,
+          "unit_price": 244.15
+        },
+        {
+          "line": 2,
+          "description": "maintenance kits line 2",
+          "quantity": 16,
+          "unit_price": 223.8
+        },
+        {
+          "line": 3,
+          "description": "maintenance kits line 3",
+          "quantity": 19,
+          "unit_price": 206.59
+        }
+      ],
+      "commodity": "maintenance kits",
+      "contract_ref": "CTR-010-QUA"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0031",
+    "supplier_id": "SUP-001",
+    "supplier_name": "Aster Industrial Chemicals",
+    "po_number": "PO-20260031",
+    "amount": 17710.8,
+    "currency": "USD",
+    "category": "format_compliance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.933,
+      "amount_variance_ratio": 0.048,
+      "duplicate_score": 0.029,
+      "supplier_exception_history": 0.074,
+      "payment_terms_impact": 0.491,
+      "commodity_index_correlation": 0.789,
+      "tax_regulatory_compliance": 0.859
+    },
+    "metadata": {
+      "invoice_date": "2026-03-08",
+      "due_date": "2026-04-07",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "regulated reagents line 1",
+          "quantity": 14,
+          "unit_price": 402.52
+        },
+        {
+          "line": 2,
+          "description": "regulated reagents line 2",
+          "quantity": 18,
+          "unit_price": 368.97
+        },
+        {
+          "line": 3,
+          "description": "regulated reagents line 3",
+          "quantity": 22,
+          "unit_price": 340.59
+        },
+        {
+          "line": 4,
+          "description": "regulated reagents line 4",
+          "quantity": 26,
+          "unit_price": 316.26
+        }
+      ],
+      "commodity": "regulated reagents",
+      "contract_ref": "CTR-001-FOR"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0032",
+    "supplier_id": "SUP-002",
+    "supplier_name": "Pacifica Logistics",
+    "po_number": "PO-20260032",
+    "amount": 8471.23,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "hold_for_review",
+    "factors": {
+      "match_status": 0.686,
+      "amount_variance_ratio": 0.32,
+      "duplicate_score": 0.095,
+      "supplier_exception_history": 0.155,
+      "payment_terms_impact": 0.412,
+      "commodity_index_correlation": 0.53,
+      "tax_regulatory_compliance": 0.806
+    },
+    "metadata": {
+      "invoice_date": "2026-03-10",
+      "due_date": "2026-04-09",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "resin line 1",
+          "quantity": 15,
+          "unit_price": 770.11
+        }
+      ],
+      "commodity": "resin",
+      "contract_ref": "CTR-002-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0033",
+    "supplier_id": "SUP-003",
+    "supplier_name": "Northstar Packaging",
+    "po_number": "PO-20260033",
+    "amount": 3414.6,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "hold_for_review",
+    "factors": {
+      "match_status": 0.699,
+      "amount_variance_ratio": 0.317,
+      "duplicate_score": 0.103,
+      "supplier_exception_history": 0.229,
+      "payment_terms_impact": 0.429,
+      "commodity_index_correlation": 0.533,
+      "tax_regulatory_compliance": 0.804
+    },
+    "metadata": {
+      "invoice_date": "2026-03-12",
+      "due_date": "2026-04-11",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "cloud seats line 1",
+          "quantity": 16,
+          "unit_price": 155.21
+        },
+        {
+          "line": 2,
+          "description": "cloud seats line 2",
+          "quantity": 22,
+          "unit_price": 142.28
+        }
+      ],
+      "commodity": "cloud seats",
+      "contract_ref": "CTR-003-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0034",
+    "supplier_id": "SUP-004",
+    "supplier_name": "Novatek IT Services",
+    "po_number": "PO-20260034",
+    "amount": 33320.16,
+    "currency": "USD",
+    "category": "duplicate_risk",
+    "ground_truth_action": "flag_leakage",
+    "factors": {
+      "match_status": 0.858,
+      "amount_variance_ratio": 0.103,
+      "duplicate_score": 0.888,
+      "supplier_exception_history": 0.399,
+      "payment_terms_impact": 0.31,
+      "commodity_index_correlation": 0.509,
+      "tax_regulatory_compliance": 0.81
+    },
+    "metadata": {
+      "invoice_date": "2026-03-14",
+      "due_date": "2026-04-13",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "consulting hours line 1",
+          "quantity": 17,
+          "unit_price": 1009.7
+        },
+        {
+          "line": 2,
+          "description": "consulting hours line 2",
+          "quantity": 24,
+          "unit_price": 925.56
+        },
+        {
+          "line": 3,
+          "description": "consulting hours line 3",
+          "quantity": 31,
+          "unit_price": 854.36
+        }
+      ],
+      "commodity": "consulting hours",
+      "contract_ref": "CTR-004-DUP"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0035",
+    "supplier_id": "SUP-005",
+    "supplier_name": "Yangtze Raw Materials",
+    "po_number": "PO-20260035",
+    "amount": 39191.04,
+    "currency": "USD",
+    "category": "contract_gap",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.927,
+      "amount_variance_ratio": 0.075,
+      "duplicate_score": 0.021,
+      "supplier_exception_history": 0.038,
+      "payment_terms_impact": 0.58,
+      "commodity_index_correlation": 0.802,
+      "tax_regulatory_compliance": 0.917
+    },
+    "metadata": {
+      "invoice_date": "2026-03-16",
+      "due_date": "2026-04-15",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "indexed metals line 1",
+          "quantity": 11,
+          "unit_price": 890.71
+        },
+        {
+          "line": 2,
+          "description": "indexed metals line 2",
+          "quantity": 12,
+          "unit_price": 816.48
+        },
+        {
+          "line": 3,
+          "description": "indexed metals line 3",
+          "quantity": 13,
+          "unit_price": 753.67
+        },
+        {
+          "line": 4,
+          "description": "indexed metals line 4",
+          "quantity": 14,
+          "unit_price": 699.84
+        }
+      ],
+      "commodity": "indexed metals",
+      "contract_ref": "CTR-005-CON"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0036",
+    "supplier_id": "SUP-006",
+    "supplier_name": "Meridian Office Services",
+    "po_number": "PO-20260036",
+    "amount": 1145.34,
+    "currency": "USD",
+    "category": "contract_gap",
+    "ground_truth_action": "escalate_to_buyer",
+    "factors": {
+      "match_status": 0.69,
+      "amount_variance_ratio": 0.151,
+      "duplicate_score": 0.048,
+      "supplier_exception_history": 0.157,
+      "payment_terms_impact": 0.828,
+      "commodity_index_correlation": 0.224,
+      "tax_regulatory_compliance": 0.596
+    },
+    "metadata": {
+      "invoice_date": "2026-03-18",
+      "due_date": "2026-04-17",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "indexed metals line 1",
+          "quantity": 12,
+          "unit_price": 104.12
+        }
+      ],
+      "commodity": "indexed metals",
+      "contract_ref": "CTR-006-CON"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0037",
+    "supplier_id": "SUP-007",
+    "supplier_name": "Boreal Equipment Maintenance",
+    "po_number": "PO-20260037",
+    "amount": 13125.43,
+    "currency": "USD",
+    "category": "format_compliance",
+    "ground_truth_action": "hold_for_review",
+    "factors": {
+      "match_status": 0.675,
+      "amount_variance_ratio": 0.277,
+      "duplicate_score": 0.121,
+      "supplier_exception_history": 0.175,
+      "payment_terms_impact": 0.369,
+      "commodity_index_correlation": 0.512,
+      "tax_regulatory_compliance": 0.702
+    },
+    "metadata": {
+      "invoice_date": "2026-03-20",
+      "due_date": "2026-04-19",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "regulated reagents line 1",
+          "quantity": 13,
+          "unit_price": 596.61
+        },
+        {
+          "line": 2,
+          "description": "regulated reagents line 2",
+          "quantity": 16,
+          "unit_price": 546.89
+        }
+      ],
+      "commodity": "regulated reagents",
+      "contract_ref": "CTR-007-FOR"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0038",
+    "supplier_id": "SUP-008",
+    "supplier_name": "Gridline Utilities",
+    "po_number": "PO-20260038",
+    "amount": 18392.05,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.958,
+      "amount_variance_ratio": 0.062,
+      "duplicate_score": 0.024,
+      "supplier_exception_history": 0.026,
+      "payment_terms_impact": 0.506,
+      "commodity_index_correlation": 0.778,
+      "tax_regulatory_compliance": 0.94
+    },
+    "metadata": {
+      "invoice_date": "2026-03-22",
+      "due_date": "2026-03-22",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "steel coil line 1",
+          "quantity": 14,
+          "unit_price": 557.33
+        },
+        {
+          "line": 2,
+          "description": "steel coil line 2",
+          "quantity": 18,
+          "unit_price": 510.89
+        },
+        {
+          "line": 3,
+          "description": "steel coil line 3",
+          "quantity": 22,
+          "unit_price": 471.59
+        }
+      ],
+      "commodity": "steel coil",
+      "contract_ref": "CTR-008-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0039",
+    "supplier_id": "SUP-009",
+    "supplier_name": "Rhine-Stahl Metals",
+    "po_number": "PO-20260039",
+    "amount": 38567.61,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.927,
+      "amount_variance_ratio": 0.041,
+      "duplicate_score": 0.033,
+      "supplier_exception_history": 0.02,
+      "payment_terms_impact": 0.51,
+      "commodity_index_correlation": 0.792,
+      "tax_regulatory_compliance": 0.959
+    },
+    "metadata": {
+      "invoice_date": "2026-03-24",
+      "due_date": "2026-04-23",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "resin line 1",
+          "quantity": 15,
+          "unit_price": 876.54
+        },
+        {
+          "line": 2,
+          "description": "resin line 2",
+          "quantity": 20,
+          "unit_price": 803.49
+        },
+        {
+          "line": 3,
+          "description": "resin line 3",
+          "quantity": 25,
+          "unit_price": 741.68
+        },
+        {
+          "line": 4,
+          "description": "resin line 4",
+          "quantity": 30,
+          "unit_price": 688.71
+        }
+      ],
+      "commodity": "resin",
+      "contract_ref": "CTR-009-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0040",
+    "supplier_id": "SUP-010",
+    "supplier_name": "Helix Lab Supplies",
+    "po_number": "PO-20260040",
+    "amount": 7908.54,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "flag_leakage",
+    "factors": {
+      "match_status": 0.881,
+      "amount_variance_ratio": 0.375,
+      "duplicate_score": 0.049,
+      "supplier_exception_history": 0.242,
+      "payment_terms_impact": 0.723,
+      "commodity_index_correlation": 0.163,
+      "tax_regulatory_compliance": 0.832
+    },
+    "metadata": {
+      "invoice_date": "2026-03-26",
+      "due_date": "2026-04-25",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "resin line 1",
+          "quantity": 16,
+          "unit_price": 718.96
+        }
+      ],
+      "commodity": "resin",
+      "contract_ref": "CTR-010-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0041",
+    "supplier_id": "SUP-001",
+    "supplier_name": "Aster Industrial Chemicals",
+    "po_number": "PO-20260041",
+    "amount": 14826.79,
+    "currency": "USD",
+    "category": "contract_gap",
+    "ground_truth_action": "refer_to_specialist",
+    "factors": {
+      "match_status": 0.379,
+      "amount_variance_ratio": 0.411,
+      "duplicate_score": 0.275,
+      "supplier_exception_history": 0.488,
+      "payment_terms_impact": 0.381,
+      "commodity_index_correlation": 0.36,
+      "tax_regulatory_compliance": 0.448
+    },
+    "metadata": {
+      "invoice_date": "2026-03-28",
+      "due_date": "2026-04-27",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "spot logistics line 1",
+          "quantity": 17,
+          "unit_price": 673.95
+        },
+        {
+          "line": 2,
+          "description": "spot logistics line 2",
+          "quantity": 24,
+          "unit_price": 617.78
+        }
+      ],
+      "commodity": "spot logistics",
+      "contract_ref": "CTR-001-CON"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0042",
+    "supplier_id": "SUP-002",
+    "supplier_name": "Pacifica Logistics",
+    "po_number": "PO-20260042",
+    "amount": 12937.95,
+    "currency": "USD",
+    "category": "contract_gap",
+    "ground_truth_action": "escalate_to_buyer",
+    "factors": {
+      "match_status": 0.695,
+      "amount_variance_ratio": 0.134,
+      "duplicate_score": 0.062,
+      "supplier_exception_history": 0.158,
+      "payment_terms_impact": 0.867,
+      "commodity_index_correlation": 0.208,
+      "tax_regulatory_compliance": 0.591
+    },
+    "metadata": {
+      "invoice_date": "2026-03-30",
+      "due_date": "2026-04-29",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "indexed metals line 1",
+          "quantity": 11,
+          "unit_price": 392.06
+        },
+        {
+          "line": 2,
+          "description": "indexed metals line 2",
+          "quantity": 12,
+          "unit_price": 359.39
+        },
+        {
+          "line": 3,
+          "description": "indexed metals line 3",
+          "quantity": 13,
+          "unit_price": 331.74
+        }
+      ],
+      "commodity": "indexed metals",
+      "contract_ref": "CTR-002-CON"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0043",
+    "supplier_id": "SUP-003",
+    "supplier_name": "Northstar Packaging",
+    "po_number": "PO-20260043",
+    "amount": 4601.77,
+    "currency": "USD",
+    "category": "quantity_mismatch",
+    "ground_truth_action": "escalate_to_buyer",
+    "factors": {
+      "match_status": 0.476,
+      "amount_variance_ratio": 0.586,
+      "duplicate_score": 0.147,
+      "supplier_exception_history": 0.331,
+      "payment_terms_impact": 0.611,
+      "commodity_index_correlation": 0.275,
+      "tax_regulatory_compliance": 0.682
+    },
+    "metadata": {
+      "invoice_date": "2026-04-01",
+      "due_date": "2026-05-01",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "maintenance kits line 1",
+          "quantity": 12,
+          "unit_price": 104.59
+        },
+        {
+          "line": 2,
+          "description": "maintenance kits line 2",
+          "quantity": 14,
+          "unit_price": 95.87
+        },
+        {
+          "line": 3,
+          "description": "maintenance kits line 3",
+          "quantity": 16,
+          "unit_price": 88.5
+        },
+        {
+          "line": 4,
+          "description": "maintenance kits line 4",
+          "quantity": 18,
+          "unit_price": 82.17
+        }
+      ],
+      "commodity": "maintenance kits",
+      "contract_ref": "CTR-003-QUA"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0044",
+    "supplier_id": "SUP-004",
+    "supplier_name": "Novatek IT Services",
+    "po_number": "PO-20260044",
+    "amount": 35522.94,
+    "currency": "USD",
+    "category": "duplicate_risk",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.891,
+      "amount_variance_ratio": 0.066,
+      "duplicate_score": 0.45,
+      "supplier_exception_history": 0.137,
+      "payment_terms_impact": 0.471,
+      "commodity_index_correlation": 0.801,
+      "tax_regulatory_compliance": 0.91
+    },
+    "metadata": {
+      "invoice_date": "2026-04-03",
+      "due_date": "2026-05-03",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "consulting hours line 1",
+          "quantity": 13,
+          "unit_price": 3229.36
+        }
+      ],
+      "commodity": "consulting hours",
+      "contract_ref": "CTR-004-DUP"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0045",
+    "supplier_id": "SUP-005",
+    "supplier_name": "Yangtze Raw Materials",
+    "po_number": "PO-20260045",
+    "amount": 34267.78,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.948,
+      "amount_variance_ratio": 0.047,
+      "duplicate_score": 0.043,
+      "supplier_exception_history": 0.048,
+      "payment_terms_impact": 0.475,
+      "commodity_index_correlation": 0.787,
+      "tax_regulatory_compliance": 0.966
+    },
+    "metadata": {
+      "invoice_date": "2026-04-05",
+      "due_date": "2026-05-05",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "steel coil line 1",
+          "quantity": 14,
+          "unit_price": 1557.63
+        },
+        {
+          "line": 2,
+          "description": "steel coil line 2",
+          "quantity": 18,
+          "unit_price": 1427.82
+        }
+      ],
+      "commodity": "steel coil",
+      "contract_ref": "CTR-005-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0046",
+    "supplier_id": "SUP-006",
+    "supplier_name": "Meridian Office Services",
+    "po_number": "PO-20260046",
+    "amount": 2367.22,
+    "currency": "USD",
+    "category": "format_compliance",
+    "ground_truth_action": "escalate_to_buyer",
+    "factors": {
+      "match_status": 0.467,
+      "amount_variance_ratio": 0.595,
+      "duplicate_score": 0.194,
+      "supplier_exception_history": 0.326,
+      "payment_terms_impact": 0.591,
+      "commodity_index_correlation": 0.268,
+      "tax_regulatory_compliance": 0.608
+    },
+    "metadata": {
+      "invoice_date": "2026-04-07",
+      "due_date": "2026-05-07",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "regulated reagents line 1",
+          "quantity": 15,
+          "unit_price": 71.73
+        },
+        {
+          "line": 2,
+          "description": "regulated reagents line 2",
+          "quantity": 20,
+          "unit_price": 65.76
+        },
+        {
+          "line": 3,
+          "description": "regulated reagents line 3",
+          "quantity": 25,
+          "unit_price": 60.7
+        }
+      ],
+      "commodity": "regulated reagents",
+      "contract_ref": "CTR-006-FOR"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0047",
+    "supplier_id": "SUP-007",
+    "supplier_name": "Boreal Equipment Maintenance",
+    "po_number": "PO-20260047",
+    "amount": 13179.46,
+    "currency": "USD",
+    "category": "duplicate_risk",
+    "ground_truth_action": "flag_leakage",
+    "factors": {
+      "match_status": 0.864,
+      "amount_variance_ratio": 0.124,
+      "duplicate_score": 0.923,
+      "supplier_exception_history": 0.407,
+      "payment_terms_impact": 0.279,
+      "commodity_index_correlation": 0.484,
+      "tax_regulatory_compliance": 0.823
+    },
+    "metadata": {
+      "invoice_date": "2026-04-09",
+      "due_date": "2026-05-09",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "freight surcharge line 1",
+          "quantity": 16,
+          "unit_price": 299.53
+        },
+        {
+          "line": 2,
+          "description": "freight surcharge line 2",
+          "quantity": 22,
+          "unit_price": 274.57
+        },
+        {
+          "line": 3,
+          "description": "freight surcharge line 3",
+          "quantity": 28,
+          "unit_price": 253.45
+        },
+        {
+          "line": 4,
+          "description": "freight surcharge line 4",
+          "quantity": 34,
+          "unit_price": 235.35
+        }
+      ],
+      "commodity": "freight surcharge",
+      "contract_ref": "CTR-007-DUP"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0048",
+    "supplier_id": "SUP-008",
+    "supplier_name": "Gridline Utilities",
+    "po_number": "PO-20260048",
+    "amount": 22720.46,
+    "currency": "USD",
+    "category": "price_variance",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.931,
+      "amount_variance_ratio": 0.071,
+      "duplicate_score": 0.029,
+      "supplier_exception_history": 0.02,
+      "payment_terms_impact": 0.478,
+      "commodity_index_correlation": 0.787,
+      "tax_regulatory_compliance": 0.952
+    },
+    "metadata": {
+      "invoice_date": "2026-04-11",
+      "due_date": "2026-04-11",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "steel coil line 1",
+          "quantity": 17,
+          "unit_price": 2065.5
+        }
+      ],
+      "commodity": "steel coil",
+      "contract_ref": "CTR-008-PRI"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0049",
+    "supplier_id": "SUP-009",
+    "supplier_name": "Rhine-Stahl Metals",
+    "po_number": "PO-20260049",
+    "amount": 41332.77,
+    "currency": "USD",
+    "category": "quantity_mismatch",
+    "ground_truth_action": "auto_approve",
+    "factors": {
+      "match_status": 0.909,
+      "amount_variance_ratio": 0.048,
+      "duplicate_score": 0.012,
+      "supplier_exception_history": 0.066,
+      "payment_terms_impact": 0.52,
+      "commodity_index_correlation": 0.796,
+      "tax_regulatory_compliance": 0.926
+    },
+    "metadata": {
+      "invoice_date": "2026-04-13",
+      "due_date": "2026-05-13",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "maintenance kits line 1",
+          "quantity": 11,
+          "unit_price": 1878.76
+        },
+        {
+          "line": 2,
+          "description": "maintenance kits line 2",
+          "quantity": 12,
+          "unit_price": 1722.2
+        }
+      ],
+      "commodity": "maintenance kits",
+      "contract_ref": "CTR-009-QUA"
+    }
+  },
+  {
+    "invoice_id": "S2P-INV-0050",
+    "supplier_id": "SUP-010",
+    "supplier_name": "Helix Lab Supplies",
+    "po_number": "PO-20260050",
+    "amount": 9217.58,
+    "currency": "USD",
+    "category": "duplicate_risk",
+    "ground_truth_action": "flag_leakage",
+    "factors": {
+      "match_status": 0.869,
+      "amount_variance_ratio": 0.12,
+      "duplicate_score": 0.897,
+      "supplier_exception_history": 0.425,
+      "payment_terms_impact": 0.322,
+      "commodity_index_correlation": 0.502,
+      "tax_regulatory_compliance": 0.777
+    },
+    "metadata": {
+      "invoice_date": "2026-04-15",
+      "due_date": "2026-05-15",
+      "line_items": [
+        {
+          "line": 1,
+          "description": "freight surcharge line 1",
+          "quantity": 12,
+          "unit_price": 279.32
+        },
+        {
+          "line": 2,
+          "description": "freight surcharge line 2",
+          "quantity": 14,
+          "unit_price": 256.04
+        },
+        {
+          "line": 3,
+          "description": "freight surcharge line 3",
+          "quantity": 16,
+          "unit_price": 236.35
+        }
+      ],
+      "commodity": "freight surcharge",
+      "contract_ref": "CTR-010-DUP"
+    }
+  }
+]

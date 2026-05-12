@@ -1,9 +1,17 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.routers.framework_router import router as framework_router
 from app.routers.s2p import router as s2p_router
 from app.routers.s2p_preview import router as s2p_preview_router
 
 app = FastAPI(title="S2P Copilot", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(framework_router)
 app.include_router(s2p_router)
 app.include_router(s2p_preview_router)

@@ -14,7 +14,7 @@ Controls
 6. category_force_review    — force specific category to human review
 7. adjust_threshold         — change auto-approve threshold (min 0.50)
 
-Reference: docs/soc_copilot_design_v1.md §P22
+Reference: P22 human oversight controls.
 """
 
 from __future__ import annotations
@@ -26,6 +26,118 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 log = logging.getLogger(__name__)
+
+
+class ConservationStateMachine:
+    """Learning gate state for conservation health."""
+
+    VALID_STATES = {"GREEN", "AMBER", "RED"}
+    S2P_ACTIONS = {
+        "auto_approve",
+        "hold_for_review",
+        "escalate_to_buyer",
+        "flag_leakage",
+        "refer_to_specialist",
+    }
+    PROTECTED_ACTION = "auto_approve"
+    PENALTY_RATIO = 5.0
+
+    _LEARNING_DECISIONS = {
+        "GREEN": {
+            "learning_allowed": True,
+            "learning_paused": False,
+            "learning_blocked": False,
+            "reason": "conservation_green_learning_allowed",
+        },
+        "AMBER": {
+            "learning_allowed": False,
+            "learning_paused": True,
+            "learning_blocked": False,
+            "reason": "conservation_amber_learning_paused",
+        },
+        "RED": {
+            "learning_allowed": False,
+            "learning_paused": True,
+            "learning_blocked": True,
+            "reason": "conservation_red_learning_blocked",
+        },
+    }
+
+    def __init__(
+        self,
+        initial_state: str = "GREEN",
+        protected_action: str = PROTECTED_ACTION,
+        penalty_ratio: float = PENALTY_RATIO,
+    ):
+        if protected_action not in self.S2P_ACTIONS:
+            raise ValueError(f"unknown protected action: {protected_action}")
+        self.protected_action = protected_action
+        self.penalty_ratio = float(penalty_ratio)
+        self.state = self._normalize_state(initial_state)
+        self.previous_state = None
+        self.transition_reason = "initial_state"
+        self.transition_history: List[Dict[str, Any]] = []
+
+    def set_state(
+        self,
+        state: str,
+        reason: str = "",
+        initiated_by: str = "system",
+    ) -> Dict[str, Any]:
+        """Transition to a conservation state and return learning controls."""
+        normalized = self._normalize_state(state)
+        previous_state = self.state
+        self.previous_state = previous_state
+        self.state = normalized
+        self.transition_reason = reason or self._LEARNING_DECISIONS[normalized]["reason"]
+
+        transition = {
+            "previous_state": previous_state,
+            "state": normalized,
+            "initiated_by": initiated_by,
+            "reason": self.transition_reason,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        self.transition_history.append(transition)
+        return self.learning_decision()
+
+    def learning_decision(self) -> Dict[str, Any]:
+        """Return whether learning can mutate centroids in the current state."""
+        decision = dict(self._LEARNING_DECISIONS[self.state])
+        decision.update({
+            "state": self.state,
+            "previous_state": self.previous_state,
+            "protected_action": self.protected_action,
+            "penalty_ratio": self.penalty_ratio,
+            "transition_reason": self.transition_reason,
+        })
+        return decision
+
+    def allows_learning(self) -> bool:
+        """True when the current state permits learning mutation."""
+        return bool(self.learning_decision()["learning_allowed"])
+
+    def is_learning_paused(self) -> bool:
+        """True when learning should pause before mutation."""
+        return bool(self.learning_decision()["learning_paused"])
+
+    def is_learning_blocked(self) -> bool:
+        """True when learning is blocked by RED conservation state."""
+        return bool(self.learning_decision()["learning_blocked"])
+
+    def current_state(self) -> Dict[str, Any]:
+        """Return state machine status for control panels."""
+        return {
+            **self.learning_decision(),
+            "transition_history": list(self.transition_history),
+        }
+
+    @classmethod
+    def _normalize_state(cls, state: str) -> str:
+        normalized = str(state or "").upper()
+        if normalized not in cls.VALID_STATES:
+            raise ValueError(f"unknown conservation state: {state}")
+        return normalized
 
 
 class InterventionControls:
@@ -42,6 +154,7 @@ class InterventionControls:
         self.scorer = scorer
         self.checkpoint_service = checkpoint_service
         self.gate = composite_gate
+        self.conservation_state_machine = ConservationStateMachine()
 
     # ------------------------------------------------------------------
     # 1. freeze_all_learning
@@ -242,6 +355,52 @@ class InterventionControls:
         )
 
     # ------------------------------------------------------------------
+    # Conservation state machine
+    # ------------------------------------------------------------------
+
+    async def set_conservation_state(
+        self,
+        state: str,
+        initiated_by: str,
+        reason: str,
+    ) -> Dict:
+        """Set conservation health and apply the corresponding learning control."""
+        decision = self.conservation_state_machine.set_state(
+            state=state,
+            initiated_by=initiated_by,
+            reason=reason,
+        )
+
+        if decision["learning_paused"]:
+            self.scorer.freeze()
+        else:
+            self.scorer.unfreeze()
+
+        log.info(
+            "[INTERVENTION] conservation_state state=%s by=%s reason=%r",
+            decision["state"], initiated_by, reason,
+        )
+        return await self._log_intervention(
+            intervention_type="conservation_state",
+            initiated_by=initiated_by,
+            reason=reason,
+            details=decision,
+        )
+
+    async def update_conservation_state(
+        self,
+        state: str,
+        initiated_by: str,
+        reason: str,
+    ) -> Dict:
+        """Compatibility alias for callers using update terminology."""
+        return await self.set_conservation_state(state, initiated_by, reason)
+
+    def get_learning_control(self) -> Dict:
+        """Return current conservation learning decision."""
+        return self.conservation_state_machine.learning_decision()
+
+    # ------------------------------------------------------------------
     # State + History
     # ------------------------------------------------------------------
 
@@ -276,6 +435,7 @@ class InterventionControls:
             "force_review_categories": list(
                 getattr(self.gate, "FORCE_REVIEW_CATEGORIES", set())
             ),
+            "conservation":             self.conservation_state_machine.current_state(),
             "last_intervention":       last_intervention,
         }
 

@@ -5,6 +5,18 @@ C=5 categories, A=5 actions, d=7 factors. Tensor (5,5,7)=175.
 penalty_ratio=5.0 (S2P: false-approve less costly than SOC false-suppress).
 """
 
+try:
+    from domain_config import S2PDomainConfigV2 as _SharedS2PDomainConfigV2
+except ImportError:
+    _SharedS2PDomainConfigV2 = None
+
+
+def _shared_or(name: str, fallback):
+    if _SharedS2PDomainConfigV2 is None:
+        return fallback
+    return list(getattr(_SharedS2PDomainConfigV2, name))
+
+
 S2P_CATEGORIES = [
     "price_variance",
     "quantity_mismatch",
@@ -12,6 +24,7 @@ S2P_CATEGORIES = [
     "contract_gap",
     "format_compliance",
 ]
+S2P_CATEGORIES = _shared_or("categories", S2P_CATEGORIES)
 
 S2P_ACTIONS = [
     "auto_approve",
@@ -20,6 +33,7 @@ S2P_ACTIONS = [
     "flag_leakage",
     "refer_to_specialist",
 ]
+S2P_ACTIONS = _shared_or("actions", S2P_ACTIONS)
 
 S2P_FACTORS = [
     "match_status",
@@ -30,6 +44,7 @@ S2P_FACTORS = [
     "commodity_index_correlation",
     "tax_regulatory_compliance",
 ]
+S2P_FACTORS = _shared_or("factors", S2P_FACTORS)
 
 S2P_CANONICAL_FACTORS = [
     "supplier_identity",
@@ -52,10 +67,10 @@ N_ACTIONS = 5
 N_FACTORS = 7
 
 # Learning hyperparameters
-TAU = 0.1
-ETA_CONFIRM = 0.05
-ETA_OVERRIDE = 0.01
-PENALTY_RATIO = 5.0
+TAU = getattr(_SharedS2PDomainConfigV2, "tau", 0.1)
+ETA_CONFIRM = getattr(_SharedS2PDomainConfigV2, "eta_confirm", 0.05)
+ETA_OVERRIDE = getattr(_SharedS2PDomainConfigV2, "eta_override", 0.01)
+PENALTY_RATIO = getattr(_SharedS2PDomainConfigV2, "penalty_ratio", 5.0)
 LEARNING_ENABLED = False
 
 # Noise ceiling (DiagonalKernel)

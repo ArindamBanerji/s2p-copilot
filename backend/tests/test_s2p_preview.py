@@ -85,7 +85,8 @@ def test_conservation_has_status():
 def test_conservation_has_auto_approve_pct():
     data = client.get("/api/s2p/preview/conservation").json()
     assert 0.0 <= data["auto_approve_pct"] <= 100.0
-    assert data["verified_decisions"] == 50
+    assert data["verified_decisions"] == 1000
+    assert data["fixture_decisions"] == 50
 
 
 def test_conservation_has_engine_version():
@@ -143,8 +144,15 @@ def test_suppliers_returns_200():
     assert client.get("/api/s2p/preview/suppliers").status_code == 200
 
 
-def test_suppliers_default_limit_2():
+def test_suppliers_default_returns_all():
     data = client.get("/api/s2p/preview/suppliers").json()
+    assert data["total"] == 10
+    assert data["showing"] == 10
+    assert len(data["suppliers"]) == 10
+
+
+def test_suppliers_explicit_limit_2():
+    data = client.get("/api/s2p/preview/suppliers?limit=2").json()
     assert data["total"] == 10
     assert data["showing"] == 2
     assert len(data["suppliers"]) == 2

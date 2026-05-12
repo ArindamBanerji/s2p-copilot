@@ -41,13 +41,14 @@ class SOCAgent:
     ACTION_ENRICH_AND_WAIT = "enrich_and_wait"
     ACTION_ESCALATE_TIER2 = "escalate_tier2"
     ACTION_ESCALATE_INCIDENT = "escalate_incident"
+    ACTION_FLAG_LEAKAGE = "flag_leakage"
 
     def decide(self, alert_type: str, context: Dict[str, Any]) -> DecisionResult:
         """
         Main decision function. Rule-based logic.
 
         Args:
-            alert_type: Type of alert (anomalous_login, phishing, malware_detection, data_exfiltration)
+            alert_type: Type of alert (anomalous_login, phishing, malware_detection, duplicate_risk)
             context: Security context from graph traversal
 
         Returns:
@@ -159,13 +160,13 @@ class SOCAgent:
             )
 
         # ====================================================================
-        # Rule 4: Data Exfiltration (Always escalate)
+        # Rule 4: Duplicate Risk (flag leakage for buyer review)
         # ====================================================================
-        elif alert_type == "data_exfiltration":
+        elif alert_type == "duplicate_risk":
             return DecisionResult(
-                action=self.ACTION_ESCALATE_INCIDENT,
+                action=self.ACTION_FLAG_LEAKAGE,
                 confidence=0.97,
-                playbook_id="PB-DLP-INCIDENT"
+                playbook_id="PB-DUPLICATE-LEAKAGE"
             )
 
         # ====================================================================

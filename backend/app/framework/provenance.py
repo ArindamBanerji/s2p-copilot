@@ -246,7 +246,7 @@ class ProvenanceService:
         decision_id   : UUID string of the Decision node
         factor_names  : ordered list of factor names
         factor_values : ordered list of factor values (0.0–1.0)
-        category      : alert category (e.g. "credential_access")
+        category      : event category (e.g. "price_variance")
         action        : selected action (e.g. "escalate")
 
         Returns

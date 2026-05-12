@@ -1,0 +1,122 @@
+[
+  {
+    "supplier_id": "SUP-001",
+    "name": "Aster Industrial Chemicals",
+    "category": "industrial chemicals",
+    "exception_rate": 0.12,
+    "avg_invoice_amount": 18450.0,
+    "payment_terms": "Net 45",
+    "otif_score": 0.88,
+    "total_invoices": 1240,
+    "total_exceptions": 149,
+    "recent_trend": "declining"
+  },
+  {
+    "supplier_id": "SUP-002",
+    "name": "Pacifica Logistics",
+    "category": "logistics",
+    "exception_rate": 0.09,
+    "avg_invoice_amount": 9720.0,
+    "payment_terms": "Net 30",
+    "otif_score": 0.91,
+    "total_invoices": 880,
+    "total_exceptions": 79,
+    "recent_trend": "stable"
+  },
+  {
+    "supplier_id": "SUP-003",
+    "name": "Northstar Packaging",
+    "category": "packaging",
+    "exception_rate": 0.04,
+    "avg_invoice_amount": 4260.0,
+    "payment_terms": "Net 30",
+    "otif_score": 0.96,
+    "total_invoices": 2120,
+    "total_exceptions": 85,
+    "recent_trend": "improving"
+  },
+  {
+    "supplier_id": "SUP-004",
+    "name": "Novatek IT Services",
+    "category": "IT services",
+    "exception_rate": 0.03,
+    "avg_invoice_amount": 28300.0,
+    "payment_terms": "Net 60",
+    "otif_score": 0.98,
+    "total_invoices": 530,
+    "total_exceptions": 16,
+    "recent_trend": "stable"
+  },
+  {
+    "supplier_id": "SUP-005",
+    "name": "Yangtze Raw Materials",
+    "category": "raw materials",
+    "exception_rate": 0.14,
+    "avg_invoice_amount": 36750.0,
+    "payment_terms": "Net 45",
+    "otif_score": 0.84,
+    "total_invoices": 760,
+    "total_exceptions": 106,
+    "recent_trend": "declining"
+  },
+  {
+    "supplier_id": "SUP-006",
+    "name": "Meridian Office Services",
+    "category": "office services",
+    "exception_rate": 0.02,
+    "avg_invoice_amount": 1950.0,
+    "payment_terms": "Net 15",
+    "otif_score": 0.97,
+    "total_invoices": 3180,
+    "total_exceptions": 64,
+    "recent_trend": "stable"
+  },
+  {
+    "supplier_id": "SUP-007",
+    "name": "Boreal Equipment Maintenance",
+    "category": "equipment maintenance",
+    "exception_rate": 0.08,
+    "avg_invoice_amount": 14600.0,
+    "payment_terms": "Net 30",
+    "otif_score": 0.9,
+    "total_invoices": 640,
+    "total_exceptions": 51,
+    "recent_trend": "improving"
+  },
+  {
+    "supplier_id": "SUP-008",
+    "name": "Gridline Utilities",
+    "category": "utilities",
+    "exception_rate": 0.05,
+    "avg_invoice_amount": 22100.0,
+    "payment_terms": "Due on receipt",
+    "otif_score": 0.94,
+    "total_invoices": 420,
+    "total_exceptions": 21,
+    "recent_trend": "stable"
+  },
+  {
+    "supplier_id": "SUP-009",
+    "name": "Rhine-Stahl Metals",
+    "category": "metals",
+    "exception_rate": 0.11,
+    "avg_invoice_amount": 41200.0,
+    "payment_terms": "Net 45",
+    "otif_score": 0.86,
+    "total_invoices": 590,
+    "total_exceptions": 65,
+    "recent_trend": "declining"
+  },
+  {
+    "supplier_id": "SUP-010",
+    "name": "Helix Lab Supplies",
+    "category": "pharma/lab supplies",
+    "exception_rate": 0.06,
+    "avg_invoice_amount": 8350.0,
+    "payment_terms": "Net 30",
+    "otif_score": 0.93,
+    "total_invoices": 1380,
+    "total_exceptions": 83,
+    "recent_trend": "improving"
+  }
+]

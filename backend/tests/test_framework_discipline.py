@@ -76,6 +76,31 @@ def test_framework_modules_importable():
         assert mod is not None, f"Module {m} returned None"
 
 
+def test_no_soc_vocabulary_in_framework():
+    """Framework modules must not carry SOC category or action vocabulary."""
+    framework_dir = pathlib.Path("app/framework")
+    forbidden_terms = [
+        "credential_access",
+        "malware_execution",
+        "data_exfiltration",
+        "lateral_movement",
+        "privilege_escalation",
+        "suppress",
+        "refer_to_analyst",
+    ]
+
+    matches = []
+    for py_file in sorted(framework_dir.glob("*.py")):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        matches.extend(
+            f"{py_file}:{term}" for term in forbidden_terms if term in source
+        )
+
+    assert matches == []
+
+
 # ============================================================================
 # Test 3 — Re-export stubs are transparent (same object as framework)
 # ============================================================================

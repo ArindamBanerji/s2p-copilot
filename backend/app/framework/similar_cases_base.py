@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 # ── Generic §23.4 defaults ───────────────────────────────────────────────────
 
 SIMILAR_CASES_K         = 3     # top-k results in sidebar
-SIMILAR_CASES_MIN_PRIOR = 5     # suppress sidebar if fewer decisions in category
+SIMILAR_CASES_MIN_PRIOR = 5     # hide sidebar if fewer decisions in category
 SIMILAR_CASES_MAX_SCAN  = 500   # max verified decisions fetched per query (perf SLA)
 
 
@@ -135,7 +135,7 @@ class SimilarCasesBase(abc.ABC):
 
         if len(decisions) < SIMILAR_CASES_MIN_PRIOR:
             log.debug(
-                "[SIMILAR-CASES] Suppressing sidebar: only %d verified decisions "
+                "[SIMILAR-CASES] Hiding sidebar: only %d verified decisions "
                 "in category=%r (min=%d)",
                 len(decisions), category, SIMILAR_CASES_MIN_PRIOR,
             )
@@ -167,7 +167,7 @@ class SimilarCasesBase(abc.ABC):
         """
         Return fraction of *similar_cases* whose action matches *current_action*.
 
-        Returns None when similar_cases is empty (suppressed sidebar — cold start).
+        Returns None when similar_cases is empty (hidden sidebar — cold start).
         Caller should then use the fallback template wording:
           "Calibrated from {calibration_count} verified outcomes." (no pct cited).
         """

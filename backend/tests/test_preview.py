@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.main import app
+from app.routers import s2p_preview
 
 
 client = TestClient(app)
@@ -24,6 +25,35 @@ def test_preview_queue_returns_exceptions():
     assert data["total"] == 50
     assert len(data["exceptions"]) == 10
     assert all("invoice_id" in row for row in data["exceptions"])
+
+
+def test_preview_queue_includes_process_context_when_celonis_cache_available(monkeypatch):
+    monkeypatch.setattr(
+        s2p_preview,
+        "_load_celonis_cache",
+        lambda: {
+            "process_model": "Purchase-to-Pay",
+            "variant": "Standard with Returns",
+            "activities": [
+                {"name": "Create Purchase Order", "avg_duration_hours": 3.4},
+                {
+                    "name": "Match Invoice to GR",
+                    "avg_duration_hours": 42.0,
+                    "bottleneck": True,
+                },
+            ],
+        },
+    )
+
+    row = _queue()["exceptions"][0]
+
+    assert row["process_context"] == {
+        "process_model": "Purchase-to-Pay",
+        "variant": "Standard with Returns",
+        "bottleneck_activity": "Match Invoice to GR",
+        "duration_median_min": 2520.0,
+        "source": "celonis_cache",
+    }
 
 
 def test_preview_queue_has_engine_version():

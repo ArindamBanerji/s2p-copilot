@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,54 @@ def _data_path(filename: str) -> Path:
 def _load_json_fixture(filename: str) -> Any:
     path = _data_path(filename)
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_celonis_cache() -> dict[str, Any]:
+    candidates: list[Path] = []
+    sdk_root = os.environ.get("CLAUDE_SDK", "")
+    if sdk_root:
+        candidates.append(Path(sdk_root) / "apps" / "dataops" / "backend" / "data" / "celonis_process_data.json")
+    candidates.append(_data_path("celonis_process_data.json"))
+
+    for path in candidates:
+        try:
+            if path.is_file():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return data if isinstance(data, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            continue
+    return {}
+
+
+def _build_process_context(celonis_data: dict[str, Any]) -> dict[str, Any] | None:
+    activities = celonis_data.get("activities")
+    if not isinstance(activities, list):
+        return None
+
+    bottleneck = next(
+        (activity for activity in activities if isinstance(activity, dict) and activity.get("bottleneck") is True),
+        None,
+    )
+    if not bottleneck:
+        return None
+
+    duration_hours = float(bottleneck.get("duration_median_hours", bottleneck.get("avg_duration_hours", 0.0)) or 0.0)
+    return {
+        "process_model": celonis_data.get("process_model"),
+        "variant": celonis_data.get("variant"),
+        "bottleneck_activity": bottleneck.get("name") or bottleneck.get("id"),
+        "duration_median_min": round(duration_hours * 60.0, 2),
+        "source": "celonis_cache",
+    }
+
+
+def _with_process_context(invoice: dict[str, Any], process_context: dict[str, Any] | None) -> dict[str, Any]:
+    if not process_context:
+        return dict(invoice)
+    return {
+        **invoice,
+        "process_context": dict(process_context),
+    }
 
 
 def _get_gae_version() -> str:
@@ -270,7 +319,8 @@ def preview_queue(limit: int = 5) -> dict[str, Any]:
     )
     clamped_limit = _clamp_limit(limit, 1, 50)
     shown = invoices[:clamped_limit]
-    exceptions = invoices[:10]
+    process_context = _build_process_context(_load_celonis_cache())
+    exceptions = [_with_process_context(invoice, process_context) for invoice in invoices[:10]]
     auto_approve_count = sum(1 for invoice in invoices if invoice["scored_action"] == "auto_approve")
     confidence_avg = sum(invoice["confidence"] for invoice in invoices) / len(invoices) if invoices else 0.0
     return {

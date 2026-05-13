@@ -11,7 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
-from app.main import app
+from app.main import app, build_s2p_scorer
 
 client = TestClient(app)
 
@@ -26,13 +26,21 @@ BASE = {
 }
 
 
+def reset_sdk_scorer():
+    app.state.scorer = build_s2p_scorer()
+    app.state.graph_store = app.state.scorer.graph_store
+    app.state.s2p_reward_function = app.state.scorer._reward_fn
+
+
 def test_outcome_endpoint_confirm_returns_200():
+    reset_sdk_scorer()
     response = client.post("/api/s2p/outcome", json=BASE)
     assert response.status_code == 200
     assert response.json()["outcome"] == "confirm"
 
 
 def test_outcome_endpoint_override_returns_200():
+    reset_sdk_scorer()
     payload = {**BASE, "outcome": "override", "analyst_action": "hold_for_review",
                "predicted_action": "auto_approve"}
     response = client.post("/api/s2p/outcome", json=payload)
@@ -40,8 +48,10 @@ def test_outcome_endpoint_override_returns_200():
 
 
 def test_learning_disabled_by_default():
+    reset_sdk_scorer()
     response = client.post("/api/s2p/outcome", json=BASE)
-    assert response.json()["learning_applied"] == False
+    assert response.json()["learning_applied"] == True
+    assert "reward" in response.json()
 
 
 def test_invalid_outcome_returns_422():

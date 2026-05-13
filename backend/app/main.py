@@ -13,10 +13,13 @@ from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.reward import S2PRewardFunction
 from app.routers.framework_router import router as framework_router
 from app.routers.s2p import learn_router, router as s2p_router
+from app.routers.s2p_control_tower import router as s2p_control_tower_router
 from app.routers.s2p_evidence import router as s2p_evidence_router
 from app.routers.s2p_insight import router as s2p_insight_router
 from app.routers.s2p_performance import router as s2p_performance_router
 from app.routers.s2p_preview import router as s2p_preview_router
+from app.routers.s2p_pvg import router as s2p_pvg_router
+from app.routers.s2p_suppliers import router as s2p_suppliers_router
 
 
 class _S2PSdkPreset:
@@ -109,9 +112,12 @@ app.include_router(
 )
 app.include_router(framework_router)
 app.include_router(s2p_router)
+app.include_router(s2p_control_tower_router)
 app.include_router(s2p_insight_router)
 app.include_router(s2p_evidence_router)
 app.include_router(s2p_performance_router)
+app.include_router(s2p_pvg_router)
+app.include_router(s2p_suppliers_router)
 app.include_router(s2p_preview_router)
 
 

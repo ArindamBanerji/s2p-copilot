@@ -1,6 +1,13 @@
-"""S2P graph contract for AGE seeding and validation."""
+"""S2P graph contract for graph seeding and validation."""
 
-S2P_GRAPH_CONTRACT = {
+from __future__ import annotations
+
+from typing import Any
+
+from copilot_sdk.graph.contract import EdgeType, GraphContract, NodeType
+
+
+LEGACY_GRAPH_CONTRACT: dict[str, Any] = {
     "graph_name": "s2p_graph",
     "external_node_types": {
         "PipelineSystem": {
@@ -87,3 +94,41 @@ S2P_GRAPH_CONTRACT = {
         {"type": "INVOICE_PATTERN", "from": "Supplier", "to": "Activity"},
     ],
 }
+
+
+class S2PGraphContract(GraphContract):
+    """SDK contract with read-only legacy dictionary access."""
+
+    def __getitem__(self, key: str) -> Any:
+        if key == "graph_name":
+            return self.graph_name
+        return LEGACY_GRAPH_CONTRACT[key]
+
+
+S2P_GRAPH_CONTRACT = S2PGraphContract(
+    graph_name="s2p_graph",
+    expected_nodes=182,
+    expected_edges=608,
+    node_types=[
+        NodeType("Decision", ["decision_id", "invoice_id", "category", "recommended_action", "confidence", "created_at"]),
+        NodeType("Invoice", ["invoice_id", "supplier_id", "po_number", "amount", "currency", "category", "ground_truth_action"]),
+        NodeType("Supplier", ["supplier_id", "name", "category", "exception_rate", "payment_terms", "otif_score"]),
+        NodeType("PurchaseOrder", ["po_id", "po_number", "supplier_id", "currency"]),
+        NodeType("ProcessModel", ["model_id", "name", "source"]),
+        NodeType("Activity", ["activity_id", "name", "avg_duration_hours", "case_count", "status", "bottleneck"]),
+        NodeType("Category", ["category_id", "name"]),
+        NodeType("Factor", ["factor_id", "name"]),
+        NodeType("ComplianceRule", ["rule_id", "name", "category"]),
+    ],
+    edge_types=[
+        EdgeType("DECIDED_ON", "Decision", "Invoice"),
+        EdgeType("SUPPLIED_BY", "Invoice", "Supplier"),
+        EdgeType("MATCHED_TO", "Invoice", "PurchaseOrder"),
+        EdgeType("CONTAINS", "ProcessModel", "Activity"),
+        EdgeType("FOLLOWS", "Activity", "Activity"),
+        EdgeType("IN_CATEGORY", "Invoice", "Category"),
+        EdgeType("EVALUATED_WITH", "Decision", "Factor"),
+        EdgeType("VIOLATES", "Invoice", "ComplianceRule"),
+        EdgeType("BOTTLENECK_AT", "Activity", "Supplier"),
+    ],
+)

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
+from app.routers.s2p_data_helpers import load_invoices
 
 router = APIRouter(prefix="/api/s2p/control-tower", tags=["s2p-control-tower"])
 
@@ -61,24 +60,8 @@ CATEGORY_INTENT = {
 }
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _data_path(filename: str) -> Path:
-    return _repo_root() / "data" / filename
-
-
-def _load_invoices() -> list[dict[str, Any]]:
-    try:
-        data = json.loads(_data_path("synthetic_invoices.json").read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    return [invoice for invoice in data if isinstance(invoice, dict)] if isinstance(data, list) else []
-
-
 def _find_invoice(invoice_id: str) -> dict[str, Any] | None:
-    for invoice in _load_invoices():
+    for invoice in load_invoices():
         if invoice.get("invoice_id") == invoice_id or invoice.get("event_id") == invoice_id:
             return invoice
     return None
@@ -170,7 +153,7 @@ def classify(
 @router.get("/queue")
 def queue(limit: int = Query(20, ge=1, le=100)) -> dict[str, Any]:
     entries = []
-    for invoice in _load_invoices():
+    for invoice in load_invoices():
         classified = _classify_invoice(invoice)
         entries.append(
             {

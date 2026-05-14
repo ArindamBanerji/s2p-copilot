@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Query
 
 from app.domains.s2p.factors import compute_all_factors
+from app.routers.s2p_data_helpers import load_invoices
 
 router = APIRouter(prefix="/api/s2p/pvg", tags=["s2p-pvg"])
 
@@ -37,11 +38,6 @@ def _load_json(path: Path, default: Any) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return default
-
-
-def _load_invoices() -> list[dict[str, Any]]:
-    data = _load_json(_data_path("synthetic_invoices.json"), [])
-    return [invoice for invoice in data if isinstance(invoice, dict)] if isinstance(data, list) else []
 
 
 def _load_process_data() -> dict[str, Any]:
@@ -101,7 +97,7 @@ def variants() -> dict[str, Any]:
             "source": process_data.get("source") or "celonis_cache",
         }
 
-    invoices = _load_invoices()
+    invoices = load_invoices()
     by_category: dict[str, int] = {}
     for invoice in invoices:
         category = str(invoice.get("category") or "uncategorized")
@@ -141,7 +137,7 @@ def impact(period: str = Query("annual", pattern="^(monthly|quarterly|annual)$")
 @router.get("/leakage")
 def leakage() -> dict[str, Any]:
     flagged: list[dict[str, Any]] = []
-    for invoice in _load_invoices():
+    for invoice in load_invoices():
         factors = compute_all_factors(invoice)
         variance = float(factors.get("amount_variance_ratio", 0.0))
         correlation = float(factors.get("commodity_index_correlation", 1.0))

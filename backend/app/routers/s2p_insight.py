@@ -12,8 +12,12 @@ from fastapi import APIRouter, Query
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
+from app.routers.s2p_data_helpers import load_invoices, load_suppliers
 
 router = APIRouter(prefix="/api/s2p/insight", tags=["s2p-insight"])
+
+_load_invoices = load_invoices
+_load_suppliers = load_suppliers
 
 
 def _repo_root() -> Path:
@@ -32,21 +36,11 @@ def _load_json(path: Path, default: Any) -> Any:
     return data
 
 
-def _load_invoices() -> list[dict[str, Any]]:
-    data = _load_json(_data_path("synthetic_invoices.json"), [])
-    return [invoice for invoice in data if isinstance(invoice, dict)] if isinstance(data, list) else []
-
-
 def _find_invoice(invoice_id: str) -> dict[str, Any] | None:
     for invoice in _load_invoices():
         if invoice.get("invoice_id") == invoice_id or invoice.get("event_id") == invoice_id:
             return invoice
     return None
-
-
-def _load_suppliers() -> list[dict[str, Any]]:
-    data = _load_json(_data_path("s2p_demo_suppliers.json"), [])
-    return [supplier for supplier in data if isinstance(supplier, dict)] if isinstance(data, list) else []
 
 
 def _load_celonis() -> dict[str, Any]:

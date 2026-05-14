@@ -4,49 +4,23 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 import hashlib
-import json
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
+from app.routers.s2p_data_helpers import load_invoices, load_suppliers
 
 router = APIRouter(prefix="/api/s2p/suppliers", tags=["s2p-suppliers"])
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _data_path(filename: str) -> Path:
-    return _repo_root() / "data" / filename
-
-
-def _load_json(filename: str, default: Any) -> Any:
-    try:
-        return json.loads(_data_path(filename).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return default
-
-
-def _load_suppliers() -> list[dict[str, Any]]:
-    data = _load_json("s2p_demo_suppliers.json", [])
-    return [supplier for supplier in data if isinstance(supplier, dict)] if isinstance(data, list) else []
-
-
-def _load_invoices() -> list[dict[str, Any]]:
-    data = _load_json("synthetic_invoices.json", [])
-    return [invoice for invoice in data if isinstance(invoice, dict)] if isinstance(data, list) else []
-
-
 def _supplier_invoices(supplier_id: str) -> list[dict[str, Any]]:
-    return [invoice for invoice in _load_invoices() if invoice.get("supplier_id") == supplier_id]
+    return [invoice for invoice in load_invoices() if invoice.get("supplier_id") == supplier_id]
 
 
 def _find_supplier(supplier_id: str) -> dict[str, Any]:
-    for supplier in _load_suppliers():
+    for supplier in load_suppliers():
         if supplier.get("supplier_id") == supplier_id:
             return supplier
     raise HTTPException(status_code=404, detail=f"Supplier {supplier_id} not found")
@@ -123,13 +97,13 @@ def _cluster_description(cluster_id: str) -> str:
 @router.get("")
 @router.get("/")
 def suppliers() -> dict[str, Any]:
-    rows = [_summary(supplier) for supplier in _load_suppliers()]
+    rows = [_summary(supplier) for supplier in load_suppliers()]
     return {"suppliers": rows, "total": len(rows), "source": "s2p_demo_suppliers.json"}
 
 
 @router.get("/clustering")
 def clustering() -> dict[str, Any]:
-    summaries = [_summary(supplier) for supplier in _load_suppliers()]
+    summaries = [_summary(supplier) for supplier in load_suppliers()]
     buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for summary in summaries:
         buckets[_cluster_name(summary)].append(summary)

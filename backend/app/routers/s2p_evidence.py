@@ -2,32 +2,17 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
+from app.routers.s2p_data_helpers import load_invoices
 
 router = APIRouter(prefix="/api/s2p/evidence", tags=["s2p-evidence"])
 
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _data_path(filename: str) -> Path:
-    return _repo_root() / "data" / filename
-
-
-def _load_invoices() -> list[dict[str, Any]]:
-    try:
-        data = json.loads(_data_path("synthetic_invoices.json").read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    return [invoice for invoice in data if isinstance(invoice, dict)] if isinstance(data, list) else []
+_load_invoices = load_invoices
 
 
 def _graph_store(request: Request) -> Any | None:

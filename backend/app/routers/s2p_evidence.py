@@ -24,66 +24,48 @@ def _graph_store(request: Request) -> Any | None:
     return getattr(scorer, "graph_store", None)
 
 
-def _decision_invoice_index(request: Request) -> dict[str, dict[str, Any]]:
-    state = getattr(request.app, "state", None)
-    index = getattr(state, "s2p_decision_invoice_index", None)
-    return index if isinstance(index, dict) else {}
-
-
-def _indexed_invoice_metadata(
-    decision: dict[str, Any],
-    index: dict[str, dict[str, Any]],
-) -> dict[str, Any] | None:
-    decision_id = str(decision.get("decision_id") or "")
-    link = index.get(decision_id)
-    return link if isinstance(link, dict) else None
+def _decision_metadata(decision: dict[str, Any]) -> dict[str, Any]:
+    metadata = decision.get("metadata")
+    return dict(metadata) if isinstance(metadata, dict) else {}
 
 
 def _decision_matches_invoice(
     decision: dict[str, Any],
     invoice_id: str,
-    index: dict[str, dict[str, Any]] | None = None,
 ) -> bool:
-    metadata = decision.get("metadata") if isinstance(decision.get("metadata"), dict) else {}
-    indexed = _indexed_invoice_metadata(decision, index or {}) or {}
+    metadata = _decision_metadata(decision)
     return (
         decision.get("entity_id") == invoice_id
         or decision.get("decision_id") == invoice_id
+        or decision.get("invoice_id") == invoice_id
+        or decision.get("source_invoice_id") == invoice_id
         or metadata.get("invoice_id") == invoice_id
         or metadata.get("entity_id") == invoice_id
-        or indexed.get("invoice_id") == invoice_id
-        or indexed.get("source_invoice_id") == invoice_id
+        or metadata.get("source_invoice_id") == invoice_id
     )
 
 
-def _enrich_decision_invoice_metadata(
-    decision: dict[str, Any],
-    index: dict[str, dict[str, Any]],
-) -> dict[str, Any]:
-    indexed = _indexed_invoice_metadata(decision, index)
-    if not indexed:
-        return decision
+def _enrich_decision_invoice_metadata(decision: dict[str, Any]) -> dict[str, Any]:
     enriched = dict(decision)
     metadata = dict(enriched.get("metadata") or {})
-    metadata.update({key: value for key, value in indexed.items() if value is not None})
     enriched["metadata"] = metadata
     for key in ("invoice_id", "source_invoice_id", "supplier_id", "supplier_name", "amount"):
-        if indexed.get(key) is not None:
-            enriched[key] = indexed[key]
+        value = metadata.get(key) or enriched.get(key)
+        if value is not None:
+            enriched[key] = value
     return enriched
 
 
 @router.get("/audit-trail/{invoice_id}")
 def audit_trail(invoice_id: str, request: Request) -> dict[str, Any]:
     graph_store = _graph_store(request)
-    invoice_index = _decision_invoice_index(request)
     decisions: list[dict[str, Any]] = []
     if graph_store is not None and hasattr(graph_store, "get_all_decisions"):
         try:
             decisions = [
-                _enrich_decision_invoice_metadata(decision, invoice_index)
+                _enrich_decision_invoice_metadata(decision)
                 for decision in graph_store.get_all_decisions()
-                if isinstance(decision, dict) and _decision_matches_invoice(decision, invoice_id, invoice_index)
+                if isinstance(decision, dict) and _decision_matches_invoice(decision, invoice_id)
             ]
         except Exception:
             decisions = []
@@ -93,7 +75,7 @@ def audit_trail(invoice_id: str, request: Request) -> dict[str, Any]:
         except Exception:
             decision = None
         if isinstance(decision, dict):
-            decisions = [decision]
+            decisions = [_enrich_decision_invoice_metadata(decision)]
     return {"invoice_id": invoice_id, "decisions": decisions, "count": len(decisions)}
 
 

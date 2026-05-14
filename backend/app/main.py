@@ -1,15 +1,10 @@
-import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from copilot_sdk.backend import create_conservation_router
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
 from copilot_sdk.scoring import CompoundingScorer
-from copilot_sdk.scoring.config import DomainShape
-from copilot_sdk.scoring.storage import DecisionStore
-from gae import ProfileScorer
 
-from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.reward import S2PRewardFunction
 from app.routers.framework_router import router as framework_router
 from app.routers.s2p import learn_router, router as s2p_router
@@ -22,44 +17,9 @@ from app.routers.s2p_pvg import router as s2p_pvg_router
 from app.routers.s2p_suppliers import router as s2p_suppliers_router
 
 
-class _S2PSdkPreset:
-    @property
-    def name(self) -> str:
-        return "s2p"
+class _S2PGraphStore(InMemoryGraphStore):
+    """Preserve the public S2P decision-id prefix on top of SDK GraphStore behavior."""
 
-    @property
-    def shape(self) -> DomainShape:
-        return DomainShape(
-            n_categories=S2PDomainConfig.n_categories,
-            n_actions=S2PDomainConfig.n_actions,
-            n_factors=S2PDomainConfig.n_factors,
-            category_names=tuple(S2PDomainConfig.categories),
-            action_names=tuple(S2PDomainConfig.actions),
-            factor_names=tuple(S2PDomainConfig.factors),
-        )
-
-    @property
-    def penalty_ratio(self) -> float:
-        return float(S2PDomainConfig.penalty_ratio)
-
-    @property
-    def eta_confirm(self) -> float:
-        return float(S2PDomainConfig.eta_confirm)
-
-    @property
-    def eta_override(self) -> float:
-        return float(S2PDomainConfig.eta_override)
-
-    @property
-    def temperature(self) -> float:
-        return float(getattr(S2PDomainConfig, "tau", 0.1))
-
-    @property
-    def bootstrap_centroids(self) -> np.ndarray:
-        return np.asarray(S2PDomainConfig.get_profile_centroids(), dtype=np.float64)
-
-
-class _S2PInMemoryGraphStore(InMemoryGraphStore):
     def write_decision(self, entity_id, category, action, confidence, factors, metadata=None):
         meta = dict(metadata or {})
         decision_id = str(meta.get("decision_id") or entity_id)
@@ -77,17 +37,10 @@ class _S2PInMemoryGraphStore(InMemoryGraphStore):
 
 
 def build_s2p_scorer() -> CompoundingScorer:
-    preset = _S2PSdkPreset()
-    profile_scorer = ProfileScorer(
-        mu=preset.bootstrap_centroids.copy(),
-        actions=list(S2PDomainConfig.actions),
-        categories=list(S2PDomainConfig.categories),
-    )
-    return CompoundingScorer(
-        preset=preset,
-        store=DecisionStore(":memory:"),
-        scorer=profile_scorer,
-        graph_store=_S2PInMemoryGraphStore(),
+    return CompoundingScorer.from_preset(
+        "s2p",
+        db_path=":memory:",
+        graph_store=_S2PGraphStore(),
         reward_function=S2PRewardFunction(),
     )
 

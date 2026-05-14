@@ -40,7 +40,8 @@ def reset_sdk_scorer():
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
     app.state.s2p_reward_function = app.state.scorer._reward_fn
-    app.state.s2p_decision_invoice_index = {}
+    if hasattr(app.state, "s2p_decision_invoice_index"):
+        delattr(app.state, "s2p_decision_invoice_index")
 
 
 def test_audit_trail_returns_decision_chain():

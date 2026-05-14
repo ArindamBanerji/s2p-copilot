@@ -8,7 +8,6 @@ Run from backend/:
 import json
 import sys
 import os
-import threading
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -352,35 +351,6 @@ def test_outcome_overridden_negative_reward():
     assert response.json()["reward"] == -1.25
 
 
-def test_learn_with_scorer_restores_reward_function_on_exception():
-    class Reward:
-        def compute(self, recommended_action, actual_action, outcome):
-            return float(outcome.get("recovery_pct", 100)) / 100
-
-    class FailingScorer:
-        def __init__(self):
-            self._reward_fn = Reward()
-
-        def learn(self, decision_id, actual_action, outcome):
-            raise RuntimeError("boom")
-
-    scorer = FailingScorer()
-    original = scorer._reward_fn
-
-    try:
-        s2p_router._learn_with_scorer(
-            scorer,
-            "S2P-ERR",
-            "auto_approve",
-            "confirmed",
-            {"recovery_pct": 25},
-        )
-    except RuntimeError:
-        pass
-
-    assert scorer._reward_fn is original
-
-
 def test_learn_context_isolated_between_requests():
     first = score_for_learn()
     first_response = client.post(
@@ -410,47 +380,34 @@ def test_learn_context_isolated_between_requests():
     assert second_response.json()["reward_raw"] == 0.9
 
 
-def test_reward_context_lock_serializes_mutation(monkeypatch):
-    class RecordingLock:
-        def __init__(self):
-            self._lock = threading.Lock()
-            self.assignment_locked = []
-
-        def __enter__(self):
-            self._lock.acquire()
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            self._lock.release()
-
-        def locked(self):
-            return self._lock.locked()
-
-    class Reward:
-        def compute(self, recommended_action, actual_action, outcome):
-            return float(outcome.get("recovery_pct", 100)) / 100
+def test_learn_with_scorer_uses_context_without_mutating_reward_function():
+    class GraphStore:
+        def get_decision(self, decision_id):
+            return {
+                "decision_id": decision_id,
+                "recommended_action": "auto_approve",
+                "metadata": {"invoice_id": "S2P-INV-TEST"},
+            }
 
     class RecordingScorer:
-        def __init__(self, lock):
-            object.__setattr__(self, "lock", lock)
-            object.__setattr__(self, "_reward_fn", Reward())
-            object.__setattr__(self, "assignment_locked", [])
+        def __init__(self):
+            object.__setattr__(self, "graph_store", GraphStore())
+            object.__setattr__(self, "_reward_fn", s2p_router.S2PRewardFunction())
+            object.__setattr__(self, "reward_assignments", 0)
 
         def __setattr__(self, name, value):
             if name == "_reward_fn":
-                self.assignment_locked.append(self.lock.locked())
+                self.reward_assignments += 1
             object.__setattr__(self, name, value)
 
         def learn(self, decision_id, actual_action, outcome):
             return {
                 "decision_id": decision_id,
-                "reward": self._reward_fn.compute("auto_approve", actual_action, {}),
-                "reward_raw": self._reward_fn.compute("auto_approve", actual_action, {}),
+                "reward": None,
+                "reward_raw": None,
             }
 
-    lock = RecordingLock()
-    scorer = RecordingScorer(lock)
-    monkeypatch.setattr(s2p_router, "_reward_context_lock", lock)
+    scorer = RecordingScorer()
 
     result = s2p_router._learn_with_scorer(
         scorer,
@@ -461,4 +418,6 @@ def test_reward_context_lock_serializes_mutation(monkeypatch):
     )
 
     assert result["reward_raw"] == 0.4
-    assert scorer.assignment_locked == [True, True]
+    assert result["reward"] == 0.4
+    assert result["invoice_id"] == "S2P-INV-TEST"
+    assert scorer.reward_assignments == 0

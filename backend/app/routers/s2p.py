@@ -7,7 +7,6 @@ This file: S2P procurement domain endpoints only.
 from __future__ import annotations
 
 import json
-import threading
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
@@ -24,7 +23,6 @@ router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 learn_router = APIRouter(prefix="/api", tags=["S2P"])
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
-_reward_context_lock = threading.Lock()
 
 
 def _load_synthetic_invoices() -> list[dict]:
@@ -113,44 +111,69 @@ def _sdk_scorer(http_request: Request):
     return scorer
 
 
-def _decision_invoice_index(http_request: Request) -> dict[str, dict[str, Any]]:
-    state = getattr(http_request.app, "state", None)
-    index = getattr(state, "s2p_decision_invoice_index", None)
-    if not isinstance(index, dict):
-        index = {}
-        setattr(state, "s2p_decision_invoice_index", index)
-    return index
-
-
-def _index_score_decision(http_request: Request, decision_id: str, invoice: dict[str, Any]) -> None:
+def _invoice_decision_metadata(invoice: dict[str, Any]) -> dict[str, Any]:
     invoice_id = str(invoice.get("invoice_id") or invoice.get("event_id") or "")
-    if not decision_id or not invoice_id:
-        return
-    # Temporary S2P invoice index until GraphStore supports update/link metadata.
-    _decision_invoice_index(http_request)[decision_id] = {
+    metadata = {
         "invoice_id": invoice_id,
         "source_invoice_id": invoice_id,
         "supplier_id": invoice.get("supplier_id"),
         "supplier_name": invoice.get("supplier_name"),
         "amount": invoice.get("amount"),
     }
+    return {key: value for key, value in metadata.items() if value not in (None, "")}
 
 
-class _ContextualRewardFunction:
-    def __init__(self, reward_function: S2PRewardFunction, context: dict[str, Any]):
-        self._reward_function = reward_function
-        self._context = dict(context)
-        self.name = getattr(reward_function, "name", "s2p_graded_financial")
+def _decision_metadata(decision: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(decision, dict):
+        return {}
+    metadata = decision.get("metadata")
+    return dict(metadata) if isinstance(metadata, dict) else {}
 
-    def compute(
-        self,
-        recommended_action: str,
-        actual_action: str,
-        outcome: dict[str, Any],
-    ) -> float:
-        merged = dict(outcome or {})
-        merged.update({key: value for key, value in self._context.items() if value is not None})
-        return self._reward_function.compute(recommended_action, actual_action, merged)
+
+def _decision_invoice_id(decision: dict[str, Any] | None) -> str:
+    if not isinstance(decision, dict):
+        return ""
+    metadata = _decision_metadata(decision)
+    for key in ("invoice_id", "source_invoice_id", "entity_id"):
+        value = metadata.get(key) or decision.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _recommended_action(decision: dict[str, Any] | None) -> str:
+    if not isinstance(decision, dict):
+        return ""
+    return str(decision.get("recommended_action") or decision.get("action") or "")
+
+
+def _scale_s2p_reward(raw: float, scorer: Any) -> float:
+    try:
+        ratio = float(getattr(getattr(scorer, "_preset", None), "penalty_ratio", S2PDomainConfig.penalty_ratio))
+    except (TypeError, ValueError):
+        ratio = float(S2PDomainConfig.penalty_ratio)
+    clipped = max(-1.0, min(float(raw), 1.0))
+    return clipped * ratio if clipped < 0 else clipped
+
+
+def _s2p_reward_payload(
+    scorer: Any,
+    decision: dict[str, Any] | None,
+    actual_action: str,
+    outcome: str,
+    context: dict[str, Any] | None,
+) -> dict[str, float]:
+    reward_fn = getattr(scorer, "_reward_fn", None)
+    if not isinstance(reward_fn, S2PRewardFunction):
+        reward_fn = S2PRewardFunction()
+    reward_context = {"outcome": outcome}
+    reward_context.update(_decision_metadata(decision))
+    reward_context.update({key: value for key, value in (context or {}).items() if value is not None})
+    reward_raw = float(reward_fn.compute(_recommended_action(decision), actual_action, reward_context))
+    return {
+        "reward_raw": reward_raw,
+        "reward": _scale_s2p_reward(reward_raw, scorer),
+    }
 
 
 def _json_safe(value: Any) -> Any:
@@ -180,20 +203,21 @@ def _learn_with_scorer(
     outcome: str,
     context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    # SDK learn currently accepts an outcome string only. Serialize this narrow
-    # compatibility bridge so per-request reward context cannot leak globally.
-    with _reward_context_lock:
-        original_reward = getattr(scorer, "_reward_fn", None)
-        if original_reward is not None and context:
-            scorer._reward_fn = _ContextualRewardFunction(original_reward, context)
-        try:
-            result = scorer.learn(decision_id, actual_action, outcome)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail=f"Unknown decision: {decision_id}") from exc
-        finally:
-            if original_reward is not None:
-                scorer._reward_fn = original_reward
-    return _json_safe(result)
+    try:
+        decision = scorer.graph_store.get_decision(decision_id)
+    except Exception:
+        decision = None
+    try:
+        result = scorer.learn(decision_id, actual_action, outcome)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown decision: {decision_id}") from exc
+    payload = _json_safe(result)
+    if isinstance(payload, dict) and isinstance(decision, dict):
+        payload.update(_s2p_reward_payload(scorer, decision, actual_action, outcome, context))
+        invoice_id = _decision_invoice_id(decision)
+        if invoice_id:
+            payload.setdefault("invoice_id", invoice_id)
+    return payload
 
 
 def _ensure_outcome_decision(scorer: Any, request: "OutcomeRequest") -> None:
@@ -351,10 +375,13 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
     factor_vector = [computed_factors[name] for name in S2PDomainConfig.factors]
     scorer = _sdk_scorer(http_request)
     try:
-        score_result = scorer.score(computed_factors, request.category)
+        score_result = scorer.score(
+            computed_factors,
+            request.category,
+            metadata=_invoice_decision_metadata(invoice),
+        )
     except AssertionError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    _index_score_decision(http_request, score_result.decision_id, invoice)
 
     try:
         from app.db.neo4j import neo4j_client
@@ -461,6 +488,11 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
 
     scorer = _sdk_scorer(http_request)
     _ensure_outcome_decision(scorer, request)
+    try:
+        decision = scorer.graph_store.get_decision(request.decision_id)
+    except Exception:
+        decision = None
+    invoice_id = _decision_invoice_id(decision)
     payload = _learn_with_scorer(
         scorer,
         request.decision_id,
@@ -470,6 +502,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             "amount": request.amount,
             "at_risk": request.at_risk,
             "recovery_pct": request.recovery_pct,
+            "invoice_id": invoice_id or None,
         },
     )
     payload["outcome"] = request.outcome

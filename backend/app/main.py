@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,6 +17,23 @@ from app.routers.s2p_performance import router as s2p_performance_router
 from app.routers.s2p_preview import router as s2p_preview_router
 from app.routers.s2p_pvg import router as s2p_pvg_router
 from app.routers.s2p_suppliers import router as s2p_suppliers_router
+
+
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173,"
+    "http://localhost:5174,"
+    "http://localhost:5175,"
+    "http://localhost:5176,"
+    "http://localhost:5177"
+)
+
+
+def _cors_origins() -> list[str]:
+    return [
+        origin.strip()
+        for origin in os.environ.get("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",")
+        if origin.strip()
+    ]
 
 
 class _S2PGraphStore(InMemoryGraphStore):
@@ -50,7 +69,7 @@ app.state.graph_store = app.state.scorer.graph_store
 app.state.s2p_reward_function = app.state.scorer._reward_fn
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins(),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

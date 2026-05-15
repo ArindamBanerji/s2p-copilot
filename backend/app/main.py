@@ -8,7 +8,6 @@ from copilot_sdk.graph.memory_store import InMemoryGraphStore
 from copilot_sdk.scoring import CompoundingScorer
 
 from app.domains.s2p.reward import S2PRewardFunction
-from app.routers.framework_router import router as framework_router
 from app.routers.s2p import learn_router, router as s2p_router
 from app.routers.s2p_control_tower import router as s2p_control_tower_router
 from app.routers.s2p_evidence import router as s2p_evidence_router
@@ -82,7 +81,6 @@ app.include_router(
     ),
     prefix="/api",
 )
-app.include_router(framework_router)
 app.include_router(s2p_router)
 app.include_router(s2p_control_tower_router)
 app.include_router(s2p_insight_router)

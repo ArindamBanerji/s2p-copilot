@@ -7,9 +7,11 @@ from copilot_sdk.backend import create_conservation_router
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
 from copilot_sdk.scoring import CompoundingScorer
 
+from app.domains.s2p.evolution import S2PEvolutionService
 from app.domains.s2p.reward import S2PRewardFunction
 from app.routers.s2p import learn_router, router as s2p_router
 from app.routers.s2p_control_tower import router as s2p_control_tower_router
+from app.routers.s2p_evolution import router as s2p_evolution_router
 from app.routers.s2p_evidence import router as s2p_evidence_router
 from app.routers.s2p_insight import router as s2p_insight_router
 from app.routers.s2p_performance import router as s2p_performance_router
@@ -66,6 +68,7 @@ app = FastAPI(title="S2P Copilot", version="0.1.0")
 app.state.scorer = build_s2p_scorer()
 app.state.graph_store = app.state.scorer.graph_store
 app.state.s2p_reward_function = app.state.scorer._reward_fn
+app.state.s2p_evolution = S2PEvolutionService(app.state.scorer)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
@@ -82,6 +85,7 @@ app.include_router(
     prefix="/api",
 )
 app.include_router(s2p_router)
+app.include_router(s2p_evolution_router)
 app.include_router(s2p_control_tower_router)
 app.include_router(s2p_insight_router)
 app.include_router(s2p_evidence_router)

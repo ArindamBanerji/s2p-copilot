@@ -1,0 +1,164 @@
+{
+  "version": "gap_h1_v1",
+  "conservation_status": "GREEN",
+  "conservation_pass": true,
+  "rule_templates": [
+    {
+      "name": "auto_approve_threshold_sweep",
+      "label": "Auto-approve threshold sweep",
+      "success_metric_name": "safe_auto_approve_rate"
+    },
+    {
+      "name": "routing_priority_permutation",
+      "label": "Routing priority permutation",
+      "success_metric_name": "routing_precision"
+    },
+    {
+      "name": "escalation_trigger_amount",
+      "label": "Escalation trigger amount",
+      "success_metric_name": "high_value_capture_rate"
+    },
+    {
+      "name": "supplier_flag_sensitivity",
+      "label": "Supplier flag sensitivity",
+      "success_metric_name": "supplier_exception_precision"
+    },
+    {
+      "name": "evidence_presentation_order",
+      "label": "Evidence presentation order",
+      "success_metric_name": "analyst_confirmation_rate"
+    }
+  ],
+  "variants": [
+    {
+      "variant_id": "auto_approve_threshold_sweep:price_variance:0.91",
+      "template_name": "auto_approve_threshold_sweep",
+      "category": "price_variance",
+      "parameter": "confidence_threshold",
+      "baseline_threshold": 0.85,
+      "threshold": 0.91,
+      "win_rate": 1.0,
+      "sample_size": 42,
+      "category_evidence": {
+        "price_variance": {
+          "win_rate": 1.0,
+          "score": 0.94
+        }
+      },
+      "source": "fixture"
+    },
+    {
+      "variant_id": "auto_approve_threshold_sweep:price_variance:0.79",
+      "template_name": "auto_approve_threshold_sweep",
+      "category": "price_variance",
+      "parameter": "confidence_threshold",
+      "baseline_threshold": 0.85,
+      "threshold": 0.79,
+      "win_rate": 0.4,
+      "sample_size": 12,
+      "source": "fixture"
+    },
+    {
+      "variant_id": "routing_priority_permutation:order:1",
+      "template_name": "routing_priority_permutation",
+      "categories": [
+        "price_variance",
+        "quantity_mismatch",
+        "duplicate_risk",
+        "contract_gap",
+        "format_compliance"
+      ],
+      "parameter": "action_priority",
+      "action_priority": [
+        "hold_for_review",
+        "escalate_to_buyer",
+        "flag_leakage",
+        "auto_approve",
+        "refer_to_specialist"
+      ],
+      "win_rate": 0.72,
+      "sample_size": 30,
+      "source": "fixture"
+    }
+  ],
+  "shadow_results": {
+    "auto_approve_threshold_sweep:price_variance:0.91": [
+      {
+        "better": true,
+        "win": true,
+        "accuracy": 0.94,
+        "baseline_accuracy": 0.86,
+        "regression": false,
+        "sample_size": 14,
+        "metric_name": "safe_auto_approve_rate"
+      },
+      {
+        "better": true,
+        "win": true,
+        "accuracy": 0.93,
+        "baseline_accuracy": 0.85,
+        "regression": false,
+        "sample_size": 13,
+        "metric_name": "safe_auto_approve_rate"
+      },
+      {
+        "better": true,
+        "win": true,
+        "accuracy": 0.95,
+        "baseline_accuracy": 0.87,
+        "regression": false,
+        "sample_size": 15,
+        "metric_name": "safe_auto_approve_rate"
+      }
+    ],
+    "auto_approve_threshold_sweep:price_variance:0.79": [
+      {
+        "better": false,
+        "win": false,
+        "accuracy": 0.71,
+        "baseline_accuracy": 0.86,
+        "regression": true,
+        "sample_size": 12,
+        "metric_name": "safe_auto_approve_rate"
+      },
+      {
+        "better": false,
+        "win": false,
+        "accuracy": 0.69,
+        "baseline_accuracy": 0.85,
+        "regression": true,
+        "sample_size": 12,
+        "metric_name": "safe_auto_approve_rate"
+      },
+      {
+        "better": false,
+        "win": false,
+        "accuracy": 0.72,
+        "baseline_accuracy": 0.87,
+        "regression": true,
+        "sample_size": 12,
+        "metric_name": "safe_auto_approve_rate"
+      }
+    ]
+  },
+  "promoted": {
+    "template_name": "auto_approve_threshold_sweep",
+    "variant_id": "auto_approve_threshold_sweep:price_variance:0.91",
+    "category": "price_variance",
+    "parameter": "confidence_threshold",
+    "before": 0.85,
+    "after": 0.91,
+    "state": "promoted",
+    "source": "fixture",
+    "evidence": {
+      "shadow_batches": 3,
+      "win_rate": 1.0,
+      "conservation_status": "GREEN"
+    }
+  },
+  "story_labels": {
+    "headline": "Auto-approve threshold moved from 0.85 to 0.91",
+    "panel": "S2P evolution",
+    "source": "fixture"
+  }
+}

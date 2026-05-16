@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from copilot_sdk.backend import create_conservation_router
+from copilot_sdk.backend.transfer_router import create_transfer_router
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
 from copilot_sdk.scoring import CompoundingScorer
 
@@ -25,7 +26,8 @@ DEFAULT_CORS_ORIGINS = (
     "http://localhost:5174,"
     "http://localhost:5175,"
     "http://localhost:5176,"
-    "http://localhost:5177"
+    "http://localhost:5177,"
+    "http://127.0.0.1:5177"
 )
 
 
@@ -84,6 +86,7 @@ app.include_router(
     ),
     prefix="/api",
 )
+app.include_router(create_transfer_router(app.state.scorer))
 app.include_router(s2p_router)
 app.include_router(s2p_evolution_router)
 app.include_router(s2p_control_tower_router)

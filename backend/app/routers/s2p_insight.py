@@ -12,7 +12,7 @@ from fastapi import APIRouter, Query
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
-from app.routers.s2p_data_helpers import load_invoices, load_suppliers
+from app.routers.s2p_data_helpers import find_invoice, load_invoices, load_suppliers
 
 router = APIRouter(prefix="/api/s2p/insight", tags=["s2p-insight"])
 
@@ -28,19 +28,12 @@ def _data_path(filename: str) -> Path:
     return _repo_root() / "data" / filename
 
 
-def _load_json(path: Path, default: Any) -> Any:
+def _load_candidate_json(path: Path, default: Any) -> Any:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return default
     return data
-
-
-def _find_invoice(invoice_id: str) -> dict[str, Any] | None:
-    for invoice in _load_invoices():
-        if invoice.get("invoice_id") == invoice_id or invoice.get("event_id") == invoice_id:
-            return invoice
-    return None
 
 
 def _load_celonis() -> dict[str, Any]:
@@ -50,7 +43,7 @@ def _load_celonis() -> dict[str, Any]:
         candidates.append(Path(sdk_root) / "apps" / "dataops" / "backend" / "data" / "celonis_process_data.json")
     candidates.append(_data_path("celonis_process_data.json"))
     for path in candidates:
-        data = _load_json(path, {})
+        data = _load_candidate_json(path, {})
         if isinstance(data, dict) and data:
             return data
     return {}
@@ -82,7 +75,7 @@ def _supplier_name(invoice: dict[str, Any], suppliers: dict[str, dict[str, Any]]
 
 @router.get("/fingerprint")
 def fingerprint(invoice_id: str) -> dict[str, Any]:
-    invoice = _find_invoice(invoice_id)
+    invoice = find_invoice(invoice_id)
     if invoice is None:
         return {"error": f"Invoice {invoice_id} not found"}
     factors = compute_all_factors(invoice)
@@ -97,7 +90,7 @@ def fingerprint(invoice_id: str) -> dict[str, Any]:
 
 @router.get("/similar")
 def similar(invoice_id: str, limit: int = Query(5, ge=1, le=50)) -> dict[str, Any]:
-    invoice = _find_invoice(invoice_id)
+    invoice = find_invoice(invoice_id)
     if invoice is None:
         return {"invoice_id": invoice_id, "similar": [], "count": 0, "error": f"Invoice {invoice_id} not found"}
     base_factors = compute_all_factors(invoice)

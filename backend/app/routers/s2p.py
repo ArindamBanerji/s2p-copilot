@@ -6,9 +6,7 @@ This file: S2P procurement domain endpoints only.
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, is_dataclass
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -16,34 +14,11 @@ from typing import Any, Optional
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import S2PEvent, compute_all_factors
-from app.domains.s2p.reward import S2PRewardFunction
+from app.routers.s2p_data_helpers import find_invoice
 from app.routers.s2p_preview import _load_celonis_cache
 
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 learn_router = APIRouter(prefix="/api", tags=["S2P"])
-
-DATA_DIR = Path(__file__).resolve().parents[3] / "data"
-
-
-def _load_synthetic_invoices() -> list[dict]:
-    path = DATA_DIR / "synthetic_invoices.json"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    return data if isinstance(data, list) else []
-
-
-def _find_invoice(event_id_or_invoice_id: str) -> dict | None:
-    for invoice in _load_synthetic_invoices():
-        if not isinstance(invoice, dict):
-            continue
-        if invoice.get("invoice_id") == event_id_or_invoice_id:
-            return invoice
-        if invoice.get("event_id") == event_id_or_invoice_id:
-            return invoice
-    return None
-
 
 def _resolve_graph_context(invoice_id: str, http_request: Request):
     state = getattr(http_request.app, "state", None)
@@ -95,14 +70,6 @@ def _score_process_context() -> dict | None:
     return process_context
 
 
-def _reward_function(http_request: Request) -> S2PRewardFunction:
-    state = getattr(http_request.app, "state", None)
-    reward_function = getattr(state, "s2p_reward_function", None)
-    if reward_function is None:
-        return S2PRewardFunction()
-    return reward_function
-
-
 def _sdk_scorer(http_request: Request):
     state = getattr(http_request.app, "state", None)
     scorer = getattr(state, "scorer", None)
@@ -141,39 +108,53 @@ def _decision_invoice_id(decision: dict[str, Any] | None) -> str:
     return ""
 
 
-def _recommended_action(decision: dict[str, Any] | None) -> str:
-    if not isinstance(decision, dict):
-        return ""
-    return str(decision.get("recommended_action") or decision.get("action") or "")
-
-
-def _scale_s2p_reward(raw: float, scorer: Any) -> float:
-    try:
-        ratio = float(getattr(getattr(scorer, "_preset", None), "penalty_ratio", S2PDomainConfig.penalty_ratio))
-    except (TypeError, ValueError):
-        ratio = float(S2PDomainConfig.penalty_ratio)
-    clipped = max(-1.0, min(float(raw), 1.0))
-    return clipped * ratio if clipped < 0 else clipped
-
-
-def _s2p_reward_payload(
-    scorer: Any,
+def _decision_context(
     decision: dict[str, Any] | None,
-    actual_action: str,
-    outcome: str,
-    context: dict[str, Any] | None,
-) -> dict[str, float]:
-    reward_fn = getattr(scorer, "_reward_fn", None)
-    if not isinstance(reward_fn, S2PRewardFunction):
-        reward_fn = S2PRewardFunction()
-    reward_context = {"outcome": outcome}
-    reward_context.update(_decision_metadata(decision))
-    reward_context.update({key: value for key, value in (context or {}).items() if value is not None})
-    reward_raw = float(reward_fn.compute(_recommended_action(decision), actual_action, reward_context))
-    return {
-        "reward_raw": reward_raw,
-        "reward": _scale_s2p_reward(reward_raw, scorer),
-    }
+    explicit_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    context: dict[str, Any] = {}
+    metadata = _decision_metadata(decision)
+    factors = decision.get("factors") if isinstance(decision, dict) else {}
+    factors = factors if isinstance(factors, dict) else {}
+
+    for key in (
+        "invoice_id",
+        "source_invoice_id",
+        "supplier_id",
+        "supplier",
+        "supplier_name",
+        "commodity",
+        "amount",
+        "total_amount",
+    ):
+        value = metadata.get(key)
+        if value is None and isinstance(decision, dict):
+            value = decision.get(key)
+        if value is not None:
+            context[key] = value
+
+    if "supplier" not in context and "supplier_name" in context:
+        context["supplier"] = context["supplier_name"]
+    if "supplier" not in context and "supplier_id" in context:
+        context["supplier"] = context["supplier_id"]
+    if "total_amount" not in context and "amount" in context:
+        context["total_amount"] = context["amount"]
+
+    for key in (
+        "match_status",
+        "amount_variance_ratio",
+        "duplicate_score",
+        "supplier_exception_history",
+        "payment_terms_impact",
+        "commodity_index_correlation",
+        "tax_regulatory_compliance",
+    ):
+        value = factors.get(key)
+        if value is not None:
+            context[key] = value
+
+    context.update({key: value for key, value in (explicit_context or {}).items() if value is not None})
+    return context
 
 
 def _json_safe(value: Any) -> Any:
@@ -208,12 +189,16 @@ def _learn_with_scorer(
     except Exception:
         decision = None
     try:
-        result = scorer.learn(decision_id, actual_action, outcome)
+        result = scorer.learn(
+            decision_id,
+            actual_action,
+            outcome,
+            context=_decision_context(decision, context),
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown decision: {decision_id}") from exc
     payload = _json_safe(result)
     if isinstance(payload, dict) and isinstance(decision, dict):
-        payload.update(_s2p_reward_payload(scorer, decision, actual_action, outcome, context))
         invoice_id = _decision_invoice_id(decision)
         if invoice_id:
             payload.setdefault("invoice_id", invoice_id)
@@ -367,7 +352,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
         tax_regulatory_compliance=request.tax_regulatory_compliance,
     )
 
-    fixture_invoice = _find_invoice(request.event_id)
+    fixture_invoice = find_invoice(request.event_id)
     invoice = _invoice_from_request(request, fixture_invoice)
     lookup_id = invoice.get("invoice_id") or request.event_id
     context = _resolve_graph_context(lookup_id, http_request)

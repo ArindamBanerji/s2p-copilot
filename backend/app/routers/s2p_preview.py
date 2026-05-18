@@ -32,7 +32,7 @@ def _data_path(filename: str) -> Path:
     return _repo_root() / "data" / filename
 
 
-def _load_json_fixture(filename: str) -> Any:
+def _load_fixture_json(filename: str) -> Any:
     path = _data_path(filename)
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -115,7 +115,7 @@ def _get_canonical_factor_list() -> list[str]:
 def _get_centroids() -> dict[str, dict[str, list[float]]]:
     global _centroids
     if _centroids is None:
-        _centroids = _load_json_fixture("s2p_initial_centroids.json")
+        _centroids = _load_fixture_json("s2p_initial_centroids.json")
     return _centroids
 
 
@@ -176,7 +176,7 @@ def _score_invoice(invoice: dict[str, Any]) -> dict[str, Any]:
 def _get_scored_invoices(n: int = 50, seed: int = 42) -> list[dict[str, Any]]:
     global _invoices, _scored_invoices
     if _scored_invoices is None:
-        _invoices = _load_json_fixture("synthetic_invoices.json")[:n]
+        _invoices = _load_fixture_json("synthetic_invoices.json")[:n]
         _scored_invoices = [_score_invoice(invoice) for invoice in _invoices]
     return list(_scored_invoices)
 
@@ -258,7 +258,7 @@ def _build_compounding_trajectory(
 
 
 def _get_supplier_fixture() -> list[dict[str, Any]]:
-    data = _load_json_fixture("s2p_demo_suppliers.json")
+    data = _load_fixture_json("s2p_demo_suppliers.json")
     return data if isinstance(data, list) else []
 
 

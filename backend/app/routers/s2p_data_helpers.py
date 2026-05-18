@@ -24,3 +24,12 @@ def load_invoices() -> list[dict[str, Any]]:
 def load_suppliers() -> list[dict[str, Any]]:
     data = load_json("s2p_demo_suppliers.json", [])
     return [supplier for supplier in data if isinstance(supplier, dict)] if isinstance(data, list) else []
+
+
+def find_invoice(event_id_or_invoice_id: str) -> dict[str, Any] | None:
+    for invoice in load_invoices():
+        if invoice.get("invoice_id") == event_id_or_invoice_id:
+            return invoice
+        if invoice.get("event_id") == event_id_or_invoice_id:
+            return invoice
+    return None

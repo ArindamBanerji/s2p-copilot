@@ -39,30 +39,11 @@ def _cors_origins() -> list[str]:
     ]
 
 
-class _S2PGraphStore(InMemoryGraphStore):
-    """Preserve the public S2P decision-id prefix on top of SDK GraphStore behavior."""
-
-    def write_decision(self, entity_id, category, action, confidence, factors, metadata=None):
-        meta = dict(metadata or {})
-        decision_id = str(meta.get("decision_id") or entity_id)
-        if not decision_id.startswith("S2P-"):
-            decision_id = f"S2P-{decision_id}"
-        meta["decision_id"] = decision_id
-        return super().write_decision(
-            entity_id=entity_id,
-            category=category,
-            action=action,
-            confidence=confidence,
-            factors=factors,
-            metadata=meta,
-        )
-
-
 def build_s2p_scorer() -> CompoundingScorer:
     return CompoundingScorer.from_preset(
         "s2p",
         db_path=":memory:",
-        graph_store=_S2PGraphStore(),
+        graph_store=InMemoryGraphStore(decision_id_prefix="S2P-"),
         reward_function=S2PRewardFunction(),
     )
 

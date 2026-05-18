@@ -33,7 +33,7 @@ def _data_path(filename: str) -> Path:
     return _repo_root() / "data" / filename
 
 
-def _load_json(path: Path, default: Any) -> Any:
+def _load_candidate_json(path: Path, default: Any) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -46,7 +46,7 @@ def _load_process_data() -> dict[str, Any]:
         _workspace_root() / "copilot-sdk" / "apps" / "dataops" / "backend" / "data" / "celonis_process_data.json",
     ]
     for path in candidates:
-        data = _load_json(path, {})
+        data = _load_candidate_json(path, {})
         if isinstance(data, dict) and data:
             return data
     return {}

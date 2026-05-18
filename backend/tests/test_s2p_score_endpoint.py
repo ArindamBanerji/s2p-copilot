@@ -392,19 +392,21 @@ def test_learn_with_scorer_uses_context_without_mutating_reward_function():
     class RecordingScorer:
         def __init__(self):
             object.__setattr__(self, "graph_store", GraphStore())
-            object.__setattr__(self, "_reward_fn", s2p_router.S2PRewardFunction())
+            object.__setattr__(self, "_reward_fn", object())
             object.__setattr__(self, "reward_assignments", 0)
+            object.__setattr__(self, "learn_contexts", [])
 
         def __setattr__(self, name, value):
             if name == "_reward_fn":
                 self.reward_assignments += 1
             object.__setattr__(self, name, value)
 
-        def learn(self, decision_id, actual_action, outcome):
+        def learn(self, decision_id, actual_action, outcome, *, context=None):
+            self.learn_contexts.append(dict(context or {}))
             return {
                 "decision_id": decision_id,
-                "reward": None,
-                "reward_raw": None,
+                "reward": 0.4,
+                "reward_raw": 0.4,
             }
 
     scorer = RecordingScorer()
@@ -420,4 +422,10 @@ def test_learn_with_scorer_uses_context_without_mutating_reward_function():
     assert result["reward_raw"] == 0.4
     assert result["reward"] == 0.4
     assert result["invoice_id"] == "S2P-INV-TEST"
+    assert scorer.learn_contexts == [
+        {
+            "invoice_id": "S2P-INV-TEST",
+            "recovery_pct": 40,
+        }
+    ]
     assert scorer.reward_assignments == 0

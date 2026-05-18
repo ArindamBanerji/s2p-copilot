@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
-from app.routers.s2p_data_helpers import load_invoices
+from app.routers.s2p_data_helpers import find_invoice, load_invoices
 
 router = APIRouter(prefix="/api/s2p/control-tower", tags=["s2p-control-tower"])
 
@@ -58,13 +58,6 @@ CATEGORY_INTENT = {
     "contract_gap": "contract_compliance_gap",
     "format_compliance": "format_compliance_issue",
 }
-
-
-def _find_invoice(invoice_id: str) -> dict[str, Any] | None:
-    for invoice in load_invoices():
-        if invoice.get("invoice_id") == invoice_id or invoice.get("event_id") == invoice_id:
-            return invoice
-    return None
 
 
 def _intent_payload(intent_id: str) -> dict[str, Any]:
@@ -144,7 +137,7 @@ def classify(
             "factors": {},
         }
     else:
-        invoice = _find_invoice(invoice_id)
+        invoice = find_invoice(invoice_id)
         if invoice is None:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
     return _classify_invoice(invoice, category_override=category)

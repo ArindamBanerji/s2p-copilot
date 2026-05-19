@@ -16,10 +16,13 @@ _load_invoices = load_invoices
 
 
 def _graph_store(request: Request) -> Any | None:
-    state = getattr(request.app, "state", None)
-    graph_store = getattr(state, "graph_store", None)
+    try:
+        graph_store = request.app.state.graph_store
+    except AttributeError:
+        graph_store = None
     if graph_store is not None:
         return graph_store
+    state = getattr(request.app, "state", None)
     scorer = getattr(state, "scorer", None)
     return getattr(scorer, "graph_store", None)
 
@@ -56,17 +59,53 @@ def _enrich_decision_invoice_metadata(decision: dict[str, Any]) -> dict[str, Any
     return enriched
 
 
+def _graph_linked_decisions(graph_store: Any, invoice_id: str) -> list[dict[str, Any]]:
+    get_decision_links = getattr(graph_store, "get_decision_links", None)
+    get_decision = getattr(graph_store, "get_decision", None)
+    if not callable(get_decision_links) or not callable(get_decision):
+        return []
+    try:
+        links = get_decision_links()
+    except Exception:
+        return []
+
+    linked_decision_ids: list[str] = []
+    seen: set[str] = set()
+    for link in links:
+        if not isinstance(link, dict):
+            continue
+        if link.get("edge_type") != "DECIDED_ON" or link.get("entity_id") != invoice_id:
+            continue
+        decision_id = link.get("decision_id")
+        if isinstance(decision_id, str) and decision_id not in seen:
+            seen.add(decision_id)
+            linked_decision_ids.append(decision_id)
+
+    decisions: list[dict[str, Any]] = []
+    for decision_id in linked_decision_ids:
+        try:
+            decision = get_decision(decision_id)
+        except Exception:
+            continue
+        if isinstance(decision, dict):
+            decisions.append(_enrich_decision_invoice_metadata(decision))
+    return decisions
+
+
 @router.get("/audit-trail/{invoice_id}")
 def audit_trail(invoice_id: str, request: Request) -> dict[str, Any]:
     graph_store = _graph_store(request)
     decisions: list[dict[str, Any]] = []
+    if graph_store is not None:
+        decisions = _graph_linked_decisions(graph_store, invoice_id)
     if graph_store is not None and hasattr(graph_store, "get_all_decisions"):
         try:
-            decisions = [
-                _enrich_decision_invoice_metadata(decision)
-                for decision in graph_store.get_all_decisions()
-                if isinstance(decision, dict) and _decision_matches_invoice(decision, invoice_id)
-            ]
+            if not decisions:
+                decisions = [
+                    _enrich_decision_invoice_metadata(decision)
+                    for decision in graph_store.get_all_decisions()
+                    if isinstance(decision, dict) and _decision_matches_invoice(decision, invoice_id)
+                ]
         except Exception:
             decisions = []
     if not decisions and graph_store is not None and hasattr(graph_store, "get_decision"):

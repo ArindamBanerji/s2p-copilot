@@ -17,6 +17,7 @@ from app.main import app, build_s2p_scorer
 from app.domains.s2p.config import S2PDomainConfig
 from app.routers import s2p as s2p_router
 from app.services.s2p_evolver import get_evolution_summary, reset_s2p_evolver
+from app.services.supplier_profile_accumulator import accumulator as supplier_profile_accumulator
 
 client = TestClient(app)
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
@@ -41,6 +42,7 @@ def reset_sdk_scorer():
     app.state.graph_store = app.state.scorer.graph_store
     app.state.s2p_reward_function = app.state.scorer._reward_fn
     reset_s2p_evolver()
+    supplier_profile_accumulator.reset()
     return app.state.scorer
 
 
@@ -320,6 +322,62 @@ def test_learn_without_variant_id_backwards_compatible():
     assert data["evolution_note"] == "variant_id not provided"
 
 
+def test_learn_hook_fires_accumulator():
+    scored = score_for_learn()
+
+    response = client.post(
+        "/api/learn",
+        json={
+            "decision_id": scored["decision_id"],
+            "actual_action": scored["action"],
+            "outcome": "confirmed",
+            "context": {"recovery_pct": 80},
+        },
+    )
+
+    assert response.status_code == 200
+    history = supplier_profile_accumulator.get_supplier_history(VALID_REQUEST["supplier_id"])
+    assert len(history) == 1
+    assert history[0]["supplier_id"] == VALID_REQUEST["supplier_id"]
+    assert history[0]["category"] == VALID_REQUEST["category"]
+
+
+def test_accumulator_failure_does_not_break_learn(monkeypatch):
+    scored = score_for_learn()
+
+    def fail_update(*args, **kwargs):
+        raise RuntimeError("accumulator unavailable")
+
+    monkeypatch.setattr(s2p_router.supplier_profile_accumulator, "on_decision_verified", fail_update)
+
+    response = client.post(
+        "/api/learn",
+        json={
+            "decision_id": scored["decision_id"],
+            "actual_action": scored["action"],
+            "outcome": "confirmed",
+            "context": {"recovery_pct": 80},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reward"] == 0.8
+
+
+def test_supplier_id_missing_skips_gracefully_in_hook():
+    reset_sdk_scorer()
+    before = supplier_profile_accumulator.skipped_missing_supplier_id
+
+    s2p_router._record_supplier_profile(
+        {"decision_id": "D-MISSING-SUP", "recommended_action": "auto_approve", "metadata": {}},
+        {"reward": 1.0},
+        "auto_approve",
+        {},
+    )
+
+    assert supplier_profile_accumulator.skipped_missing_supplier_id == before + 1
+
+
 def test_positive_reward_records_success():
     scored = score_for_learn()
     variant_id = scored["active_variant"]["id"]
@@ -460,6 +518,32 @@ def test_outcome_with_variant_id_records_evolver_outcome():
     variant = next(row for row in get_evolution_summary()["variants"] if row["id"] == variant_id)
     assert variant["successes"] == 1
     assert variant["total"] == 1
+
+
+def test_outcome_hook_fires_accumulator():
+    scored = score_for_learn()
+
+    response = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": scored["decision_id"],
+            "outcome": "confirm",
+            "analyst_action": scored["action"],
+            "analyst_id": "A001",
+            "factor_vector": scored["factor_vector"],
+            "category": VALID_REQUEST["category"],
+            "predicted_action": scored["action"],
+            "amount": 1000,
+            "at_risk": 1000,
+            "recovery_pct": 80,
+        },
+    )
+
+    assert response.status_code == 200
+    history = supplier_profile_accumulator.get_supplier_history(VALID_REQUEST["supplier_id"])
+    assert len(history) == 1
+    assert history[0]["supplier_id"] == VALID_REQUEST["supplier_id"]
+    assert history[0]["category"] == VALID_REQUEST["category"]
 
 
 def test_outcome_without_variant_id_backwards_compatible():

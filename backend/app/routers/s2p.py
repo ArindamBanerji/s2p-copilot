@@ -7,19 +7,29 @@ This file: S2P procurement domain endpoints only.
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
+import logging
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Any, Optional
 
-from app.domains.s2p.config import S2PDomainConfig
+from app.domains.s2p.auto_approve import (
+    AUTO_APPROVE_THRESHOLDS,
+    build_expansion_proof,
+    get_auto_approve_stats,
+    record_auto_approve_decision,
+    _should_auto_approve,
+)
+from app.domains.s2p.config import PENALTY_RATIO, S2PDomainConfig
 from app.domains.s2p.factors import S2PEvent, compute_all_factors
 from app.routers.s2p_data_helpers import find_invoice
 from app.routers.s2p_preview import _load_celonis_cache
 from app.services.s2p_evolver import get_active_variant, record_triage_outcome
+from app.services.supplier_profile_accumulator import accumulator as supplier_profile_accumulator
 
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 learn_router = APIRouter(prefix="/api", tags=["S2P"])
+log = logging.getLogger(__name__)
 
 def _resolve_graph_context(invoice_id: str, http_request: Request):
     state = getattr(http_request.app, "state", None)
@@ -79,16 +89,65 @@ def _sdk_scorer(http_request: Request):
     return scorer
 
 
+def _graph_store_from_request(http_request: Request):
+    state = getattr(http_request.app, "state", None)
+    graph_store = getattr(state, "graph_store", None)
+    if graph_store is None:
+        scorer = getattr(state, "scorer", None)
+        graph_store = getattr(scorer, "graph_store", None)
+    return graph_store
+
+
+def _graph_verified_counts(http_request: Request) -> tuple[int, int]:
+    graph_store = _graph_store_from_request(http_request)
+    count_verified = getattr(graph_store, "count_verified", None)
+    count_correct = getattr(graph_store, "count_correct", None)
+    verified_count = int(count_verified()) if callable(count_verified) else 0
+    correct_count = int(count_correct()) if callable(count_correct) else 0
+    return max(verified_count, 0), max(correct_count, 0)
+
+
+def _current_conservation_status(http_request: Request) -> str:
+    try:
+        from gae.calibration import conservation_status
+
+        verified_count, correct_count = _graph_verified_counts(http_request)
+        graph_store = _graph_store_from_request(http_request)
+        get_all_decisions = getattr(graph_store, "get_all_decisions", None)
+        total_decisions = (
+            len(get_all_decisions()) if callable(get_all_decisions) else verified_count
+        )
+        check = conservation_status(
+            verified_count=verified_count,
+            correct_count=correct_count,
+            total_decisions=max(total_decisions, 0),
+            penalty_ratio=PENALTY_RATIO,
+        )
+        return str(check.status)
+    except Exception:
+        log.exception("Unable to evaluate conservation status for auto-approve gate")
+        return "UNKNOWN"
+
+
 def _invoice_decision_metadata(invoice: dict[str, Any]) -> dict[str, Any]:
     invoice_id = str(invoice.get("invoice_id") or invoice.get("event_id") or "")
+    invoice_metadata = invoice.get("metadata") if isinstance(invoice.get("metadata"), dict) else {}
     metadata = {
         "invoice_id": invoice_id,
         "source_invoice_id": invoice_id,
         "supplier_id": invoice.get("supplier_id"),
         "supplier_name": invoice.get("supplier_name"),
         "amount": invoice.get("amount"),
+        "invoice_date": invoice.get("invoice_date") or invoice_metadata.get("invoice_date"),
+        "due_date": invoice.get("due_date") or invoice_metadata.get("due_date"),
+        "po_number": invoice.get("po_number") or invoice_metadata.get("po_number"),
     }
-    return {key: value for key, value in metadata.items() if value not in (None, "")}
+    temporal_keys = {"invoice_date", "due_date", "po_number"}
+    return {
+        key: value
+        for key, value in metadata.items()
+        if value != "" and (value is not None or key in temporal_keys)
+    }
 
 
 def _decision_metadata(decision: dict[str, Any] | None) -> dict[str, Any]:
@@ -118,6 +177,17 @@ def _decision_category(decision: dict[str, Any] | None) -> str | None:
     metadata = _decision_metadata(decision)
     value = metadata.get("category")
     return str(value) if value else None
+
+
+def _decision_recommended_action(decision: dict[str, Any] | None) -> str:
+    if not isinstance(decision, dict):
+        return ""
+    value = decision.get("recommended_action") or decision.get("action")
+    if value:
+        return str(value)
+    metadata = _decision_metadata(decision)
+    value = metadata.get("recommended_action") or metadata.get("action")
+    return str(value) if value else ""
 
 
 def _decision_context(
@@ -167,6 +237,27 @@ def _decision_context(
 
     context.update({key: value for key, value in (explicit_context or {}).items() if value is not None})
     return context
+
+
+def _record_supplier_profile(
+    decision: dict[str, Any] | None,
+    payload: dict[str, Any],
+    actual_action: str,
+    context: dict[str, Any] | None,
+) -> None:
+    """Best-effort supplier profile update after scorer learning succeeds."""
+    try:
+        supplier_profile_accumulator.on_decision_verified(
+            decision if isinstance(decision, dict) else {},
+            {
+                "actual_action": actual_action,
+                "is_correct": actual_action == _decision_recommended_action(decision),
+                "reward": payload.get("reward"),
+            },
+            context=context,
+        )
+    except Exception:
+        log.exception("Supplier profile accumulator update failed")
 
 
 def _json_safe(value: Any) -> Any:
@@ -339,6 +430,7 @@ class ScoreResponse(BaseModel):
     decision_id: str
     process_context: Optional[dict] = None
     active_variant: Optional[dict] = None
+    auto_approve: Optional[dict] = None
 
 
 @router.post("/score")
@@ -410,6 +502,18 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
     except Exception:
         pass
 
+    conservation_status = _current_conservation_status(http_request)
+    auto_approve = _should_auto_approve(
+        request.category,
+        score_result.confidence,
+        conservation_status,
+        score_result.action,
+    )
+    auto_approve["confidence"] = score_result.confidence
+    auto_approve["conservation_status"] = conservation_status
+    auto_approve["action"] = score_result.action
+    record_auto_approve_decision(auto_approve)
+
     return ScoreResponse(
         event_id=request.event_id,
         category=request.category,
@@ -422,6 +526,29 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
         decision_id=score_result.decision_id,
         process_context=_score_process_context(),
         active_variant=active_variant,
+        auto_approve=auto_approve,
+    )
+
+
+@router.get("/auto-approve/stats")
+def get_auto_approve_stats_endpoint() -> dict[str, Any]:
+    return get_auto_approve_stats()
+
+
+@router.get("/auto-approve/expansion-proof")
+def get_auto_approve_expansion_proof(
+    http_request: Request,
+    category: Optional[str] = None,
+) -> dict[str, Any]:
+    selected_category = category or S2PDomainConfig.categories[0]
+    if selected_category not in AUTO_APPROVE_THRESHOLDS:
+        raise HTTPException(status_code=404, detail=f"Unknown category: {selected_category}")
+    verified_count, correct_count = _graph_verified_counts(http_request)
+    return build_expansion_proof(
+        selected_category,
+        verified_decisions=verified_count,
+        correct_decisions=correct_count,
+        conservation_status=_current_conservation_status(http_request),
     )
 
 
@@ -481,6 +608,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         request.outcome,
         context,
     )
+    _record_supplier_profile(decision, payload, request.actual_action, context)
     if request.variant_id:
         try:
             record_triage_outcome(
@@ -532,20 +660,22 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
     except Exception:
         decision = None
     invoice_id = _decision_invoice_id(decision)
+    outcome_context = {
+        "amount": request.amount,
+        "at_risk": request.at_risk,
+        "recovery_pct": request.recovery_pct,
+        "reason_code": request.reason_code,
+        "invoice_id": invoice_id or None,
+    }
     payload = _learn_with_scorer(
         scorer,
         request.decision_id,
         request.analyst_action,
         request.outcome,
-        {
-            "amount": request.amount,
-            "at_risk": request.at_risk,
-            "recovery_pct": request.recovery_pct,
-            "reason_code": request.reason_code,
-            "invoice_id": invoice_id or None,
-        },
+        outcome_context,
     )
     payload["outcome"] = request.outcome
+    _record_supplier_profile(decision, payload, request.analyst_action, outcome_context)
     if request.variant_id:
         try:
             record_triage_outcome(

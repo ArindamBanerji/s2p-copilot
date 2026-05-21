@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from dataclasses import asdict
 import hashlib
 from typing import Any
 
@@ -11,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
 from app.routers.s2p_data_helpers import load_invoices, load_suppliers
+from app.services.supplier_profile_accumulator import SupplierProfile, accumulator
 
 router = APIRouter(prefix="/api/s2p/suppliers", tags=["s2p-suppliers"])
 
@@ -66,6 +68,62 @@ def _summary(supplier: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _trend_direction(exception_rate_trend: float | None) -> str:
+    if exception_rate_trend is None:
+        return "stable"
+    if exception_rate_trend > 0.0:
+        return "declining"
+    if exception_rate_trend < 0.0:
+        return "improving"
+    return "stable"
+
+
+def _profile_summary(profile: SupplierProfile) -> dict[str, Any]:
+    supplier_id = str(profile.supplier_id)
+    invoices = _supplier_invoices(supplier_id)
+    otif_score = float(profile.otif or 0.0)
+    data = asdict(profile)
+    data.update(
+        {
+            "supplier_id": supplier_id,
+            "name": profile.supplier_name,
+            "supplier_name": profile.supplier_name,
+            "category": profile.categories[0] if profile.categories else None,
+            "otif_score": otif_score,
+            "exception_rate": float(profile.exception_rate or 0.0),
+            "invoice_count": int(profile.invoice_count or 0),
+            "category_distribution": _category_distribution(invoices),
+            "trend_direction": _trend_direction(profile.exception_rate_trend),
+        }
+    )
+    return data
+
+
+def _profile_detail(profile: SupplierProfile) -> dict[str, Any]:
+    summary = _profile_summary(profile)
+    supplier_id = str(profile.supplier_id)
+    invoices = _supplier_invoices(supplier_id)
+    exception_rate = float(summary["exception_rate"])
+    otif_score = float(summary["otif_score"])
+    return {
+        **summary,
+        "otif_trend": _stable_series(supplier_id, otif_score),
+        "exception_trend": _stable_series(f"{supplier_id}:exception", exception_rate),
+        "top_categories": _category_distribution(invoices)[:5],
+        "recent_invoices": [
+            {
+                "invoice_id": invoice.get("invoice_id"),
+                "amount": float(invoice.get("amount") or 0.0),
+                "category": invoice.get("category"),
+                "ground_truth_action": invoice.get("ground_truth_action"),
+            }
+            for invoice in invoices[:5]
+        ],
+        "behavioral_cluster": _cluster_label(_cluster_name(summary)),
+        "risk_level": _risk_level(exception_rate, otif_score),
+    }
+
+
 def _cluster_name(summary: dict[str, Any]) -> str:
     if summary["otif_score"] >= 0.94 and summary["exception_rate"] <= 0.05:
         return "high_reliability"
@@ -97,8 +155,12 @@ def _cluster_description(cluster_id: str) -> str:
 @router.get("")
 @router.get("/")
 def suppliers() -> dict[str, Any]:
-    rows = [_summary(supplier) for supplier in load_suppliers()]
-    return {"suppliers": rows, "total": len(rows), "source": "s2p_demo_suppliers.json"}
+    rows = [_profile_summary(profile) for profile in accumulator.get_all_profiles()]
+    return {
+        "suppliers": rows,
+        "total": len(rows),
+        "source": "accumulator_with_fixture_fallback",
+    }
 
 
 @router.get("/clustering")
@@ -130,30 +192,27 @@ def clustering() -> dict[str, Any]:
     return {"clusters": clusters, "total_clusters": len(clusters), "method": "threshold"}
 
 
+@router.get("/declining")
+def declining_suppliers() -> dict[str, Any]:
+    rows = [_profile_summary(profile) for profile in accumulator.get_declining_suppliers()]
+    return {"suppliers": rows, "total": len(rows), "source": "accumulator"}
+
+
 @router.get("/{supplier_id}/profile")
 def profile(supplier_id: str) -> dict[str, Any]:
-    supplier = _find_supplier(supplier_id)
-    summary = _summary(supplier)
-    invoices = _supplier_invoices(supplier_id)
-    exception_rate = float(summary["exception_rate"])
-    otif_score = float(summary["otif_score"])
-    return {
-        **summary,
-        "otif_trend": _stable_series(supplier_id, otif_score),
-        "exception_trend": _stable_series(f"{supplier_id}:exception", exception_rate),
-        "top_categories": _category_distribution(invoices)[:5],
-        "recent_invoices": [
-            {
-                "invoice_id": invoice.get("invoice_id"),
-                "amount": float(invoice.get("amount") or 0.0),
-                "category": invoice.get("category"),
-                "ground_truth_action": invoice.get("ground_truth_action"),
-            }
-            for invoice in invoices[:5]
-        ],
-        "behavioral_cluster": _cluster_label(_cluster_name(summary)),
-        "risk_level": _risk_level(exception_rate, otif_score),
-    }
+    supplier_profile = accumulator.get_profile(supplier_id)
+    if supplier_profile is None:
+        raise HTTPException(status_code=404, detail=f"Supplier {supplier_id} not found")
+    return _profile_detail(supplier_profile)
+
+
+@router.get("/{supplier_id}/history")
+def supplier_history(supplier_id: str, limit: int = 200) -> dict[str, Any]:
+    supplier_profile = accumulator.get_profile(supplier_id)
+    if supplier_profile is None:
+        raise HTTPException(status_code=404, detail=f"Supplier {supplier_id} not found")
+    events = accumulator.get_supplier_history(supplier_id, limit)
+    return {"events": events, "total": len(events)}
 
 
 @router.get("/{supplier_id}/heatmap")

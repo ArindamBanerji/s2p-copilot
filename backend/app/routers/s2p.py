@@ -16,6 +16,7 @@ from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import S2PEvent, compute_all_factors
 from app.routers.s2p_data_helpers import find_invoice
 from app.routers.s2p_preview import _load_celonis_cache
+from app.services.s2p_evolver import get_active_variant, record_triage_outcome
 
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 learn_router = APIRouter(prefix="/api", tags=["S2P"])
@@ -108,6 +109,17 @@ def _decision_invoice_id(decision: dict[str, Any] | None) -> str:
     return ""
 
 
+def _decision_category(decision: dict[str, Any] | None) -> str | None:
+    if not isinstance(decision, dict):
+        return None
+    value = decision.get("category")
+    if value:
+        return str(value)
+    metadata = _decision_metadata(decision)
+    value = metadata.get("category")
+    return str(value) if value else None
+
+
 def _decision_context(
     decision: dict[str, Any] | None,
     explicit_context: dict[str, Any] | None = None,
@@ -175,6 +187,16 @@ def _json_safe(value: Any) -> Any:
         except Exception:
             pass
     return value
+
+
+def _validate_reason_code(outcome: str, reason_code: str | None) -> None:
+    if outcome == "override" and not reason_code:
+        raise HTTPException(status_code=400, detail="reason_code is required for override outcomes")
+    if reason_code and reason_code not in S2PDomainConfig.reason_codes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"reason_code must be one of {S2PDomainConfig.reason_codes}",
+        )
 
 
 def _learn_with_scorer(
@@ -316,6 +338,7 @@ class ScoreResponse(BaseModel):
     factor_names: list[str]
     decision_id: str
     process_context: Optional[dict] = None
+    active_variant: Optional[dict] = None
 
 
 @router.post("/score")
@@ -354,6 +377,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
 
     fixture_invoice = find_invoice(request.event_id)
     invoice = _invoice_from_request(request, fixture_invoice)
+    active_variant = get_active_variant(category=request.category)
     lookup_id = invoice.get("invoice_id") or request.event_id
     context = _resolve_graph_context(lookup_id, http_request)
     computed_factors = compute_all_factors(invoice, context=context)
@@ -397,6 +421,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
         factor_names=S2PDomainConfig.factors,
         decision_id=score_result.decision_id,
         process_context=_score_process_context(),
+        active_variant=active_variant,
     )
 
 
@@ -411,6 +436,8 @@ class OutcomeRequest(BaseModel):
     amount: Optional[float] = None
     at_risk: Optional[float] = None
     recovery_pct: Optional[float] = None
+    reason_code: Optional[str] = None
+    variant_id: Optional[str] = None
 
 
 class OutcomeResponse(BaseModel):
@@ -426,6 +453,8 @@ class LearnRequest(BaseModel):
     actual_action: str
     outcome: str = "confirmed"
     context: Optional[dict] = None
+    reason_code: Optional[str] = None
+    variant_id: Optional[str] = None
 
 
 @learn_router.post("/learn")
@@ -436,13 +465,37 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             status_code=422,
             detail=f"actual_action must be one of {S2PDomainConfig.actions}",
         )
-    return _learn_with_scorer(
-        _sdk_scorer(http_request),
+    _validate_reason_code(request.outcome, request.reason_code)
+    context = dict(request.context or {})
+    if request.reason_code:
+        context["reason_code"] = request.reason_code
+    scorer = _sdk_scorer(http_request)
+    try:
+        decision = scorer.graph_store.get_decision(request.decision_id)
+    except Exception:
+        decision = None
+    payload = _learn_with_scorer(
+        scorer,
         request.decision_id,
         request.actual_action,
         request.outcome,
-        request.context or {},
+        context,
     )
+    if request.variant_id:
+        try:
+            record_triage_outcome(
+                request.variant_id,
+                reward=payload.get("reward"),
+                category=_decision_category(decision),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        payload["active_variant_id"] = request.variant_id
+        payload["evolution_recorded"] = True
+    else:
+        payload["evolution_recorded"] = False
+        payload["evolution_note"] = "variant_id not provided"
+    return payload
 
 
 @router.post("/outcome")
@@ -454,6 +507,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
     if request.outcome not in ("confirm", "override"):
         raise HTTPException(status_code=422,
             detail="outcome must be 'confirm' or 'override'")
+    _validate_reason_code(request.outcome, request.reason_code)
 
     if request.analyst_action not in S2PDomainConfig.actions:
         raise HTTPException(status_code=422,
@@ -487,10 +541,27 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             "amount": request.amount,
             "at_risk": request.at_risk,
             "recovery_pct": request.recovery_pct,
+            "reason_code": request.reason_code,
             "invoice_id": invoice_id or None,
         },
     )
     payload["outcome"] = request.outcome
+    if request.variant_id:
+        try:
+            record_triage_outcome(
+                request.variant_id,
+                reward=payload.get("reward"),
+                category=request.category,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        payload["active_variant_id"] = request.variant_id
+        payload["evolution_recorded"] = True
+    else:
+        payload["evolution_recorded"] = False
+        payload["evolution_note"] = "variant_id not provided"
+    if request.reason_code:
+        payload["reason_code"] = request.reason_code
     payload["learning_applied"] = payload.get("status") != "paused"
     return payload
 

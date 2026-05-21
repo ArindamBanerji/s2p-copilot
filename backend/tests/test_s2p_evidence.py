@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from fastapi.testclient import TestClient
 
 from app.main import app, build_s2p_scorer
+from app.domains.s2p.config import S2PDomainConfig
 from app.routers import s2p_evidence
 
 client = TestClient(app)
@@ -42,6 +43,77 @@ def reset_sdk_scorer():
     app.state.s2p_reward_function = app.state.scorer._reward_fn
 
 
+def invoice_for_category(category):
+    invoices = json.loads((DATA_DIR / "synthetic_invoices.json").read_text(encoding="utf-8"))
+    return next(invoice for invoice in invoices if invoice["category"] == category)
+
+
+def assert_template_for_category(category):
+    invoice = invoice_for_category(category)
+    response = client.get(
+        "/api/s2p/evidence/template",
+        params={"category": category, "invoice_id": invoice["invoice_id"]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["invoice_id"] == invoice["invoice_id"]
+    assert data["category"] == category
+    assert data["template"] == S2PDomainConfig.evidence_templates[category]
+    assert data["rendered"]
+    assert "{" not in data["rendered"]
+    assert "variables" in data
+
+
+def test_evidence_template_price_variance():
+    assert_template_for_category("price_variance")
+
+
+def test_evidence_template_quantity_mismatch():
+    assert_template_for_category("quantity_mismatch")
+
+
+def test_evidence_template_duplicate_risk():
+    assert_template_for_category("duplicate_risk")
+
+
+def test_evidence_template_contract_gap():
+    assert_template_for_category("contract_gap")
+
+
+def test_evidence_template_format_compliance():
+    assert_template_for_category("format_compliance")
+
+
+def test_evidence_template_missing_invoice_404():
+    response = client.get(
+        "/api/s2p/evidence/template",
+        params={"category": "price_variance", "invoice_id": "MISSING-INVOICE"},
+    )
+    assert response.status_code == 404
+
+
+def test_evidence_template_missing_variable_renders_na(monkeypatch):
+    monkeypatch.setattr(
+        s2p_evidence,
+        "_load_invoices",
+        lambda: [
+            {
+                "invoice_id": "MINIMAL-INVOICE",
+                "supplier_id": "SUP-MIN",
+                "amount": 100.0,
+                "category": "price_variance",
+                "factors": {},
+            }
+        ],
+    )
+    response = client.get(
+        "/api/s2p/evidence/template",
+        params={"category": "price_variance", "invoice_id": "MINIMAL-INVOICE"},
+    )
+    assert response.status_code == 200
+    assert "N/A" in response.json()["rendered"]
+
+
 def test_audit_trail_returns_decision_chain():
     original = app.state.graph_store
     app.state.graph_store = FakeGraphStore()
@@ -54,6 +126,18 @@ def test_audit_trail_returns_decision_chain():
     data = response.json()
     assert data["count"] == 1
     assert data["decisions"][0]["decision_id"] == "D-1"
+
+
+def test_audit_trail_returns_chain():
+    original = app.state.graph_store
+    app.state.graph_store = FakeGraphStore()
+    try:
+        response = client.get("/api/s2p/evidence/audit-trail/S2P-INV-0001")
+    finally:
+        app.state.graph_store = original
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
 
 
 def test_audit_trail_unknown_invoice_empty():

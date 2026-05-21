@@ -5,6 +5,7 @@ from typing import Callable
 from fastapi import APIRouter, HTTPException, Request
 
 from app.domains.s2p.evolution import S2PEvolutionService
+from app.services.s2p_evolver import check_promotion, get_evolution_summary, reset_s2p_evolver
 
 
 def create_s2p_evolution_router(
@@ -28,7 +29,16 @@ def create_s2p_evolution_router(
     @router.get("/variants")
     def variants(request: Request, template_name: str | None = None) -> dict:
         rows = service(request).get_variants(template_name)
-        return {"total": len(rows), "variants": rows}
+        return {"total": len(rows), "variants": rows, "sdk_summary": get_evolution_summary()}
+
+    @router.get("/promotion-check")
+    def promotion_check() -> dict:
+        return {"promotion": check_promotion()}
+
+    @router.post("/reset")
+    def reset() -> dict:
+        reset_s2p_evolver()
+        return {"status": "reset"}
 
     @router.get("/shadow-results")
     def shadow_results(request: Request, variant_id: str | None = None) -> dict:

@@ -39,6 +39,15 @@ def test_similar_returns_list_with_distances():
     assert data["similar"] == sorted(data["similar"], key=lambda item: item["distance"])
 
 
+def test_similar_invoices_returns_results():
+    response = client.get("/api/s2p/insight/similar", params={"invoice_id": "S2P-INV-0001", "limit": 3})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] >= 3
+    assert len(data["similar"]) == 3
+
+
 def test_similar_excludes_self():
     response = client.get("/api/s2p/insight/similar", params={"invoice_id": "S2P-INV-0001", "limit": 10})
 

@@ -37,11 +37,10 @@ def _load_candidate_json(path: Path, default: Any) -> Any:
 
 
 def _load_celonis() -> dict[str, Any]:
-    candidates: list[Path] = []
+    candidates: list[Path] = [_data_path("celonis_process_data.json")]
     sdk_root = os.environ.get("CLAUDE_SDK", "")
     if sdk_root:
         candidates.append(Path(sdk_root) / "apps" / "dataops" / "backend" / "data" / "celonis_process_data.json")
-    candidates.append(_data_path("celonis_process_data.json"))
     for path in candidates:
         data = _load_candidate_json(path, {})
         if isinstance(data, dict) and data:

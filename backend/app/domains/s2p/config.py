@@ -46,6 +46,22 @@ S2P_FACTORS = [
 ]
 S2P_FACTORS = _shared_or("factors", S2P_FACTORS)
 
+S2P_REASON_CODES = [
+    "wrong_category",
+    "wrong_action",
+    "missing_context",
+    "system_correct_but_override_policy",
+    "novel_situation",
+]
+
+S2P_EVIDENCE_TEMPLATES = {
+    "price_variance": "{variance_pct}% price delta. {commodity} moved {commodity_delta}% in {lookback} days. Contract {ref} {allows_blocks} pass-through up to {threshold}%. {within_exceeds} bounds. -> {action}. Confidence: {score}.",
+    "quantity_mismatch": "Invoice qty {inv_qty} vs PO {po_qty} (Delta {delta}). GR confirms {gr_qty} received. {match_status}. -> {action}.",
+    "duplicate_risk": "Invoice {invoice_id} from {supplier}. Similar: {match_id} dated {match_date}, amount {match_amt} (similarity {similarity}%). {verdict}. -> {action}.",
+    "contract_gap": "PO {po_id}. Contract {ref} covers {scope}. {covered_pct}% covered. Gap: {gap_items}. -> {action}.",
+    "format_compliance": "Invoice from {supplier} fails {n_rules} format rules. Issues: {issues}. Historical compliance: {compliance_pct}%. -> {action}.",
+}
+
 S2P_CANONICAL_FACTORS = [
     "supplier_identity",
     "contract_linkage",
@@ -88,6 +104,8 @@ class S2PDomainConfig:
     actions = S2P_ACTIONS
     factors = S2P_FACTORS
     canonical_factors = S2P_CANONICAL_FACTORS
+    reason_codes = S2P_REASON_CODES
+    evidence_templates = S2P_EVIDENCE_TEMPLATES
 
     n_categories = N_CATEGORIES
     n_actions = N_ACTIONS

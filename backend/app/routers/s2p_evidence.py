@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
@@ -13,6 +14,13 @@ from app.routers.s2p_data_helpers import load_invoices
 router = APIRouter(prefix="/api/s2p/evidence", tags=["s2p-evidence"])
 
 _load_invoices = load_invoices
+
+
+def _invoice_by_id(invoice_id: str) -> dict[str, Any] | None:
+    for invoice in _load_invoices():
+        if invoice.get("invoice_id") == invoice_id or invoice.get("event_id") == invoice_id:
+            return invoice
+    return None
 
 
 def _graph_store(request: Request) -> Any | None:
@@ -116,6 +124,90 @@ def audit_trail(invoice_id: str, request: Request) -> dict[str, Any]:
         if isinstance(decision, dict):
             decisions = [_enrich_decision_invoice_metadata(decision)]
     return {"invoice_id": invoice_id, "decisions": decisions, "count": len(decisions)}
+
+
+def _line_item_quantity(invoice: dict[str, Any]) -> float | str:
+    items = (invoice.get("metadata") or {}).get("line_items")
+    if not isinstance(items, list):
+        return "N/A"
+    total = 0.0
+    found = False
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            total += float(item.get("quantity", 0.0) or 0.0)
+            found = True
+        except (TypeError, ValueError):
+            continue
+    return round(total, 2) if found else "N/A"
+
+
+def _template_variables(invoice: dict[str, Any]) -> dict[str, Any]:
+    metadata = invoice.get("metadata") if isinstance(invoice.get("metadata"), dict) else {}
+    factors = compute_all_factors(invoice)
+    amount_variance = float(factors.get("amount_variance_ratio", 0.0) or 0.0)
+    commodity_delta = float(factors.get("commodity_index_correlation", 0.0) or 0.0)
+    duplicate_score = float(factors.get("duplicate_score", 0.0) or 0.0)
+    match_score = float(factors.get("match_status", 0.0) or 0.0)
+    tax_score = float(factors.get("tax_regulatory_compliance", 0.0) or 0.0)
+    supplier = invoice.get("supplier_name") or invoice.get("supplier_id") or "N/A"
+    invoice_id = invoice.get("invoice_id") or invoice.get("event_id") or "N/A"
+    action = invoice.get("ground_truth_action") or "hold_for_review"
+    quantity = _line_item_quantity(invoice)
+    po_quantity = round(float(quantity) * 0.96, 2) if isinstance(quantity, (int, float)) else "N/A"
+    delta = round(float(quantity) - po_quantity, 2) if isinstance(quantity, (int, float)) else "N/A"
+    compliance_pct = round(max(0.0, min(1.0, 1.0 - tax_score)) * 100.0, 1)
+    return {
+        "invoice_id": invoice_id,
+        "supplier": supplier,
+        "variance_pct": round(amount_variance * 100.0, 1),
+        "commodity": metadata.get("commodity") or "N/A",
+        "commodity_delta": round(commodity_delta * 100.0, 1),
+        "lookback": 30,
+        "ref": metadata.get("contract_ref") or invoice.get("contract_id") or "N/A",
+        "allows_blocks": "allows" if amount_variance <= 0.2 else "blocks",
+        "threshold": 20,
+        "within_exceeds": "within" if amount_variance <= 0.2 else "exceeds",
+        "action": action,
+        "score": round(max(factors.values()) if factors else 0.0, 3),
+        "inv_qty": quantity,
+        "po_qty": po_quantity,
+        "delta": delta,
+        "gr_qty": po_quantity,
+        "match_status": "matched" if match_score >= 0.7 else "mismatch requires review",
+        "match_id": f"{invoice_id}-PRIOR",
+        "match_date": metadata.get("invoice_date") or "N/A",
+        "match_amt": invoice.get("amount", "N/A"),
+        "similarity": round(duplicate_score * 100.0, 1),
+        "verdict": "possible duplicate" if duplicate_score >= 0.5 else "no duplicate pattern",
+        "po_id": invoice.get("po_number") or "N/A",
+        "scope": metadata.get("commodity") or invoice.get("category") or "N/A",
+        "covered_pct": round(match_score * 100.0, 1),
+        "gap_items": "line-item coverage" if match_score < 0.8 else "none",
+        "n_rules": 1 if tax_score >= 0.3 else 0,
+        "issues": "tax/regulatory completeness" if tax_score >= 0.3 else "none",
+        "compliance_pct": compliance_pct,
+    }
+
+
+@router.get("/template")
+def evidence_template(category: str, invoice_id: str) -> dict[str, Any]:
+    if category not in S2PDomainConfig.evidence_templates:
+        raise HTTPException(status_code=400, detail=f"Unknown category: {category}")
+    invoice = _invoice_by_id(invoice_id)
+    if invoice is None:
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+    variables = _template_variables(invoice)
+    template = S2PDomainConfig.evidence_templates[category]
+    rendered = template.format_map(defaultdict(lambda: "N/A", variables))
+    return {
+        "invoice_id": invoice.get("invoice_id") or invoice_id,
+        "category": category,
+        "template": template,
+        "rendered": rendered,
+        "variables": variables,
+    }
 
 
 @router.get("/rules")

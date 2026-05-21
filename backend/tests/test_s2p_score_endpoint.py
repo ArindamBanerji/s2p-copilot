@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from app.main import app, build_s2p_scorer
 from app.domains.s2p.config import S2PDomainConfig
 from app.routers import s2p as s2p_router
+from app.services.s2p_evolver import get_evolution_summary, reset_s2p_evolver
 
 client = TestClient(app)
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
@@ -39,6 +40,7 @@ def reset_sdk_scorer():
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
     app.state.s2p_reward_function = app.state.scorer._reward_fn
+    reset_s2p_evolver()
     return app.state.scorer
 
 
@@ -60,6 +62,18 @@ def test_score_response_has_required_fields():
     for key in ("event_id", "category", "action", "action_index",
                 "confidence", "probabilities", "factor_vector", "factor_names"):
         assert key in data, f"Missing key: {key}"
+
+
+def test_score_response_includes_active_variant():
+    reset_sdk_scorer()
+
+    response = client.post("/api/s2p/score", json=VALID_REQUEST)
+
+    assert response.status_code == 200
+    active_variant = response.json()["active_variant"]
+    assert active_variant["id"] == "EVIDENCE_ORDER_v1"
+    assert active_variant["family"] == "evidence_ordering"
+    assert active_variant["metadata"]["order"] == ["factor_fingerprint", "similar_invoices", "audit_trail"]
 
 
 def test_score_action_is_valid_s2p_action():
@@ -241,6 +255,115 @@ def test_sdk_learn_route_exists_and_returns_reward_fields():
     assert data["reward_raw"] == 0.8
 
 
+def test_learn_with_variant_id_records_outcome():
+    scored = score_for_learn()
+    variant_id = scored["active_variant"]["id"]
+
+    response = client.post(
+        "/api/learn",
+        json={
+            "decision_id": scored["decision_id"],
+            "actual_action": scored["action"],
+            "outcome": "confirmed",
+            "variant_id": variant_id,
+            "context": {"recovery_pct": 80},
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["evolution_recorded"] is True
+    assert data["active_variant_id"] == variant_id
+    variant = next(row for row in get_evolution_summary()["variants"] if row["id"] == variant_id)
+    assert variant["successes"] == 1
+    assert variant["total"] == 1
+
+
+def test_learn_with_variant_id_records_evolver_outcome():
+    scored = score_for_learn()
+    variant_id = scored["active_variant"]["id"]
+
+    response = client.post(
+        "/api/learn",
+        json={
+            "decision_id": scored["decision_id"],
+            "actual_action": scored["action"],
+            "outcome": "confirmed",
+            "variant_id": variant_id,
+            "context": {"recovery_pct": 80},
+        },
+    )
+
+    assert response.status_code == 200
+    variant = next(row for row in get_evolution_summary()["variants"] if row["id"] == variant_id)
+    assert variant["successes"] == 1
+    assert variant["total"] == 1
+
+
+def test_learn_without_variant_id_backwards_compatible():
+    scored = score_for_learn()
+
+    response = client.post(
+        "/api/learn",
+        json={
+            "decision_id": scored["decision_id"],
+            "actual_action": scored["action"],
+            "outcome": "confirmed",
+            "context": {"recovery_pct": 80},
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reward"] == 0.8
+    assert data["evolution_recorded"] is False
+    assert data["evolution_note"] == "variant_id not provided"
+
+
+def test_positive_reward_records_success():
+    scored = score_for_learn()
+    variant_id = scored["active_variant"]["id"]
+
+    response = client.post(
+        "/api/learn",
+        json={
+            "decision_id": scored["decision_id"],
+            "actual_action": scored["action"],
+            "outcome": "confirmed",
+            "variant_id": variant_id,
+            "context": {"recovery_pct": 100},
+        },
+    )
+
+    assert response.status_code == 200
+    variant = next(row for row in get_evolution_summary()["variants"] if row["id"] == variant_id)
+    assert variant["successes"] == 1
+    assert variant["failures"] == 0
+
+
+def test_negative_reward_records_failure():
+    scored = score_for_learn()
+    variant_id = scored["active_variant"]["id"]
+    override_action = next(action for action in S2PDomainConfig.actions if action != scored["action"])
+
+    response = client.post(
+        "/api/learn",
+        json={
+            "decision_id": scored["decision_id"],
+            "actual_action": override_action,
+            "outcome": "override",
+            "reason_code": "wrong_action",
+            "variant_id": variant_id,
+            "context": {"amount": 1000, "at_risk": 250, "recovery_pct": 0},
+        },
+    )
+
+    assert response.status_code == 200
+    variant = next(row for row in get_evolution_summary()["variants"] if row["id"] == variant_id)
+    assert variant["successes"] == 0
+    assert variant["failures"] == 1
+
+
 def test_conservation_status_endpoint_exists():
     reset_sdk_scorer()
 
@@ -307,6 +430,72 @@ def test_outcome_returns_reward_fields():
     assert response.status_code == 200
     assert response.json()["reward"] == 0.8
     assert response.json()["reward_raw"] == 0.8
+    assert response.json()["evolution_recorded"] is False
+
+
+def test_outcome_with_variant_id_records_evolver_outcome():
+    scored = score_for_learn()
+    variant_id = scored["active_variant"]["id"]
+    response = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": scored["decision_id"],
+            "outcome": "confirm",
+            "analyst_action": scored["action"],
+            "analyst_id": "A001",
+            "factor_vector": scored["factor_vector"],
+            "category": "price_variance",
+            "predicted_action": scored["action"],
+            "amount": 1000,
+            "at_risk": 1000,
+            "recovery_pct": 80,
+            "variant_id": variant_id,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["evolution_recorded"] is True
+    assert data["active_variant_id"] == variant_id
+    variant = next(row for row in get_evolution_summary()["variants"] if row["id"] == variant_id)
+    assert variant["successes"] == 1
+    assert variant["total"] == 1
+
+
+def test_outcome_without_variant_id_backwards_compatible():
+    scored = score_for_learn()
+    response = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": scored["decision_id"],
+            "outcome": "confirm",
+            "analyst_action": scored["action"],
+            "analyst_id": "A001",
+            "factor_vector": scored["factor_vector"],
+            "category": "price_variance",
+            "predicted_action": scored["action"],
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reward"] > 0
+    assert data["evolution_recorded"] is False
+    assert data["evolution_note"] == "variant_id not provided"
+
+
+def test_outcome_variant_id_optional_in_request_model():
+    request = s2p_router.OutcomeRequest(
+        decision_id="S2P-1",
+        outcome="confirm",
+        analyst_action="auto_approve",
+        analyst_id="A001",
+        factor_vector=[0.1] * S2PDomainConfig.n_factors,
+        category="price_variance",
+        predicted_action="auto_approve",
+    )
+
+    assert request.variant_id is None
 
 
 def test_outcome_confirmed_positive_reward():
@@ -343,6 +532,7 @@ def test_outcome_overridden_negative_reward():
             "predicted_action": scored["action"],
             "amount": 1000,
             "at_risk": 250,
+            "reason_code": "wrong_action",
         },
     )
 

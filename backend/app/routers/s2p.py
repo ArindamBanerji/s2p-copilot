@@ -129,6 +129,55 @@ def _current_conservation_status(http_request: Request) -> str:
         return "UNKNOWN"
 
 
+def _is_learning_paused(conservation: Any) -> bool:
+    if conservation is None:
+        return False
+    if isinstance(conservation, str):
+        status = conservation.strip().upper()
+        return status in {"RED", "AMBER", "BOOTSTRAP", "PAUSED", "UNKNOWN"}
+    if isinstance(conservation, dict):
+        if conservation.get("learning_paused") is True:
+            return True
+        for key in ("phase", "status", "state"):
+            value = conservation.get(key)
+            if value is None:
+                continue
+            status = str(value).strip().upper()
+            if status in {"RED", "AMBER", "BOOTSTRAP", "PAUSED", "UNKNOWN"}:
+                return True
+    return False
+
+
+def _record_evolver_outcome_if_allowed(
+    payload: dict[str, Any],
+    variant_id: str | None,
+    *,
+    reward: float | None,
+    category: str,
+    http_request: Request,
+) -> None:
+    if not variant_id:
+        payload["evolution_recorded"] = False
+        payload["evolution_note"] = "variant_id not provided"
+        return
+
+    if _is_learning_paused(_current_conservation_status(http_request)):
+        payload["evolution_recorded"] = False
+        payload["evolution_note"] = "learning paused by conservation"
+        return
+
+    try:
+        record_triage_outcome(
+            variant_id,
+            reward=reward,
+            category=category,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    payload["active_variant_id"] = variant_id
+    payload["evolution_recorded"] = True
+
+
 def _invoice_decision_metadata(invoice: dict[str, Any]) -> dict[str, Any]:
     invoice_id = str(invoice.get("invoice_id") or invoice.get("event_id") or "")
     invoice_metadata = invoice.get("metadata") if isinstance(invoice.get("metadata"), dict) else {}
@@ -609,20 +658,13 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         context,
     )
     _record_supplier_profile(decision, payload, request.actual_action, context)
-    if request.variant_id:
-        try:
-            record_triage_outcome(
-                request.variant_id,
-                reward=payload.get("reward"),
-                category=_decision_category(decision),
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        payload["active_variant_id"] = request.variant_id
-        payload["evolution_recorded"] = True
-    else:
-        payload["evolution_recorded"] = False
-        payload["evolution_note"] = "variant_id not provided"
+    _record_evolver_outcome_if_allowed(
+        payload,
+        request.variant_id,
+        reward=payload.get("reward"),
+        category=_decision_category(decision),
+        http_request=http_request,
+    )
     return payload
 
 
@@ -676,20 +718,13 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
     )
     payload["outcome"] = request.outcome
     _record_supplier_profile(decision, payload, request.analyst_action, outcome_context)
-    if request.variant_id:
-        try:
-            record_triage_outcome(
-                request.variant_id,
-                reward=payload.get("reward"),
-                category=request.category,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        payload["active_variant_id"] = request.variant_id
-        payload["evolution_recorded"] = True
-    else:
-        payload["evolution_recorded"] = False
-        payload["evolution_note"] = "variant_id not provided"
+    _record_evolver_outcome_if_allowed(
+        payload,
+        request.variant_id,
+        reward=payload.get("reward"),
+        category=request.category,
+        http_request=http_request,
+    )
     if request.reason_code:
         payload["reason_code"] = request.reason_code
     payload["learning_applied"] = payload.get("status") != "paused"

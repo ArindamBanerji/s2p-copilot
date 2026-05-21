@@ -257,9 +257,10 @@ def test_sdk_learn_route_exists_and_returns_reward_fields():
     assert data["reward_raw"] == 0.8
 
 
-def test_learn_with_variant_id_records_outcome():
+def test_learn_with_variant_id_records_outcome(monkeypatch):
     scored = score_for_learn()
     variant_id = scored["active_variant"]["id"]
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", lambda _request: "GREEN")
 
     response = client.post(
         "/api/learn",
@@ -281,9 +282,10 @@ def test_learn_with_variant_id_records_outcome():
     assert variant["total"] == 1
 
 
-def test_learn_with_variant_id_records_evolver_outcome():
+def test_learn_with_variant_id_records_evolver_outcome(monkeypatch):
     scored = score_for_learn()
     variant_id = scored["active_variant"]["id"]
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", lambda _request: "GREEN")
 
     response = client.post(
         "/api/learn",
@@ -378,9 +380,10 @@ def test_supplier_id_missing_skips_gracefully_in_hook():
     assert supplier_profile_accumulator.skipped_missing_supplier_id == before + 1
 
 
-def test_positive_reward_records_success():
+def test_positive_reward_records_success(monkeypatch):
     scored = score_for_learn()
     variant_id = scored["active_variant"]["id"]
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", lambda _request: "GREEN")
 
     response = client.post(
         "/api/learn",
@@ -399,10 +402,11 @@ def test_positive_reward_records_success():
     assert variant["failures"] == 0
 
 
-def test_negative_reward_records_failure():
+def test_negative_reward_records_failure(monkeypatch):
     scored = score_for_learn()
     variant_id = scored["active_variant"]["id"]
     override_action = next(action for action in S2PDomainConfig.actions if action != scored["action"])
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", lambda _request: "GREEN")
 
     response = client.post(
         "/api/learn",
@@ -491,9 +495,10 @@ def test_outcome_returns_reward_fields():
     assert response.json()["evolution_recorded"] is False
 
 
-def test_outcome_with_variant_id_records_evolver_outcome():
+def test_outcome_with_variant_id_records_evolver_outcome(monkeypatch):
     scored = score_for_learn()
     variant_id = scored["active_variant"]["id"]
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", lambda _request: "GREEN")
     response = client.post(
         "/api/s2p/outcome",
         json={

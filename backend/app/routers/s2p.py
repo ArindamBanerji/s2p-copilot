@@ -7,7 +7,9 @@ This file: S2P procurement domain endpoints only.
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
 import logging
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -24,6 +26,9 @@ from app.domains.s2p.config import PENALTY_RATIO, S2PDomainConfig
 from app.domains.s2p.factors import S2PEvent, compute_all_factors
 from app.routers.s2p_data_helpers import find_invoice
 from app.routers.s2p_preview import _load_celonis_cache
+from app.models.outcome_receipt import OutcomeReceipt
+from app.services.receipt_store import get_receipt_store
+from app.services.novelty_tracker import compute_nearest_distance, get_novelty_tracker
 from app.services.s2p_evolver import get_active_variant, record_triage_outcome
 from app.services.supplier_profile_accumulator import accumulator as supplier_profile_accumulator
 
@@ -87,6 +92,23 @@ def _sdk_scorer(http_request: Request):
     if scorer is None:
         raise HTTPException(status_code=500, detail="S2P scorer is not configured")
     return scorer
+
+
+def _record_score_novelty(
+    factor_vector: list[float],
+    category: str,
+    scorer: Any,
+) -> None:
+    try:
+        nearest_distance = compute_nearest_distance(
+            factor_vector,
+            category,
+            scorer,
+            S2PDomainConfig,
+        )
+        get_novelty_tracker().record(factor_vector, category, nearest_distance)
+    except (AttributeError, TypeError, ValueError, IndexError) as exc:
+        log.warning("S2P novelty observation skipped: %s", exc)
 
 
 def _graph_store_from_request(http_request: Request):
@@ -237,6 +259,114 @@ def _decision_recommended_action(decision: dict[str, Any] | None) -> str:
     metadata = _decision_metadata(decision)
     value = metadata.get("recommended_action") or metadata.get("action")
     return str(value) if value else ""
+
+
+def _decision_confidence(decision: dict[str, Any] | None) -> float:
+    if not isinstance(decision, dict):
+        return 0.0
+    value = decision.get("confidence")
+    if value is None:
+        value = _decision_metadata(decision).get("confidence")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _decision_factor_vector(decision: dict[str, Any] | None) -> list[float]:
+    if not isinstance(decision, dict):
+        return []
+    metadata = _decision_metadata(decision)
+    raw_vector = decision.get("factor_vector") or metadata.get("factor_vector")
+    if isinstance(raw_vector, list):
+        try:
+            return [float(value) for value in raw_vector]
+        except (TypeError, ValueError):
+            return []
+    factors = decision.get("factors")
+    if isinstance(factors, dict):
+        try:
+            return [float(factors.get(name, 0.0) or 0.0) for name in S2PDomainConfig.factors]
+        except (TypeError, ValueError):
+            return []
+    return []
+
+
+def _receipt_conservation_snapshot(http_request: Request) -> dict[str, Any]:
+    try:
+        status = _current_conservation_status(http_request)
+        verified_count, _correct_count = _graph_verified_counts(http_request)
+        return {"state": status, "verified_count": verified_count}
+    except Exception:
+        log.exception("Unable to capture S2P receipt conservation snapshot")
+        return {"state": "", "verified_count": 0}
+
+
+def _receipt_centroid_updated(payload: dict[str, Any], before: dict[str, Any], after: dict[str, Any]) -> bool:
+    if payload.get("status") == "paused" or payload.get("learning_applied") is False:
+        return False
+    return int(after.get("verified_count", 0)) > int(before.get("verified_count", 0))
+
+
+def _outcome_recorded_for_receipt(
+    learn_result: dict[str, Any],
+    verified_before: int | None,
+    verified_after: int | None,
+) -> bool:
+    if not isinstance(learn_result, dict):
+        return False
+
+    status = str(learn_result.get("status") or "").strip().lower()
+    reason = str(learn_result.get("reason") or "").strip().lower()
+    if status == "paused" or reason in {"conservation_red", "conservation_pause", "learning_paused"}:
+        return False
+
+    for key in ("outcome_recorded", "recorded", "learning_applied"):
+        if learn_result.get(key) is True:
+            return True
+
+    if status in {"recorded", "learned", "confirmed", "ok", "success"}:
+        return True
+
+    if verified_before is not None and verified_after is not None:
+        return int(verified_after) > int(verified_before)
+
+    return False
+
+
+def _record_outcome_receipt(
+    *,
+    decision: dict[str, Any] | None,
+    payload: dict[str, Any],
+    actual_action: str,
+    reason_code: str | None,
+    conservation_before: dict[str, Any],
+    conservation_after: dict[str, Any],
+) -> None:
+    try:
+        store = get_receipt_store()
+        invoice_id = str(payload.get("invoice_id") or _decision_invoice_id(decision) or payload.get("decision_id") or "")
+        receipt = OutcomeReceipt(
+            receipt_id=f"RCPT-{uuid4()}",
+            invoice_id=invoice_id,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            scored_action=_decision_recommended_action(decision),
+            confidence=_decision_confidence(decision),
+            factor_vector=_decision_factor_vector(decision),
+            category=_decision_category(decision) or "",
+            human_action=actual_action,
+            override_reason=reason_code,
+            reward=float(payload.get("reward") or 0.0),
+            centroid_updated=_receipt_centroid_updated(payload, conservation_before, conservation_after),
+            conservation_state_before=str(conservation_before.get("state") or ""),
+            conservation_state_after=str(conservation_after.get("state") or ""),
+            verified_count_before=int(conservation_before.get("verified_count") or 0),
+            verified_count_after=int(conservation_after.get("verified_count") or 0),
+            previous_receipt_hash=store.last_hash,
+        )
+        store.add(receipt)
+    except (TypeError, ValueError, AttributeError) as exc:
+        log.warning("S2P outcome receipt creation skipped: %s", exc)
 
 
 def _decision_context(
@@ -563,6 +693,8 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
     auto_approve["action"] = score_result.action
     record_auto_approve_decision(auto_approve)
 
+    _record_score_novelty(factor_vector, request.category, scorer)
+
     return ScoreResponse(
         event_id=request.event_id,
         category=request.category,
@@ -650,6 +782,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         decision = scorer.graph_store.get_decision(request.decision_id)
     except Exception:
         decision = None
+    conservation_before = _receipt_conservation_snapshot(http_request)
     payload = _learn_with_scorer(
         scorer,
         request.decision_id,
@@ -657,6 +790,20 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         request.outcome,
         context,
     )
+    conservation_after = _receipt_conservation_snapshot(http_request)
+    if _outcome_recorded_for_receipt(
+        payload,
+        conservation_before.get("verified_count"),
+        conservation_after.get("verified_count"),
+    ):
+        _record_outcome_receipt(
+            decision=decision,
+            payload=payload,
+            actual_action=request.actual_action,
+            reason_code=context.get("reason_code"),
+            conservation_before=conservation_before,
+            conservation_after=conservation_after,
+        )
     _record_supplier_profile(decision, payload, request.actual_action, context)
     _record_evolver_outcome_if_allowed(
         payload,

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -10,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
 from app.routers.s2p_data_helpers import load_invoices
+from app.services.receipt_store import get_receipt_store
 
 router = APIRouter(prefix="/api/s2p/evidence", tags=["s2p-evidence"])
 
@@ -33,6 +35,36 @@ def _graph_store(request: Request) -> Any | None:
     state = getattr(request.app, "state", None)
     scorer = getattr(state, "scorer", None)
     return getattr(scorer, "graph_store", None)
+
+
+def _conservation_snapshot(request: Request) -> dict[str, Any]:
+    try:
+        from app.routers.s2p import _current_conservation_status, _graph_verified_counts
+    except Exception:
+        return {}
+
+    try:
+        verified_count, correct_count = _graph_verified_counts(request)
+        graph_store = _graph_store(request)
+        get_all_decisions = getattr(graph_store, "get_all_decisions", None)
+        total_decisions = len(get_all_decisions()) if callable(get_all_decisions) else verified_count
+        return {
+            "status": _current_conservation_status(request),
+            "verified_count": verified_count,
+            "correct_count": correct_count,
+            "total_decisions": max(total_decisions, 0),
+        }
+    except Exception:
+        return {}
+
+
+def _override_distribution(receipts: list[dict[str, Any]]) -> dict[str, int]:
+    counter: Counter[str] = Counter()
+    for receipt in receipts:
+        if receipt.get("human_action") != receipt.get("scored_action"):
+            reason = receipt.get("override_reason") or "unspecified"
+            counter[str(reason)] += 1
+    return dict(sorted(counter.items()))
 
 
 def _decision_metadata(decision: dict[str, Any]) -> dict[str, Any]:
@@ -124,6 +156,43 @@ def audit_trail(invoice_id: str, request: Request) -> dict[str, Any]:
         if isinstance(decision, dict):
             decisions = [_enrich_decision_invoice_metadata(decision)]
     return {"invoice_id": invoice_id, "decisions": decisions, "count": len(decisions)}
+
+
+@router.get("/receipts")
+def receipts(limit: int = 50) -> dict[str, Any]:
+    store = get_receipt_store()
+    return {"receipts": store.get_chain(limit=limit), "stats": store.stats}
+
+
+@router.get("/receipts/{invoice_id}")
+def receipts_for_invoice(invoice_id: str) -> dict[str, Any]:
+    store = get_receipt_store()
+    invoice_receipts = store.get_for_invoice(invoice_id)
+    if not invoice_receipts:
+        raise HTTPException(status_code=404, detail=f"No receipts for invoice {invoice_id}")
+    return {"invoice_id": invoice_id, "receipts": invoice_receipts}
+
+
+@router.get("/chain-integrity")
+def chain_integrity() -> dict[str, Any]:
+    return get_receipt_store().verify_chain()
+
+
+@router.get("/audit-pack")
+def audit_pack(request: Request, limit: int = 100) -> dict[str, Any]:
+    store = get_receipt_store()
+    receipts_payload = store.get_chain(limit=limit)
+    stats = store.stats
+    return {
+        "export_timestamp": datetime.now(timezone.utc).isoformat(),
+        "receipt_count": stats["total_receipts"],
+        "chain_integrity": store.verify_chain(),
+        "conservation_state": _conservation_snapshot(request),
+        "override_distribution": _override_distribution(receipts_payload),
+        "override_count": stats["overrides"],
+        "confirm_count": stats["confirms"],
+        "receipts": receipts_payload,
+    }
 
 
 def _line_item_quantity(invoice: dict[str, Any]) -> float | str:

@@ -24,6 +24,7 @@ from app.routers.s2p_payment import router as s2p_payment_router
 from app.routers.s2p_performance import router as s2p_performance_router
 from app.routers.s2p_preview import router as s2p_preview_router
 from app.routers.s2p_pvg import router as s2p_pvg_router
+from app.routers.s2p_simulation import router as s2p_simulation_router
 from app.routers.s2p_suppliers import router as s2p_suppliers_router
 
 
@@ -79,6 +80,7 @@ app.include_router(s2p_evolution_router)
 app.include_router(s2p_explorer_router)
 app.include_router(s2p_control_tower_router)
 app.include_router(s2p_discovery_router)
+app.include_router(s2p_simulation_router)
 app.include_router(s2p_insight_router)
 app.include_router(s2p_evidence_router)
 app.include_router(s2p_performance_router)

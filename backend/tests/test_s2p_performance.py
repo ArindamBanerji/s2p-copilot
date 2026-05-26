@@ -1,9 +1,11 @@
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
+from gae.calibration import compute_theta_min
 
 from app.main import app
 
@@ -95,6 +97,29 @@ def test_what_if_returns_scenario():
     assert data["additional"]["correct"] == 10
     assert data["projected"]["verified"] == 12
     assert data["projected"]["q"] > data["current"]["q"]
+    assert "theta_min" in data["projected"]
+
+
+def test_what_if_uses_canonical_theta_min_formula():
+    original = with_fake_store()
+    try:
+        response = client.get(
+            "/api/s2p/performance/what-if",
+            params={"additional_correct": 10, "additional_incorrect": 0},
+        )
+    finally:
+        app.state.graph_store = original
+
+    data = response.json()
+    override_rate = 1 / 12
+    expected = round(compute_theta_min(override_rate, 12), 4)
+    assert data["projected"]["theta_min"] == expected
+
+
+def test_performance_uses_compute_theta_min_not_penalty_denominator():
+    source = Path("app/routers/s2p_performance.py").read_text(encoding="utf-8")
+    assert "compute_theta_min" in source
+    assert "PENALTY_RATIO * new_verified" not in source
 
 
 def test_what_if_validates_input_bounds():

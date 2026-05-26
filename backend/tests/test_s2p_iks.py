@@ -8,6 +8,7 @@ Run from backend/:
 import sys
 import os
 import math
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -17,8 +18,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from fastapi.testclient import TestClient
 from app.main import app, build_s2p_scorer
 from app.domains.s2p.config import S2PDomainConfig
-import app.domains.s2p.scorer as legacy_scorer
-from app.domains.s2p.scorer import get_s2p_iks, reset_scorer
 
 client = TestClient(app)
 
@@ -84,17 +83,8 @@ def test_iks_value_in_valid_range():
     assert 0.0 <= response.json()["iks"] <= 100.0
 
 
-def test_iks_cold_start_is_deterministic_and_unlearned():
-    reset_scorer()
-    data = get_s2p_iks()
-
-    assert data["decisions"] == 0
-    assert data["iks"] == 0.0
-    assert data["mean_drift"] == 0.0
-    assert data["status"] == "CALIBRATING"
-    assert data["learning_active"] is False
-    assert "Cold start" in data["interpretation"]
-    assert "High institutional knowledge" not in data["interpretation"]
+def test_legacy_s2p_scorer_module_removed():
+    assert not Path("app/domains/s2p/scorer.py").exists()
 
 
 def test_iks_endpoint_reports_cold_start_when_learning_disabled():
@@ -114,14 +104,6 @@ def test_expert_centroids_are_priors_not_cold_start_knowledge():
     assert centroids.shape == (5, 5, 7)
     assert not np.allclose(centroids, 0.5)
 
-    reset_scorer()
-    data = get_s2p_iks()
-
-    assert data["decisions"] == 0
-    assert data["iks"] == 0.0
-    assert data["status"] == "CALIBRATING"
-    assert "High institutional knowledge" not in data["interpretation"]
-
 
 def test_iks_endpoint_uses_app_state_scorer(monkeypatch):
     class SentinelScorer:
@@ -139,16 +121,9 @@ def test_iks_endpoint_uses_app_state_scorer(monkeypatch):
     assert data["learning_active"] is True
 
 
-def test_iks_endpoint_does_not_call_legacy_scorer(monkeypatch):
+def test_iks_endpoint_works_without_legacy_scorer_module():
     reset_sdk_scorer()
-
-    def fail_legacy_call():
-        raise AssertionError("legacy get_s2p_iks should not be called")
-
-    monkeypatch.setattr(legacy_scorer, "get_s2p_iks", fail_legacy_call)
-
     response = client.get("/api/s2p/iks")
-
     assert response.status_code == 200
 
 

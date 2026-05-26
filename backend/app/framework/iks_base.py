@@ -65,7 +65,7 @@ def compute_iks(
     Parameters
     ----------
     mu_t    : np.ndarray, shape (n_categories, n_actions, n_factors)
-              Current centroid tensor from ProfileScorer.
+              Current centroid tensor from the scorer.
     mu_zero : np.ndarray or None
               Bootstrap prior.  When None, returns estimated IKS=50.
               The caller is responsible for loading the domain sidecar.

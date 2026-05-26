@@ -23,9 +23,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
-from app.main import app
+from app.main import app, build_s2p_scorer
 from app.domains.s2p.config import S2PDomainConfig
-from app.domains.s2p.scorer import reset_scorer
 
 client = TestClient(app)
 
@@ -33,6 +32,12 @@ SCENARIOS_PATH = (
     Path(__file__).parent.parent.parent
     / "examples/procurement_approval/scenarios.json"
 )
+
+
+def reset_scorer():
+    app.state.scorer = build_s2p_scorer()
+    app.state.graph_store = app.state.scorer.graph_store
+    app.state.s2p_reward_function = app.state.scorer._reward_fn
 
 # S2P actions that map to "defer" in scenario ground truth
 ACTION_MAP = {

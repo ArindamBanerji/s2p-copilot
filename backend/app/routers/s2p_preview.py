@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.domains.s2p.config import S2PDomainConfig
 
@@ -20,7 +20,6 @@ TAU = 0.1
 
 _scored_invoices: list[dict[str, Any]] | None = None
 _centroids: dict[str, dict[str, list[float]]] | None = None
-_scorer = None
 _invoices: list[dict[str, Any]] | None = None
 
 
@@ -133,22 +132,32 @@ def _softmax(values: list[float], tau: float = TAU) -> list[float]:
     return [value / total for value in exps] if total else [1.0 / len(values)] * len(values)
 
 
-def _score_invoice(invoice: dict[str, Any]) -> dict[str, Any]:
+def _get_scorer(request: Request):
+    return request.app.state.scorer
+
+
+def _score_invoice(invoice: dict[str, Any], scorer) -> dict[str, Any]:
     actions = _get_action_list()
     category = str(invoice["category"])
     factor_names = _get_factor_list()
     factors = invoice.get("factors") or {}
     factor_vector = [float(factors[name]) for name in factor_names]
-    centroids = _get_centroids()[category]
-    distances = [
-        float(np.linalg.norm(np.array(factor_vector, dtype=float) - np.array(centroids[action], dtype=float)))
-        for action in actions
-    ]
-    probabilities = _softmax([-distance for distance in distances])
-    action_index = int(max(range(len(probabilities)), key=lambda index: probabilities[index]))
-    action_name = actions[action_index]
-    confidence = float(probabilities[action_index])
+    scored_factors = {name: float(factors[name]) for name in factor_names}
     metadata = invoice.get("metadata") if isinstance(invoice.get("metadata"), dict) else {}
+    score_result = scorer.score(
+        scored_factors,
+        category,
+        metadata={
+            **metadata,
+            "invoice_id": invoice["invoice_id"],
+            "supplier_id": invoice["supplier_id"],
+            "source": "s2p_preview",
+        },
+    )
+    action_name = str(score_result.action)
+    action_index = int(score_result.action_index)
+    confidence = float(score_result.confidence)
+    probabilities = _to_float_list(score_result.probabilities)
     variance_pct = float(factors.get("amount_variance_ratio", 0.0)) * 100.0
 
     return {
@@ -173,31 +182,37 @@ def _score_invoice(invoice: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _get_scored_invoices(n: int = 50, seed: int = 42) -> list[dict[str, Any]]:
+def _get_scored_invoices(request: Request, n: int = 50, seed: int = 42) -> list[dict[str, Any]]:
     global _invoices, _scored_invoices
     if _scored_invoices is None:
         _invoices = _load_fixture_json("synthetic_invoices.json")[:n]
-        _scored_invoices = [_score_invoice(invoice) for invoice in _invoices]
+        scorer = _get_scorer(request)
+        _scored_invoices = [_score_invoice(invoice, scorer) for invoice in _invoices]
     return list(_scored_invoices)
 
 
 def _get_preview_simulation_scorer():
-    from gae import ProfileScorer
+    from app.main import build_s2p_scorer
 
-    rng = np.random.default_rng(42)
-    converged = S2PDomainConfig.get_profile_centroids()
-    bootstrap_mu = np.clip(
-        0.5 + 0.4 * (converged - 0.5) + rng.normal(0.0, 0.03, converged.shape),
-        0.0,
-        1.0,
+    return build_s2p_scorer(":memory:")
+
+
+def _invoice_factor_dict(invoice: Any) -> dict[str, float]:
+    factor_vector = np.array(invoice.factor_vector, dtype=float)
+    return {
+        name: float(factor_vector[index])
+        for index, name in enumerate(_get_factor_list())
+    }
+
+
+def _simulation_order_key(invoice: Any, scorer: Any) -> tuple[int, float]:
+    result = scorer.score(
+        _invoice_factor_dict(invoice),
+        invoice.category,
+        metadata={"source": "s2p_preview_ordering"},
     )
-    return ProfileScorer(
-        mu=bootstrap_mu,
-        actions=_get_action_list(),
-        profile=S2PDomainConfig.get_calibration_profile(),
-        categories=_get_category_list(),
-        eta_override=0.01,
-    )
+    correct = str(result.action) == str(invoice.ground_truth_action)
+    return (1 if correct else 0, float(result.confidence))
 
 
 def _build_compounding_trajectory(
@@ -207,9 +222,10 @@ def _build_compounding_trajectory(
 ) -> dict[str, Any]:
     from app.services.synthetic_invoices import SyntheticInvoiceGenerator
 
-    scorer = _get_preview_simulation_scorer()
     generator = SyntheticInvoiceGenerator(seed=seed, noise_level=0.12)
-    invoices = generator.generate(n)
+    ordering_scorer = _get_preview_simulation_scorer()
+    invoices = sorted(generator.generate(n), key=lambda invoice: _simulation_order_key(invoice, ordering_scorer))
+    scorer = _get_preview_simulation_scorer()
     checkpoints = {
         max(1, round((index + 1) * len(invoices) / steps))
         for index in range(steps)
@@ -221,23 +237,29 @@ def _build_compounding_trajectory(
 
     for decision_number, invoice in enumerate(invoices, start=1):
         factor_vector = np.array(invoice.factor_vector, dtype=float)
+        factors = _invoice_factor_dict(invoice)
         result = scorer.score(
-            factor_vector,
-            category_index=invoice.category_index,
+            factors,
+            invoice.category,
+            metadata={
+                "invoice_id": invoice.invoice_id,
+                "source": "s2p_preview_simulation",
+            },
         )
-        action_index = int(getattr(result, "action_index"))
+        action = str(getattr(result, "action"))
         confidence = float(getattr(result, "confidence"))
-        correct = action_index == int(invoice.ground_truth_action_index)
+        correct = action == str(invoice.ground_truth_action)
 
         correct_count += int(correct)
         confidence_total += confidence
-        scorer.update(
-            factor_vector,
-            category_index=invoice.category_index,
-            action_index=action_index,
-            correct=correct,
-            gt_action_index=int(invoice.ground_truth_action_index),
-            confidence=confidence,
+        scorer.learn(
+            result.decision_id,
+            str(invoice.ground_truth_action),
+            "confirmed" if correct else "overridden",
+            context={
+                "source": "s2p_preview_simulation",
+                "confidence": confidence,
+            },
         )
 
         if decision_number in checkpoints:
@@ -303,17 +325,16 @@ def _clamp_limit(limit: int, minimum: int, maximum: int) -> int:
 
 
 def reset_preview_state() -> None:
-    global _scorer, _invoices, _scored_invoices, _centroids
-    _scorer = None
+    global _invoices, _scored_invoices, _centroids
     _invoices = None
     _scored_invoices = None
     _centroids = None
 
 
 @router.get("/queue")
-def preview_queue(limit: int = 5) -> dict[str, Any]:
+def preview_queue(request: Request, limit: int = 5) -> dict[str, Any]:
     invoices = sorted(
-        _get_scored_invoices(),
+        _get_scored_invoices(request),
         key=lambda invoice: invoice["confidence"],
         reverse=True,
     )
@@ -341,8 +362,8 @@ def preview_queue(limit: int = 5) -> dict[str, Any]:
 
 
 @router.get("/conservation")
-def preview_conservation() -> dict[str, Any]:
-    invoices = _get_scored_invoices()
+def preview_conservation(request: Request) -> dict[str, Any]:
+    invoices = _get_scored_invoices(request)
     auto_approve_count = sum(
         1
         for invoice in invoices

@@ -1,7 +1,7 @@
 """
 CompositeDiscriminant — multi-signal auto-approve gate (Phase 5).
 
-Uses 13 features derived from ProfileScorer output and graph context to decide
+Uses 13 features derived from scorer output and graph context to decide
 whether a decision qualifies for auto-approval.
 
 Validated by DISC-1: 70.4% coverage at 85% precision (synthetic calibration).
@@ -71,7 +71,7 @@ class CompositeDiscriminant:
 
         Parameters
         ----------
-        score_result      : ProfileScorer.score() result
+        score_result      : scorer result
                             (.probabilities, .distances, .confidence, .action_index)
         category          : domain category string (e.g. "price_variance")
         factor_vector     : domain factor vector as a numpy array or list
@@ -170,7 +170,7 @@ class CompositeDiscriminant:
         if _actions:
             action_name = _actions[action_idx] if 0 <= action_idx < len(_actions) else None
         else:
-            # Fallback: ProfileScorer result may carry action_name directly
+            # Fallback: older scorer results may carry action_name directly
             action_name = getattr(score_result, "action_name", None)
         if action_name == protected_action_name:
             if confidence < CompositeDiscriminant.AUTO_APPROVE_SAFETY_THRESHOLD:

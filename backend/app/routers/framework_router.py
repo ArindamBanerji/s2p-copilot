@@ -474,7 +474,7 @@ async def checkpoint_rollback(request: RollbackRequest):
 
 @router.post("/soc/scorer/freeze")
 async def scorer_freeze():
-    """Freeze the ProfileScorer — stops centroid updates."""
+    """Freeze the scorer — stops centroid updates."""
     from app.services.gae_state import get_profile_scorer
     try:
         scorer = get_profile_scorer()
@@ -486,7 +486,7 @@ async def scorer_freeze():
 
 @router.post("/soc/scorer/unfreeze")
 async def scorer_unfreeze():
-    """Unfreeze the ProfileScorer — re-enables centroid updates."""
+    """Unfreeze the scorer — re-enables centroid updates."""
     from app.services.gae_state import get_profile_scorer
     try:
         scorer = get_profile_scorer()

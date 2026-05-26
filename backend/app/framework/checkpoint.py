@@ -1,7 +1,7 @@
 """
 CheckpointService — centroid checkpoint and rollback (TD-033, Phase 4 §17.5).
 
-Creates immutable snapshots of the ProfileScorer centroid tensor (mu) in Neo4j.
+Creates immutable snapshots of the scorer centroid tensor in Neo4j.
 Rollback restores a snapshot and freezes the scorer to prevent further drift.
 CISO Q4 answer: "What if it's wrong?" — instant revert to any prior checkpoint.
 
@@ -33,7 +33,7 @@ class CheckpointService:
 
         Parameters
         ----------
-        scorer : ProfileScorer — source of mu, counts, decision_count
+        scorer : source of centroids, counts, decision_count
         neo4j_service : object with async run_query
         reason : str — label stored on the node (e.g. "pre-learning-activation")
 
@@ -106,7 +106,7 @@ class CheckpointService:
         Parameters
         ----------
         checkpoint_id : str — UUID of the target Checkpoint node
-        scorer : ProfileScorer — will have mu (and counts) mutated in-place
+        scorer : object whose centroids/counts will be restored
         neo4j_service : object with async run_query
 
         Returns

@@ -245,10 +245,40 @@ def test_reset_clears_cache():
     assert preview_module._scored_invoices is not None
 
     preview_module.reset_preview_state()
-    assert preview_module._scorer is None
     assert preview_module._invoices is None
     assert preview_module._scored_invoices is None
 
     response = client.get("/api/s2p/preview/queue")
     assert response.status_code == 200
     assert response.json()["total"] == 50
+
+
+def test_preview_module_has_no_profile_scorer_reference():
+    import pathlib
+
+    source = pathlib.Path("app/routers/s2p_preview.py").read_text(encoding="utf-8")
+    assert "ProfileScorer" not in source
+
+
+def test_preview_queue_uses_app_state_scorer(monkeypatch):
+    import app.routers.s2p_preview as preview_module
+    from types import SimpleNamespace
+
+    class SentinelScorer:
+        def score(self, factors, category, metadata=None):
+            return SimpleNamespace(
+                action="auto_approve",
+                action_index=0,
+                confidence=0.99,
+                probabilities=[1.0, 0.0, 0.0, 0.0, 0.0],
+                decision_id="SENTINEL",
+            )
+
+    preview_module.reset_preview_state()
+    monkeypatch.setattr(app.state, "scorer", SentinelScorer(), raising=False)
+    response = client.get("/api/s2p/preview/queue?limit=1")
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["invoices"][0]["recommended_action"] == "auto_approve"
+    assert data["invoices"][0]["confidence"] == 0.99

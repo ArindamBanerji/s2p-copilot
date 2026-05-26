@@ -8,16 +8,16 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.domains.s2p.config import S2PDomainConfig
-from app.domains.s2p.scorer import reset_scorer, score_event
 from app.services.synthetic_invoices import SyntheticInvoiceGenerator
+from demo.s2p_demo import build_demo_scorer, score_event
 
 
 def _score_demo_invoices(n: int = 10):
-    reset_scorer()
+    scorer = build_demo_scorer()
     invoices = SyntheticInvoiceGenerator(seed=11).generate(n)
     results = []
     for invoice in invoices:
-        scored = score_event(invoice.factor_vector, invoice.category)
+        scored = score_event(scorer, invoice.factor_vector, invoice.category)
         results.append(
             {
                 "id": invoice.invoice_id,

@@ -1,74 +1,50 @@
-"""
-tests/test_s2p_scorer.py — S2P scorer wiring tests.
+"""S2P CompoundingScorer wiring tests."""
 
-Run from backend/:
-    pytest tests/test_s2p_scorer.py -v
-"""
-
-import sys
 import os
+import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from app.domains.s2p.scorer import get_scorer, reset_scorer, score_event
 from app.domains.s2p.config import S2PDomainConfig
+from app.main import build_s2p_scorer
 
 
-def test_get_scorer_returns_profile_scorer():
-    from gae import ProfileScorer
-    reset_scorer()
-    scorer = get_scorer()
-    assert isinstance(scorer, ProfileScorer)
+def _factor_dict(value: float = 0.5) -> dict[str, float]:
+    return {name: value for name in S2PDomainConfig.factors}
 
 
-def test_scorer_is_singleton():
-    reset_scorer()
-    s1 = get_scorer()
-    s2 = get_scorer()
-    assert s1 is s2
+def test_legacy_s2p_scorer_module_removed():
+    assert not Path("app/domains/s2p/scorer.py").exists()
 
 
-def test_score_event_returns_required_keys():
-    reset_scorer()
-    factor_vector = [0.9, 0.08, 0.04, 0.05, 0.5, 0.8, 0.9]
-    result = score_event(factor_vector, "price_variance")
-    assert "action" in result
-    assert "confidence" in result
-    assert "probabilities" in result
-    assert result["action"] in S2PDomainConfig.actions
+def test_build_s2p_scorer_returns_compounding_scorer():
+    from copilot_sdk.scoring import CompoundingScorer
+
+    scorer = build_s2p_scorer(":memory:")
+    assert isinstance(scorer, CompoundingScorer)
 
 
-def test_score_event_action_is_valid_s2p_action():
-    reset_scorer()
-    factor_vector = [0.5] * 7
-    result = score_event(factor_vector, "price_variance")
-    assert result["action"] in S2PDomainConfig.actions
-    assert result["action"] in [
-        "auto_approve",
-        "hold_for_review",
-        "escalate_to_buyer",
-        "flag_leakage",
-        "refer_to_specialist",
-    ]
-    assert "approve" != result["action"]
-    assert "suppress" not in result["action"]    # SOC action must never appear
-    assert "investigate" not in result["action"]  # SOC action must never appear
+def test_score_returns_required_keys():
+    scorer = build_s2p_scorer(":memory:")
+    result = scorer.score(_factor_dict(), "price_variance")
+
+    assert result.action in S2PDomainConfig.actions
+    assert isinstance(result.decision_id, str)
+    assert 0.0 <= result.confidence <= 1.0
+    assert len(result.probabilities) == S2PDomainConfig.n_actions
 
 
-def test_score_event_probabilities_sum_to_one():
-    reset_scorer()
-    factor_vector = [0.5] * 7
-    result = score_event(factor_vector, "contract_gap")
-    assert abs(sum(result["probabilities"]) - 1.0) < 0.01
+def test_score_probabilities_sum_to_one():
+    scorer = build_s2p_scorer(":memory:")
+    result = scorer.score(_factor_dict(), "contract_gap")
+
+    assert abs(sum(result.probabilities) - 1.0) < 0.01
 
 
-def test_scorer_shape_is_5_5_7():
-    reset_scorer()
-    assert get_scorer().centroids.shape == (5, 5, 7)
-
-
-def test_reset_scorer_clears_singleton():
-    s1 = get_scorer()
-    reset_scorer()
-    s2 = get_scorer()
-    assert s1 is not s2
+def test_tensor_shape_remains_5_5_7():
+    assert (
+        S2PDomainConfig.n_categories,
+        S2PDomainConfig.n_actions,
+        S2PDomainConfig.n_factors,
+    ) == (5, 5, 7)

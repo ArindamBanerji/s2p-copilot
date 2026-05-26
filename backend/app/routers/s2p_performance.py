@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
+from gae.calibration import compute_theta_min
 
 router = APIRouter(prefix="/api/s2p/performance", tags=["s2p-performance"])
 
@@ -67,6 +68,35 @@ def _current_q(graph_store: Any) -> float:
     return round(_count_correct(graph_store) / verified, 4)
 
 
+def _verified_decisions(graph_store: Any) -> list[dict[str, Any]]:
+    decisions = _safe_call(graph_store, "get_verified_decisions", [], _graph_domain(graph_store))
+    return decisions if isinstance(decisions, list) else []
+
+
+def _is_override_decision(decision: dict[str, Any]) -> bool:
+    outcome = str(decision.get("outcome") or decision.get("actual_outcome") or "").strip().lower()
+    if outcome in {"override", "overridden"}:
+        return True
+    return decision.get("is_correct") is False
+
+
+def _projected_theta_min(
+    graph_store: Any,
+    new_verified: int,
+    additional_incorrect: int,
+) -> float:
+    if new_verified <= 0:
+        return 1.0
+    current_overrides = sum(1 for decision in _verified_decisions(graph_store) if _is_override_decision(decision))
+    projected_override_rate = (current_overrides + additional_incorrect) / new_verified
+    if projected_override_rate <= 0:
+        return 1.0
+    try:
+        return round(float(compute_theta_min(projected_override_rate, new_verified)), 4)
+    except (TypeError, ValueError):
+        return 1.0
+
+
 @router.get("/trajectory")
 def trajectory(request: Request) -> dict[str, Any]:
     graph_store = _graph_store(request)
@@ -98,7 +128,7 @@ def what_if(
     new_verified = verified + additional_correct + additional_incorrect
     new_correct = correct + additional_correct
     projected_q = round(new_correct / new_verified, 4) if new_verified else 0.0
-    theta_min = round(23.53 / (PENALTY_RATIO * new_verified), 4) if new_verified else 1.0
+    theta_min = _projected_theta_min(graph_store, new_verified, additional_incorrect)
     return {
         "current": {
             "verified": verified,

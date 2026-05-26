@@ -33,7 +33,6 @@ class TestNoSOCImports:
         modules = [
             "app.domains.s2p.config",
             "app.domains.s2p.factors",
-            "app.domains.s2p.scorer",
             "app.domains.s2p.graph",
         ]
         for m in modules:
@@ -171,47 +170,36 @@ class TestS2PScoring:
     """S2P scorer wiring tests using canonical (5,5,7) configuration."""
 
     def setup_method(self):
-        from app.domains.s2p.scorer import reset_scorer
-        reset_scorer()
+        pass
 
-    def test_build_profile_scorer_with_s2p_params_succeeds(self):
-        """build_profile_scorer with S2P DomainConfig params returns a ProfileScorer."""
-        from gae import build_profile_scorer, KernelType, ProfileScorer
-        from app.domains.s2p.config import S2PDomainConfig
+    def test_build_compounding_scorer_with_s2p_params_succeeds(self):
+        """build_s2p_scorer returns the canonical SDK CompoundingScorer."""
+        from copilot_sdk.scoring import CompoundingScorer
+        from app.main import build_s2p_scorer
 
-        scorer = build_profile_scorer(
-            categories=S2PDomainConfig.categories,
-            actions=S2PDomainConfig.actions,
-            centroids=S2PDomainConfig.get_initial_centroids(),
-            n_factors=S2PDomainConfig.n_factors,
-            kernel=KernelType.L2,
-        )
-        assert scorer is not None
-        assert isinstance(scorer, ProfileScorer)
+        scorer = build_s2p_scorer(":memory:")
+        assert isinstance(scorer, CompoundingScorer)
 
     def test_centroids_shape_matches_s2p_config(self):
-        """Scorer mu (centroids) shape == (n_categories, n_actions, n_factors)."""
-        from app.domains.s2p.scorer import get_scorer
+        """S2P tensor dimensions remain (n_categories, n_actions, n_factors)."""
         from app.domains.s2p.config import S2PDomainConfig
 
-        scorer = get_scorer()
         expected_shape = (
             S2PDomainConfig.n_categories,
             S2PDomainConfig.n_actions,
             S2PDomainConfig.n_factors,
         )
-        assert scorer.centroids.shape == expected_shape, (
-            f"Centroid shape {scorer.centroids.shape} != expected {expected_shape}"
-        )
+        assert S2PDomainConfig.get_profile_centroids().shape == expected_shape
 
     def test_score_output_length_matches_n_actions(self):
-        """score_event returns one probability per action."""
-        from app.domains.s2p.scorer import score_event
+        """CompoundingScorer.score returns one probability per action."""
+        from app.main import build_s2p_scorer
         from app.domains.s2p.config import S2PDomainConfig
 
-        factor_vector = [0.5] * S2PDomainConfig.n_factors
-        result = score_event(factor_vector, S2PDomainConfig.categories[0])
-        assert len(result["probabilities"]) == S2PDomainConfig.n_actions
+        scorer = build_s2p_scorer(":memory:")
+        factors = {name: 0.5 for name in S2PDomainConfig.factors}
+        result = scorer.score(factors, S2PDomainConfig.categories[0])
+        assert len(result.probabilities) == S2PDomainConfig.n_actions
 
 
 # ============================================================================
@@ -222,8 +210,7 @@ class TestS2PIndependence:
     """S2P scorer must be dimensionally and semantically independent."""
 
     def setup_method(self):
-        from app.domains.s2p.scorer import reset_scorer
-        reset_scorer()
+        pass
 
     def test_s2p_scorer_shape_differs_from_other_domain_scorer(self):
         """
@@ -232,11 +219,9 @@ class TestS2PIndependence:
         Demonstrates that DomainConfig drives scorer isolation.
         """
         from gae import build_profile_scorer, KernelType
-        from app.domains.s2p.scorer import get_scorer
         from app.domains.s2p.config import S2PDomainConfig
 
-        s2p_scorer = get_scorer()
-        s2p_shape = s2p_scorer.centroids.shape
+        s2p_shape = S2PDomainConfig.get_profile_centroids().shape
 
         # Hypothetical fraud/SOC domain: 3 categories, 5 actions, 4 factors
         other_categories = ["fraud_type_a", "fraud_type_b", "fraud_type_c"]

@@ -9,14 +9,14 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
+from copilot_sdk.scoring import CompoundingScorer
+
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import S2PEvent, compute_factor_vector
-from app.domains.s2p.scorer import (
-    score_event, update_scorer, reset_scorer, get_s2p_iks, LEARNING_ENABLED
-)
+from app.domains.s2p.reward import S2PRewardFunction
 
-# Reset to cold start for clean demo
-reset_scorer()
+LEARNING_ENABLED = True
 
 SCENARIOS = [
     {
@@ -215,7 +215,42 @@ SCENARIOS = [
 ]
 
 
+def build_demo_scorer() -> CompoundingScorer:
+    return CompoundingScorer.from_preset(
+        "s2p",
+        graph_store=SQLiteGraphStore(":memory:", domain="s2p", decision_id_prefix="S2P-DEMO-"),
+        reward_function=S2PRewardFunction(),
+    )
+
+
+def score_event(scorer: CompoundingScorer, factor_vector: list[float], category: str) -> dict:
+    factors = {
+        name: float(factor_vector[index])
+        for index, name in enumerate(S2PDomainConfig.factors)
+    }
+    result = scorer.score(factors, category, metadata={"source": "s2p_demo"})
+    return {
+        "action": result.action,
+        "action_index": result.action_index,
+        "confidence": float(result.confidence),
+        "probabilities": [float(probability) for probability in result.probabilities],
+        "decision_id": result.decision_id,
+    }
+
+
+def get_s2p_iks(scorer: CompoundingScorer) -> dict:
+    trajectory = scorer.trajectory()
+    iks = float(getattr(trajectory, "current_iks", 0.0) or 0.0)
+    decisions = int(getattr(trajectory, "decisions_total", 0) or 0)
+    return {
+        "iks": round(iks, 1),
+        "decisions": decisions,
+        "interpretation": "CompoundingScorer trajectory state.",
+    }
+
+
 def run_demo():
+    scorer = build_demo_scorer()
     print("=" * 60)
     print("S2P Copilot -- 10 Scenario Demo")
     print(f"Domain: S2P (Source-to-Pay)")
@@ -233,7 +268,7 @@ def run_demo():
     for scenario in SCENARIOS:
         event  = scenario["event"]
         fv     = compute_factor_vector(event)
-        result = score_event(fv, event.category)
+        result = score_event(scorer, fv, event.category)
         match  = result["action"] == scenario["ground_truth"]
         if match:
             correct += 1
@@ -256,7 +291,7 @@ def run_demo():
         })
 
     # IKS after cold-start scoring (no learning applied)
-    iks = get_s2p_iks()
+    iks = get_s2p_iks(scorer)
 
     print("=" * 60)
     print(f"Results: {correct}/10 correct at cold start")

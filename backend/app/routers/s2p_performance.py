@@ -21,11 +21,15 @@ def _graph_store(request: Request) -> Any | None:
     return getattr(scorer, "graph_store", None)
 
 
-def _safe_call(target: Any, name: str, default: Any, *args: Any) -> Any:
+def _graph_domain(graph_store: Any | None = None) -> str:
+    return str(getattr(graph_store, "domain", None) or "s2p")
+
+
+def _safe_call(target: Any, name: str, default: Any, *args: Any, **kwargs: Any) -> Any:
     if target is None or not hasattr(target, name):
         return default
     try:
-        return getattr(target, name)(*args)
+        return getattr(target, name)(*args, **kwargs)
     except Exception:
         return default
 
@@ -49,11 +53,11 @@ def _json_safe(value: Any) -> Any:
 
 
 def _count_verified(graph_store: Any) -> int:
-    return int(_safe_call(graph_store, "count_verified", 0) or 0)
+    return int(_safe_call(graph_store, "count_verified", 0, _graph_domain(graph_store)) or 0)
 
 
 def _count_correct(graph_store: Any) -> int:
-    return int(_safe_call(graph_store, "count_correct", 0) or 0)
+    return int(_safe_call(graph_store, "count_correct", 0, _graph_domain(graph_store)) or 0)
 
 
 def _current_q(graph_store: Any) -> float:
@@ -66,7 +70,13 @@ def _current_q(graph_store: Any) -> float:
 @router.get("/trajectory")
 def trajectory(request: Request) -> dict[str, Any]:
     graph_store = _graph_store(request)
-    checkpoints = _safe_call(graph_store, "get_centroid_checkpoints", [], 100)
+    checkpoints = _safe_call(
+        graph_store,
+        "get_centroid_checkpoints",
+        [],
+        _graph_domain(graph_store),
+        limit=100,
+    )
     points = _json_safe(checkpoints) if isinstance(checkpoints, list) else []
     return {
         "points": points,
@@ -113,8 +123,9 @@ def what_if(
 @router.get("/summary")
 def summary(request: Request) -> dict[str, Any]:
     graph_store = _graph_store(request)
-    decisions = _safe_call(graph_store, "get_all_decisions", [])
-    verified_decisions = _safe_call(graph_store, "get_verified_decisions", [])
+    domain = _graph_domain(graph_store)
+    decisions = _safe_call(graph_store, "get_all_decisions", [], domain)
+    verified_decisions = _safe_call(graph_store, "get_verified_decisions", [], domain)
     decisions = decisions if isinstance(decisions, list) else []
     verified_decisions = verified_decisions if isinstance(verified_decisions, list) else []
     auto_approvals = sum(

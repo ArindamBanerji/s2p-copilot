@@ -37,6 +37,10 @@ def _graph_store(request: Request) -> Any | None:
     return getattr(scorer, "graph_store", None)
 
 
+def _graph_domain(graph_store: Any | None = None) -> str:
+    return str(getattr(graph_store, "domain", None) or "s2p")
+
+
 def _conservation_snapshot(request: Request) -> dict[str, Any]:
     try:
         from app.routers.s2p import _current_conservation_status, _graph_verified_counts
@@ -46,8 +50,9 @@ def _conservation_snapshot(request: Request) -> dict[str, Any]:
     try:
         verified_count, correct_count = _graph_verified_counts(request)
         graph_store = _graph_store(request)
+        domain = _graph_domain(graph_store)
         get_all_decisions = getattr(graph_store, "get_all_decisions", None)
-        total_decisions = len(get_all_decisions()) if callable(get_all_decisions) else verified_count
+        total_decisions = len(get_all_decisions(domain)) if callable(get_all_decisions) else verified_count
         return {
             "status": _current_conservation_status(request),
             "verified_count": verified_count,
@@ -143,7 +148,7 @@ def audit_trail(invoice_id: str, request: Request) -> dict[str, Any]:
             if not decisions:
                 decisions = [
                     _enrich_decision_invoice_metadata(decision)
-                    for decision in graph_store.get_all_decisions()
+                    for decision in graph_store.get_all_decisions(_graph_domain(graph_store))
                     if isinstance(decision, dict) and _decision_matches_invoice(decision, invoice_id)
                 ]
         except Exception:

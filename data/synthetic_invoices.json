@@ -36,7 +36,12 @@
       ],
       "commodity": "indexed metals",
       "contract_ref": "CTR-001-CON"
-    }
+    },
+    "intent": "contract_compliance_gap",
+    "amount_at_risk": 22426.73,
+    "amount_recovered": 20856.86,
+    "cycle_time_hours": 24.0,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0002",
@@ -81,7 +86,12 @@
       ],
       "commodity": "pallets",
       "contract_ref": "CTR-002-QUA"
-    }
+    },
+    "intent": "invoice_match_failure",
+    "amount_at_risk": 9752.58,
+    "amount_recovered": 9069.9,
+    "cycle_time_hours": 9.13,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0003",
@@ -132,7 +142,12 @@
       ],
       "commodity": "resin",
       "contract_ref": "CTR-003-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 3781.7,
+    "amount_recovered": 3516.98,
+    "cycle_time_hours": 1.56,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0004",
@@ -165,7 +180,12 @@
       ],
       "commodity": "indexed metals",
       "contract_ref": "CTR-004-CON"
-    }
+    },
+    "intent": "contract_compliance_gap",
+    "amount_at_risk": 30171.46,
+    "amount_recovered": 28059.46,
+    "cycle_time_hours": 29.09,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0005",
@@ -204,7 +224,12 @@
       ],
       "commodity": "resin",
       "contract_ref": "CTR-005-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 41289.58,
+    "amount_recovered": 38399.31,
+    "cycle_time_hours": 2.62,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0006",
@@ -249,7 +274,12 @@
       ],
       "commodity": "steel coil",
       "contract_ref": "CTR-006-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 1402.74,
+    "amount_recovered": 1304.55,
+    "cycle_time_hours": 3.15,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0007",
@@ -300,7 +330,12 @@
       ],
       "commodity": "maintenance kits",
       "contract_ref": "CTR-007-QUA"
-    }
+    },
+    "intent": "invoice_match_failure",
+    "amount_at_risk": 14965.97,
+    "amount_recovered": 13918.35,
+    "cycle_time_hours": 14.79,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0008",
@@ -333,7 +368,12 @@
       ],
       "commodity": "chemicals",
       "contract_ref": "CTR-008-QUA"
-    }
+    },
+    "intent": "invoice_match_failure",
+    "amount_at_risk": 18887.12,
+    "amount_recovered": 17565.02,
+    "cycle_time_hours": 15.92,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0009",
@@ -372,7 +412,12 @@
       ],
       "commodity": "freight surcharge",
       "contract_ref": "CTR-009-DUP"
-    }
+    },
+    "intent": "invoice_duplicate_risk",
+    "amount_at_risk": 42303.0,
+    "amount_recovered": 39341.79,
+    "cycle_time_hours": 9.92,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0010",
@@ -417,7 +462,12 @@
       ],
       "commodity": "maintenance kits",
       "contract_ref": "CTR-010-QUA"
-    }
+    },
+    "intent": "invoice_match_failure",
+    "amount_at_risk": 8564.69,
+    "amount_recovered": 7965.16,
+    "cycle_time_hours": 18.18,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0011",
@@ -468,7 +518,12 @@
       ],
       "commodity": "resin",
       "contract_ref": "CTR-001-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 19775.3,
+    "amount_recovered": 18391.03,
+    "cycle_time_hours": 5.8,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0012",
@@ -501,7 +556,12 @@
       ],
       "commodity": "freight surcharge",
       "contract_ref": "CTR-002-DUP"
-    }
+    },
+    "intent": "invoice_duplicate_risk",
+    "amount_at_risk": 10677.15,
+    "amount_recovered": 9929.75,
+    "cycle_time_hours": 12.89,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0013",
@@ -540,7 +600,12 @@
       ],
       "commodity": "utility charges",
       "contract_ref": "CTR-003-FOR"
-    }
+    },
+    "intent": "format_compliance_issue",
+    "amount_at_risk": 5057.38,
+    "amount_recovered": 4703.36,
+    "cycle_time_hours": 28.97,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0014",
@@ -585,7 +650,12 @@
       ],
       "commodity": "steel coil",
       "contract_ref": "CTR-004-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 17536.79,
+    "amount_recovered": 16309.21,
+    "cycle_time_hours": 7.39,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0015",
@@ -636,7 +706,12 @@
       ],
       "commodity": "regulated reagents",
       "contract_ref": "CTR-005-FOR"
-    }
+    },
+    "intent": "format_compliance_issue",
+    "amount_at_risk": 39332.42,
+    "amount_recovered": 36579.15,
+    "cycle_time_hours": 31.8,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0016",
@@ -669,7 +744,12 @@
       ],
       "commodity": "spot logistics",
       "contract_ref": "CTR-006-CON"
-    }
+    },
+    "intent": "contract_compliance_gap",
+    "amount_at_risk": 1978.95,
+    "amount_recovered": 1840.42,
+    "cycle_time_hours": 25.21,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0017",
@@ -708,7 +788,12 @@
       ],
       "commodity": "consulting hours",
       "contract_ref": "CTR-007-DUP"
-    }
+    },
+    "intent": "invoice_duplicate_risk",
+    "amount_at_risk": 16622.98,
+    "amount_recovered": 15459.37,
+    "cycle_time_hours": 3.7,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0018",
@@ -753,7 +838,12 @@
       ],
       "commodity": "chemicals",
       "contract_ref": "CTR-008-QUA"
-    }
+    },
+    "intent": "invoice_match_failure",
+    "amount_at_risk": 20096.36,
+    "amount_recovered": 18689.61,
+    "cycle_time_hours": 11.07,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0019",
@@ -804,7 +894,12 @@
       ],
       "commodity": "lab consumables",
       "contract_ref": "CTR-009-DUP"
-    }
+    },
+    "intent": "invoice_duplicate_risk",
+    "amount_at_risk": 35644.26,
+    "amount_recovered": 33149.16,
+    "cycle_time_hours": 5.68,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0020",
@@ -837,7 +932,12 @@
       ],
       "commodity": "freight surcharge",
       "contract_ref": "CTR-010-DUP"
-    }
+    },
+    "intent": "invoice_duplicate_risk",
+    "amount_at_risk": 7241.13,
+    "amount_recovered": 6734.25,
+    "cycle_time_hours": 6.67,
+    "verified": true
   },
   {
     "invoice_id": "S2P-INV-0021",
@@ -876,7 +976,12 @@
       ],
       "commodity": "utility charges",
       "contract_ref": "CTR-001-FOR"
-    }
+    },
+    "intent": "format_compliance_issue",
+    "amount_at_risk": 21477.17,
+    "amount_recovered": null,
+    "cycle_time_hours": 20.08,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0022",
@@ -921,7 +1026,12 @@
       ],
       "commodity": "cloud seats",
       "contract_ref": "CTR-002-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 8110.87,
+    "amount_recovered": null,
+    "cycle_time_hours": 4.06,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0023",
@@ -972,7 +1082,12 @@
       ],
       "commodity": "managed services",
       "contract_ref": "CTR-003-CON"
-    }
+    },
+    "intent": "contract_compliance_gap",
+    "amount_at_risk": 4340.5,
+    "amount_recovered": null,
+    "cycle_time_hours": 37.09,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0024",
@@ -1005,7 +1120,12 @@
       ],
       "commodity": "chemicals",
       "contract_ref": "CTR-004-QUA"
-    }
+    },
+    "intent": "invoice_match_failure",
+    "amount_at_risk": 27275.81,
+    "amount_recovered": null,
+    "cycle_time_hours": 17.86,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0025",
@@ -1044,7 +1164,12 @@
       ],
       "commodity": "utility charges",
       "contract_ref": "CTR-005-FOR"
-    }
+    },
+    "intent": "format_compliance_issue",
+    "amount_at_risk": 43679.15,
+    "amount_recovered": null,
+    "cycle_time_hours": 25.74,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0026",
@@ -1089,7 +1214,12 @@
       ],
       "commodity": "cloud seats",
       "contract_ref": "CTR-006-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 1976.74,
+    "amount_recovered": null,
+    "cycle_time_hours": 6.18,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0027",
@@ -1140,7 +1270,12 @@
       ],
       "commodity": "pallets",
       "contract_ref": "CTR-007-QUA"
-    }
+    },
+    "intent": "invoice_match_failure",
+    "amount_at_risk": 18160.44,
+    "amount_recovered": null,
+    "cycle_time_hours": 21.25,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0028",
@@ -1173,7 +1308,12 @@
       ],
       "commodity": "consulting hours",
       "contract_ref": "CTR-008-DUP"
-    }
+    },
+    "intent": "invoice_duplicate_risk",
+    "amount_at_risk": 20463.91,
+    "amount_recovered": null,
+    "cycle_time_hours": 14.59,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0029",
@@ -1212,7 +1352,12 @@
       ],
       "commodity": "steel coil",
       "contract_ref": "CTR-009-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 57867.41,
+    "amount_recovered": null,
+    "cycle_time_hours": 7.77,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0030",
@@ -1257,7 +1402,12 @@
       ],
       "commodity": "maintenance kits",
       "contract_ref": "CTR-010-QUA"
-    }
+    },
+    "intent": "invoice_match_failure",
+    "amount_at_risk": 8056.89,
+    "amount_recovered": null,
+    "cycle_time_hours": 8.48,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0031",
@@ -1308,7 +1458,12 @@
       ],
       "commodity": "regulated reagents",
       "contract_ref": "CTR-001-FOR"
-    }
+    },
+    "intent": "format_compliance_issue",
+    "amount_at_risk": 17710.8,
+    "amount_recovered": null,
+    "cycle_time_hours": 14.02,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0032",
@@ -1341,7 +1496,12 @@
       ],
       "commodity": "resin",
       "contract_ref": "CTR-002-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 8471.23,
+    "amount_recovered": null,
+    "cycle_time_hours": 1.79,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0033",
@@ -1380,7 +1540,12 @@
       ],
       "commodity": "cloud seats",
       "contract_ref": "CTR-003-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 3414.6,
+    "amount_recovered": null,
+    "cycle_time_hours": 2.32,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0034",
@@ -1425,7 +1590,12 @@
       ],
       "commodity": "consulting hours",
       "contract_ref": "CTR-004-DUP"
-    }
+    },
+    "intent": "invoice_duplicate_risk",
+    "amount_at_risk": 33320.16,
+    "amount_recovered": null,
+    "cycle_time_hours": 6.38,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0035",
@@ -1476,7 +1646,12 @@
       ],
       "commodity": "indexed metals",
       "contract_ref": "CTR-005-CON"
-    }
+    },
+    "intent": "contract_compliance_gap",
+    "amount_at_risk": 39191.04,
+    "amount_recovered": null,
+    "cycle_time_hours": 33.21,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0036",
@@ -1509,7 +1684,12 @@
       ],
       "commodity": "indexed metals",
       "contract_ref": "CTR-006-CON"
-    }
+    },
+    "intent": "contract_compliance_gap",
+    "amount_at_risk": 1145.34,
+    "amount_recovered": null,
+    "cycle_time_hours": 34.91,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0037",
@@ -1548,7 +1728,12 @@
       ],
       "commodity": "regulated reagents",
       "contract_ref": "CTR-007-FOR"
-    }
+    },
+    "intent": "format_compliance_issue",
+    "amount_at_risk": 13125.43,
+    "amount_recovered": null,
+    "cycle_time_hours": 22.51,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0038",
@@ -1593,7 +1778,12 @@
       ],
       "commodity": "steel coil",
       "contract_ref": "CTR-008-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 18392.05,
+    "amount_recovered": null,
+    "cycle_time_hours": 4.97,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0039",
@@ -1644,7 +1834,12 @@
       ],
       "commodity": "resin",
       "contract_ref": "CTR-009-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 38567.61,
+    "amount_recovered": null,
+    "cycle_time_hours": 5.5,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0040",
@@ -1677,7 +1872,12 @@
       ],
       "commodity": "resin",
       "contract_ref": "CTR-010-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 7908.54,
+    "amount_recovered": null,
+    "cycle_time_hours": 6.03,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0041",
@@ -1716,7 +1916,12 @@
       ],
       "commodity": "spot logistics",
       "contract_ref": "CTR-001-CON"
-    }
+    },
+    "intent": "contract_compliance_gap",
+    "amount_at_risk": 14826.79,
+    "amount_recovered": null,
+    "cycle_time_hours": 43.39,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0042",
@@ -1761,7 +1966,12 @@
       ],
       "commodity": "indexed metals",
       "contract_ref": "CTR-002-CON"
-    }
+    },
+    "intent": "contract_compliance_gap",
+    "amount_at_risk": 12937.95,
+    "amount_recovered": null,
+    "cycle_time_hours": 45.09,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0043",
@@ -1812,7 +2022,12 @@
       ],
       "commodity": "maintenance kits",
       "contract_ref": "CTR-003-QUA"
-    }
+    },
+    "intent": "invoice_match_failure",
+    "amount_at_risk": 4601.77,
+    "amount_recovered": null,
+    "cycle_time_hours": 23.19,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0044",
@@ -1845,7 +2060,12 @@
       ],
       "commodity": "consulting hours",
       "contract_ref": "CTR-004-DUP"
-    }
+    },
+    "intent": "invoice_duplicate_risk",
+    "amount_at_risk": 35522.94,
+    "amount_recovered": null,
+    "cycle_time_hours": 2.14,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0045",
@@ -1884,7 +2104,12 @@
       ],
       "commodity": "steel coil",
       "contract_ref": "CTR-005-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 34267.78,
+    "amount_recovered": null,
+    "cycle_time_hours": 1.11,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0046",
@@ -1929,7 +2154,12 @@
       ],
       "commodity": "regulated reagents",
       "contract_ref": "CTR-006-FOR"
-    }
+    },
+    "intent": "format_compliance_issue",
+    "amount_at_risk": 2367.22,
+    "amount_recovered": null,
+    "cycle_time_hours": 15.03,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0047",
@@ -1980,7 +2210,12 @@
       ],
       "commodity": "freight surcharge",
       "contract_ref": "CTR-007-DUP"
-    }
+    },
+    "intent": "invoice_duplicate_risk",
+    "amount_at_risk": 13179.46,
+    "amount_recovered": null,
+    "cycle_time_hours": 5.11,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0048",
@@ -2013,7 +2248,12 @@
       ],
       "commodity": "steel coil",
       "contract_ref": "CTR-008-PRI"
-    }
+    },
+    "intent": "invoice_price_variance",
+    "amount_at_risk": 22720.46,
+    "amount_recovered": null,
+    "cycle_time_hours": 2.7,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0049",
@@ -2052,7 +2292,12 @@
       ],
       "commodity": "maintenance kits",
       "contract_ref": "CTR-009-QUA"
-    }
+    },
+    "intent": "invoice_match_failure",
+    "amount_at_risk": 41332.77,
+    "amount_recovered": null,
+    "cycle_time_hours": 13.82,
+    "verified": false
   },
   {
     "invoice_id": "S2P-INV-0050",
@@ -2097,6 +2342,11 @@
       ],
       "commodity": "freight surcharge",
       "contract_ref": "CTR-010-DUP"
-    }
+    },
+    "intent": "invoice_duplicate_risk",
+    "amount_at_risk": 9217.58,
+    "amount_recovered": null,
+    "cycle_time_hours": 8.08,
+    "verified": false
   }
 ]

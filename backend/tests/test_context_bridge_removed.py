@@ -80,7 +80,8 @@ def test_learn_with_invoice_context(client):
     assert payload["reward_raw"] == pytest.approx(0.8)
     assert payload["reward"] == pytest.approx(0.8)
 
-    verified = app.state.scorer.graph_store.get_verified_decisions()
+    graph_store = app.state.scorer.graph_store
+    verified = graph_store.get_verified_decisions(getattr(graph_store, "domain", "s2p"))
     matching = [row for row in verified if row["decision_id"] == score["decision_id"]]
     assert len(matching) == 1
     context = matching[0]["outcome_metadata"]["context"]

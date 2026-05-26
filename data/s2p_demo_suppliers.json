@@ -9,7 +9,35 @@
     "otif_score": 0.88,
     "total_invoices": 1240,
     "total_exceptions": 149,
-    "recent_trend": "declining"
+    "recent_trend": "declining",
+    "quarterly_otif": {
+      "Q3-2025": 0.94,
+      "Q4-2025": 0.9,
+      "Q1-2026": 0.86,
+      "Q2-2026": 0.82
+    },
+    "behavioral_scores": {
+      "delivery_reliability": 0.88,
+      "pricing_stability": 0.796,
+      "exception_rate": 0.12,
+      "quality_score": 0.814,
+      "payment_responsiveness": 0.82
+    },
+    "category_exception_rates": {
+      "price_variance": 0.0312,
+      "quantity_mismatch": 0.0264,
+      "duplicate_risk": 0.0216,
+      "contract_gap": 0.024,
+      "format_compliance": 0.0168
+    },
+    "monthly_volume": [
+      101,
+      102,
+      103,
+      104,
+      105,
+      101
+    ]
   },
   {
     "supplier_id": "SUP-002",
@@ -21,7 +49,35 @@
     "otif_score": 0.91,
     "total_invoices": 880,
     "total_exceptions": 79,
-    "recent_trend": "stable"
+    "recent_trend": "stable",
+    "quarterly_otif": {
+      "Q3-2025": 0.965,
+      "Q4-2025": 0.9283,
+      "Q1-2026": 0.8917,
+      "Q2-2026": 0.855
+    },
+    "behavioral_scores": {
+      "delivery_reliability": 0.91,
+      "pricing_stability": 0.847,
+      "exception_rate": 0.09,
+      "quality_score": 0.8605,
+      "payment_responsiveness": 0.9
+    },
+    "category_exception_rates": {
+      "price_variance": 0.0234,
+      "quantity_mismatch": 0.0198,
+      "duplicate_risk": 0.0162,
+      "contract_gap": 0.018,
+      "format_compliance": 0.0126
+    },
+    "monthly_volume": [
+      72,
+      73,
+      74,
+      75,
+      71,
+      72
+    ]
   },
   {
     "supplier_id": "SUP-003",
@@ -33,7 +89,35 @@
     "otif_score": 0.96,
     "total_invoices": 2120,
     "total_exceptions": 85,
-    "recent_trend": "improving"
+    "recent_trend": "improving",
+    "quarterly_otif": {
+      "Q3-2025": 0.93,
+      "Q4-2025": 0.95,
+      "Q1-2026": 0.97,
+      "Q2-2026": 0.99
+    },
+    "behavioral_scores": {
+      "delivery_reliability": 0.96,
+      "pricing_stability": 0.932,
+      "exception_rate": 0.04,
+      "quality_score": 0.938,
+      "payment_responsiveness": 0.9
+    },
+    "category_exception_rates": {
+      "price_variance": 0.0104,
+      "quantity_mismatch": 0.0088,
+      "duplicate_risk": 0.0072,
+      "contract_gap": 0.008,
+      "format_compliance": 0.0056
+    },
+    "monthly_volume": [
+      176,
+      177,
+      178,
+      174,
+      175,
+      176
+    ]
   },
   {
     "supplier_id": "SUP-004",
@@ -45,7 +129,35 @@
     "otif_score": 0.98,
     "total_invoices": 530,
     "total_exceptions": 16,
-    "recent_trend": "stable"
+    "recent_trend": "stable",
+    "quarterly_otif": {
+      "Q3-2025": 0.99,
+      "Q4-2025": 0.9833,
+      "Q1-2026": 0.9767,
+      "Q2-2026": 0.97
+    },
+    "behavioral_scores": {
+      "delivery_reliability": 0.98,
+      "pricing_stability": 0.949,
+      "exception_rate": 0.03,
+      "quality_score": 0.9585,
+      "payment_responsiveness": 0.74
+    },
+    "category_exception_rates": {
+      "price_variance": 0.0078,
+      "quantity_mismatch": 0.0066,
+      "duplicate_risk": 0.0054,
+      "contract_gap": 0.006,
+      "format_compliance": 0.0042
+    },
+    "monthly_volume": [
+      45,
+      46,
+      42,
+      43,
+      44,
+      45
+    ]
   },
   {
     "supplier_id": "SUP-005",
@@ -57,7 +169,35 @@
     "otif_score": 0.84,
     "total_invoices": 760,
     "total_exceptions": 106,
-    "recent_trend": "declining"
+    "recent_trend": "declining",
+    "quarterly_otif": {
+      "Q3-2025": 0.835,
+      "Q4-2025": 0.8383,
+      "Q1-2026": 0.8417,
+      "Q2-2026": 0.845
+    },
+    "behavioral_scores": {
+      "delivery_reliability": 0.84,
+      "pricing_stability": 0.762,
+      "exception_rate": 0.14,
+      "quality_score": 0.773,
+      "payment_responsiveness": 0.82
+    },
+    "category_exception_rates": {
+      "price_variance": 0.0364,
+      "quantity_mismatch": 0.0308,
+      "duplicate_risk": 0.0252,
+      "contract_gap": 0.028,
+      "format_compliance": 0.0196
+    },
+    "monthly_volume": [
+      65,
+      61,
+      62,
+      63,
+      64,
+      65
+    ]
   },
   {
     "supplier_id": "SUP-006",
@@ -69,7 +209,35 @@
     "otif_score": 0.97,
     "total_invoices": 3180,
     "total_exceptions": 64,
-    "recent_trend": "stable"
+    "recent_trend": "stable",
+    "quarterly_otif": {
+      "Q3-2025": 0.975,
+      "Q4-2025": 0.9717,
+      "Q1-2026": 0.9683,
+      "Q2-2026": 0.965
+    },
+    "behavioral_scores": {
+      "delivery_reliability": 0.97,
+      "pricing_stability": 0.966,
+      "exception_rate": 0.02,
+      "quality_score": 0.964,
+      "payment_responsiveness": 0.8
+    },
+    "category_exception_rates": {
+      "price_variance": 0.0052,
+      "quantity_mismatch": 0.0044,
+      "duplicate_risk": 0.0036,
+      "contract_gap": 0.004,
+      "format_compliance": 0.0028
+    },
+    "monthly_volume": [
+      263,
+      264,
+      265,
+      266,
+      267,
+      263
+    ]
   },
   {
     "supplier_id": "SUP-007",
@@ -81,7 +249,35 @@
     "otif_score": 0.9,
     "total_invoices": 640,
     "total_exceptions": 51,
-    "recent_trend": "improving"
+    "recent_trend": "improving",
+    "quarterly_otif": {
+      "Q3-2025": 0.89,
+      "Q4-2025": 0.8967,
+      "Q1-2026": 0.9033,
+      "Q2-2026": 0.91
+    },
+    "behavioral_scores": {
+      "delivery_reliability": 0.9,
+      "pricing_stability": 0.864,
+      "exception_rate": 0.08,
+      "quality_score": 0.866,
+      "payment_responsiveness": 0.9
+    },
+    "category_exception_rates": {
+      "price_variance": 0.0208,
+      "quantity_mismatch": 0.0176,
+      "duplicate_risk": 0.0144,
+      "contract_gap": 0.016,
+      "format_compliance": 0.0112
+    },
+    "monthly_volume": [
+      52,
+      53,
+      54,
+      55,
+      51,
+      52
+    ]
   },
   {
     "supplier_id": "SUP-008",
@@ -93,7 +289,35 @@
     "otif_score": 0.94,
     "total_invoices": 420,
     "total_exceptions": 21,
-    "recent_trend": "stable"
+    "recent_trend": "stable",
+    "quarterly_otif": {
+      "Q3-2025": 0.94,
+      "Q4-2025": 0.94,
+      "Q1-2026": 0.94,
+      "Q2-2026": 0.94
+    },
+    "behavioral_scores": {
+      "delivery_reliability": 0.94,
+      "pricing_stability": 0.915,
+      "exception_rate": 0.05,
+      "quality_score": 0.9175,
+      "payment_responsiveness": 0.8
+    },
+    "category_exception_rates": {
+      "price_variance": 0.013,
+      "quantity_mismatch": 0.011,
+      "duplicate_risk": 0.009,
+      "contract_gap": 0.01,
+      "format_compliance": 0.007
+    },
+    "monthly_volume": [
+      35,
+      36,
+      37,
+      33,
+      34,
+      35
+    ]
   },
   {
     "supplier_id": "SUP-009",
@@ -105,7 +329,35 @@
     "otif_score": 0.86,
     "total_invoices": 590,
     "total_exceptions": 65,
-    "recent_trend": "declining"
+    "recent_trend": "declining",
+    "quarterly_otif": {
+      "Q3-2025": 0.8525,
+      "Q4-2025": 0.8575,
+      "Q1-2026": 0.8625,
+      "Q2-2026": 0.8675
+    },
+    "behavioral_scores": {
+      "delivery_reliability": 0.86,
+      "pricing_stability": 0.813,
+      "exception_rate": 0.11,
+      "quality_score": 0.8145,
+      "payment_responsiveness": 0.82
+    },
+    "category_exception_rates": {
+      "price_variance": 0.0286,
+      "quantity_mismatch": 0.0242,
+      "duplicate_risk": 0.0198,
+      "contract_gap": 0.022,
+      "format_compliance": 0.0154
+    },
+    "monthly_volume": [
+      50,
+      51,
+      47,
+      48,
+      49,
+      50
+    ]
   },
   {
     "supplier_id": "SUP-010",
@@ -117,6 +369,34 @@
     "otif_score": 0.93,
     "total_invoices": 1380,
     "total_exceptions": 83,
-    "recent_trend": "improving"
+    "recent_trend": "improving",
+    "quarterly_otif": {
+      "Q3-2025": 0.9375,
+      "Q4-2025": 0.9325,
+      "Q1-2026": 0.9275,
+      "Q2-2026": 0.9225
+    },
+    "behavioral_scores": {
+      "delivery_reliability": 0.93,
+      "pricing_stability": 0.898,
+      "exception_rate": 0.06,
+      "quality_score": 0.902,
+      "payment_responsiveness": 0.9
+    },
+    "category_exception_rates": {
+      "price_variance": 0.0156,
+      "quantity_mismatch": 0.0132,
+      "duplicate_risk": 0.0108,
+      "contract_gap": 0.012,
+      "format_compliance": 0.0084
+    },
+    "monthly_volume": [
+      117,
+      113,
+      114,
+      115,
+      116,
+      117
+    ]
   }
 ]

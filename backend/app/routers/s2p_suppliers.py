@@ -152,6 +152,30 @@ def _cluster_description(cluster_id: str) -> str:
     }[cluster_id]
 
 
+def _to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float:
+    if len(xs) != len(ys) or len(xs) < 2:
+        return 0.0
+    mean_x = sum(xs) / len(xs)
+    mean_y = sum(ys) / len(ys)
+    numerator = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    denom_x = sum((x - mean_x) ** 2 for x in xs) ** 0.5
+    denom_y = sum((y - mean_y) ** 2 for y in ys) ** 0.5
+    if denom_x == 0 or denom_y == 0:
+        return 0.0
+    return max(-1.0, min(1.0, numerator / (denom_x * denom_y)))
+
+
 @router.get("")
 @router.get("/")
 def suppliers() -> dict[str, Any]:
@@ -196,6 +220,116 @@ def clustering() -> dict[str, Any]:
 def declining_suppliers() -> dict[str, Any]:
     rows = [_profile_summary(profile) for profile in accumulator.get_declining_suppliers()]
     return {"suppliers": rows, "total": len(rows), "source": "accumulator"}
+
+
+@router.get("/heatmap")
+def aggregate_heatmap() -> dict[str, Any]:
+    rows = []
+    supplier_ids = []
+    matrix = []
+    hot_spots = []
+    totals = {category: 0.0 for category in S2PDomainConfig.categories}
+    for supplier in load_suppliers():
+        supplier_id = str(supplier.get("supplier_id") or "")
+        rates = supplier.get("category_exception_rates")
+        rates = rates if isinstance(rates, dict) else {}
+        shaped_rates = {
+            category: round(_to_float(rates.get(category)), 4)
+            for category in S2PDomainConfig.categories
+        }
+        supplier_ids.append(supplier_id)
+        matrix_row = [shaped_rates[category] for category in S2PDomainConfig.categories]
+        matrix.append(matrix_row)
+        for category, value in shaped_rates.items():
+            totals[category] += value
+            if value > 0.15:
+                hot_spots.append(
+                    {
+                        "supplier_id": supplier_id,
+                        "category": category,
+                        "rate": value,
+                        "severity": "critical",
+                    }
+                )
+        rows.append(
+            {
+                "supplier_id": supplier_id,
+                "supplier_name": supplier.get("name") or supplier.get("supplier_name") or supplier.get("supplier_id"),
+                "category_exception_rates": shaped_rates,
+                "exception_rate": _to_float(supplier.get("exception_rate")),
+            }
+        )
+    supplier_count = max(len(rows), 1)
+    return {
+        "suppliers": supplier_ids,
+        "supplier_details": rows,
+        "categories": list(S2PDomainConfig.categories),
+        "matrix": matrix,
+        "hot_spots": hot_spots,
+        "category_totals": {
+            category: round(total, 4)
+            for category, total in totals.items()
+        },
+        "category_averages": {
+            category: round(total / supplier_count, 4)
+            for category, total in totals.items()
+        },
+        "total": len(rows),
+        "source": "fixture",
+    }
+
+
+@router.get("/correlations")
+def supplier_correlations() -> dict[str, Any]:
+    suppliers = load_suppliers()
+    metrics: dict[str, list[float]] = {
+        "exception_rate": [_to_float(supplier.get("exception_rate")) for supplier in suppliers],
+        "otif_score": [_to_float(supplier.get("otif_score")) for supplier in suppliers],
+        "avg_invoice_amount": [_to_float(supplier.get("avg_invoice_amount")) for supplier in suppliers],
+        "total_invoices": [_to_float(supplier.get("total_invoices")) for supplier in suppliers],
+        "monthly_volume_avg": [
+            sum(_to_float(value) for value in supplier.get("monthly_volume", [])) / max(len(supplier.get("monthly_volume", [])), 1)
+            for supplier in suppliers
+        ],
+    }
+    pairs = [
+        ("exception_rate", "otif_score"),
+        ("exception_rate", "avg_invoice_amount"),
+        ("exception_rate", "total_invoices"),
+        ("otif_score", "monthly_volume_avg"),
+    ]
+    correlations = [
+        {
+            "metric_x": left,
+            "metric_y": right,
+            "coefficient": round(_pearson(metrics[left], metrics[right]), 4),
+        }
+        for left, right in pairs
+    ]
+    supplier_rows = []
+    for supplier in suppliers:
+        exception_rate = _to_float(supplier.get("exception_rate"))
+        otif = _to_float(supplier.get("otif_score"))
+        quarterly = supplier.get("quarterly_otif") if isinstance(supplier.get("quarterly_otif"), dict) else {}
+        quarterly_values = [_to_float(value) for value in quarterly.values()]
+        trend_delta = quarterly_values[-1] - quarterly_values[0] if len(quarterly_values) >= 2 else 0.0
+        declining_penalty = 0.2 if trend_delta < -0.10 else 0.0
+        supplier_rows.append(
+            {
+                "supplier_id": str(supplier.get("supplier_id") or ""),
+                "name": supplier.get("name") or supplier.get("supplier_name") or supplier.get("supplier_id"),
+                "exception_rate": round(exception_rate, 4),
+                "otif": round(otif, 4),
+                "otif_exception_score": round(_clamp(-(1.0 - otif) * exception_rate * 10.0, -1.0, 1.0), 4),
+                "risk_score": round(_clamp(exception_rate * 0.4 + (1.0 - otif) * 0.4 + declining_penalty, 0.0, 1.0), 4),
+            }
+        )
+    return {
+        "correlations": supplier_rows,
+        "metric_correlations": correlations,
+        "supplier_count": len(suppliers),
+        "source": "fixture",
+    }
 
 
 @router.get("/{supplier_id}/profile")

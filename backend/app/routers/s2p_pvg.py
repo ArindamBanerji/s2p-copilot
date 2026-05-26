@@ -11,7 +11,7 @@ from fastapi import APIRouter, Query
 from app.domains.s2p.factors import compute_all_factors
 from app.routers.s2p_data_helpers import load_invoices
 
-router = APIRouter(prefix="/api/s2p/pvg", tags=["s2p-pvg"])
+router = APIRouter(prefix="/api/s2p", tags=["s2p-pvg"])
 
 ANNUAL_TARGET_USD = 680000.0
 BREAKDOWN = {
@@ -75,7 +75,62 @@ def _process_activities(process_data: dict[str, Any]) -> list[dict[str, Any]]:
     return [activity for activity in activities if isinstance(activity, dict)] if isinstance(activities, list) else []
 
 
-@router.get("/variants")
+def _to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _financial_impact_from_fixtures() -> dict[str, Any]:
+    by_category: dict[str, dict[str, Any]] = {}
+    total_recovered = 0.0
+    total_at_risk = 0.0
+    auto_approved_count = 0
+
+    for invoice in load_invoices():
+        category = str(invoice.get("category") or "uncategorized")
+        amount_at_risk = _to_float(invoice.get("amount_at_risk"), _to_float(invoice.get("amount")))
+        amount_recovered = (
+            _to_float(invoice.get("amount_recovered"))
+            if invoice.get("amount_recovered") is not None
+            else 0.0
+        )
+        bucket = by_category.setdefault(
+            category,
+            {"recovered": 0.0, "at_risk": 0.0, "count": 0},
+        )
+        bucket["recovered"] += amount_recovered
+        bucket["at_risk"] += amount_at_risk
+        bucket["count"] += 1
+        total_recovered += amount_recovered
+        total_at_risk += amount_at_risk
+        if invoice.get("verified") is True and invoice.get("ground_truth_action") == "auto_approve":
+            auto_approved_count += 1
+
+    return {
+        "total_recovered": round(total_recovered, 2),
+        "total_at_risk": round(total_at_risk, 2),
+        "total_leakage_prevented": round(total_recovered, 2),
+        "by_category": {
+            category: {
+                "recovered": round(values["recovered"], 2),
+                "at_risk": round(values["at_risk"], 2),
+                "count": int(values["count"]),
+            }
+            for category, values in sorted(by_category.items())
+        },
+        "auto_approve_savings_hours": round(auto_approved_count * 0.25, 2),
+        "source": "fixture",
+    }
+
+
+@router.get("/financial-impact")
+def financial_impact() -> dict[str, Any]:
+    return _financial_impact_from_fixtures()
+
+
+@router.get("/pvg/variants")
 def variants() -> dict[str, Any]:
     process_data = _load_process_data()
     activities = _process_activities(process_data)
@@ -116,7 +171,7 @@ def variants() -> dict[str, Any]:
     return {"variants": fallback, "count": len(fallback), "source": "synthetic_invoices.json"}
 
 
-@router.get("/impact")
+@router.get("/pvg/impact")
 def impact(period: str = Query("annual", pattern="^(monthly|quarterly|annual)$")) -> dict[str, Any]:
     scale = {"monthly": 1 / 12, "quarterly": 1 / 4, "annual": 1}[period]
     total = round(ANNUAL_TARGET_USD * scale, 2)
@@ -134,7 +189,7 @@ def impact(period: str = Query("annual", pattern="^(monthly|quarterly|annual)$")
     }
 
 
-@router.get("/leakage")
+@router.get("/pvg/leakage")
 def leakage() -> dict[str, Any]:
     flagged: list[dict[str, Any]] = []
     for invoice in load_invoices():
@@ -169,7 +224,7 @@ def leakage() -> dict[str, Any]:
     }
 
 
-@router.get("/cycle-time")
+@router.get("/pvg/cycle-time")
 def cycle_time() -> dict[str, Any]:
     process_data = _load_process_data()
     activities = _process_activities(process_data)

@@ -139,7 +139,8 @@ def test_reason_code_stored_in_outcome_metadata():
         },
     )
     assert response.status_code == 200
-    verified = app.state.scorer.graph_store.get_verified_decisions()
+    graph_store = app.state.scorer.graph_store
+    verified = graph_store.get_verified_decisions(getattr(graph_store, "domain", "s2p"))
     matching = [row for row in verified if row["decision_id"] == score["decision_id"]]
     assert matching
     assert matching[0]["outcome_metadata"]["context"]["reason_code"] == "missing_context"

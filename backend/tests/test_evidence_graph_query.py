@@ -26,8 +26,9 @@ def _reset_scorer() -> None:
 def _write_decision(invoice_id: str, metadata_invoice_id: str | None = None) -> str:
     graph_store = app.state.graph_store
     metadata = {"invoice_id": metadata_invoice_id} if metadata_invoice_id is not None else {}
+    metadata.setdefault("entity_id", f"entity-{invoice_id}")
     return graph_store.write_decision(
-        entity_id=f"entity-{invoice_id}",
+        getattr(graph_store, "domain", "s2p"),
         category="price_variance",
         action="approve",
         confidence=0.91,

@@ -47,6 +47,19 @@ EXPECTED_FACTORS = [
     "commodity_index_correlation",
     "tax_regulatory_compliance",
 ]
+ENRICHED_INVOICE_FIELDS = {
+    "intent",
+    "amount_at_risk",
+    "amount_recovered",
+    "cycle_time_hours",
+    "verified",
+}
+ENRICHED_SUPPLIER_FIELDS = {
+    "quarterly_otif",
+    "behavioral_scores",
+    "category_exception_rates",
+    "monthly_volume",
+}
 
 
 def _load_json(path: Path):
@@ -61,6 +74,13 @@ def _load_generator_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def _without_fields(rows: list[dict], fields: set[str]) -> list[dict]:
+    return [
+        {key: value for key, value in row.items() if key not in fields}
+        for row in rows
+    ]
 
 
 def test_synthetic_invoices_count():
@@ -182,8 +202,8 @@ def test_initial_centroids_anchor_cells():
 
 def test_generator_is_deterministic_against_committed_fixtures():
     module = _load_generator_module()
-    assert module.SUPPLIERS == _load_json(SUPPLIER_PATH)
-    assert module.build_invoices() == _load_json(INVOICE_PATH)
+    assert module.SUPPLIERS == _without_fields(_load_json(SUPPLIER_PATH), ENRICHED_SUPPLIER_FIELDS)
+    assert module.build_invoices() == _without_fields(_load_json(INVOICE_PATH), ENRICHED_INVOICE_FIELDS)
     assert module.build_centroids() == _load_json(CENTROID_PATH)
 
 

@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.main import app, build_s2p_scorer  # noqa: E402
 from app.routers import s2p_data_helpers  # noqa: E402
 from app.routers.s2p_data_helpers import find_invoice  # noqa: E402
-from copilot_sdk.graph.memory_store import InMemoryGraphStore  # noqa: E402
+from copilot_sdk.graph.sqlite_store import SQLiteGraphStore  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,21 +52,21 @@ def test_no_private_graphstore_in_s2p_main() -> None:
 
     assert "_S2PGraphStore" not in source
     assert graphstore_classes == []
-    assert 'InMemoryGraphStore(decision_id_prefix="S2P-")' in source
+    assert 'decision_id_prefix="S2P-"' in source
 
 
 def test_s2p_uses_canonical_inmemory_graphstore_with_prefix() -> None:
     scorer = build_s2p_scorer()
     graph_store = scorer.graph_store
 
-    assert isinstance(graph_store, InMemoryGraphStore)
+    assert isinstance(graph_store, SQLiteGraphStore)
     decision_id = graph_store.write_decision(
-        entity_id="invoice-1",
+        getattr(graph_store, "domain", "s2p"),
         category="price_variance",
         action="approve",
         confidence=0.91,
         factors={"match_status": 1.0},
-        metadata={"decision_id": "abc123"},
+        metadata={"decision_id": "abc123", "entity_id": "invoice-1"},
     )
 
     stored = graph_store.get_decision(decision_id)

@@ -100,7 +100,8 @@ def test_learn_records_outcome_when_paused(monkeypatch):
     data = response.json()
     assert isinstance(data["reward"], (int, float))
     assert data["invoice_id"] == VALID_REQUEST["event_id"]
-    assert app.state.graph_store.count_verified() == 1
+    graph_store = app.state.graph_store
+    assert graph_store.count_verified(getattr(graph_store, "domain", "s2p")) == 1
 
 
 def test_evolver_not_called_when_paused(monkeypatch):

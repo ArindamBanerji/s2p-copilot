@@ -117,6 +117,11 @@ class NoveltyTracker:
             return []
         return [entry.to_dict() for entry in list(self._history)[-limit_value:]]
 
+    def get_last_distance(self) -> float | None:
+        if not self._history:
+            return None
+        return self._history[-1].nearest_distance
+
     def get_status(self) -> dict[str, Any]:
         novelty_count = sum(1 for entry in self._history if entry.is_novel)
         return {

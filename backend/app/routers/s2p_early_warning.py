@@ -29,6 +29,7 @@ def _load_supplier_profiles() -> list[dict[str, Any]]:
                 "total_invoices": int(_to_float(fixture.get("total_invoices"), profile.invoice_count)),
                 "total_exceptions": int(_to_float(fixture.get("total_exceptions"), 0.0)),
                 "otif_score": _to_float(fixture.get("otif_score"), profile.otif or 0.0),
+                "quarterly_otif": fixture.get("quarterly_otif") or {},
             }
         )
         rows.append(data)
@@ -140,6 +141,53 @@ def early_warnings() -> dict[str, Any]:
         "monitored_suppliers": len(profiles),
         "active_warnings": len(active),
         "patterns_detected": len({warning["pattern"] for warning in active}),
+    }
+
+
+@router.get("/trends")
+def supplier_trends() -> dict[str, Any]:
+    profiles = _load_supplier_profiles()
+    trends = []
+    supplier_rows = []
+    for profile in profiles:
+        quarterly = profile.get("quarterly_otif") if isinstance(profile.get("quarterly_otif"), dict) else {}
+        values = [float(value) for value in quarterly.values()]
+        delta = round(values[-1] - values[0], 4) if len(values) >= 2 else 0.0
+        direction = "declining" if delta < -0.10 else "improving" if delta > 0.05 else "stable"
+        signals = _build_trend_signals(profile)
+        quarterly_series = [
+            {"quarter": quarter, "otif": float(otif)}
+            for quarter, otif in quarterly.items()
+        ]
+        trends.append(
+            {
+                "supplier_id": str(profile.get("supplier_id")),
+                "supplier_name": _supplier_name(profile),
+                "quarterly_otif": quarterly,
+                "otif_delta": delta,
+                "direction": direction,
+                "risk_score": _demo_risk_override(profile, _risk_score(signals)),
+                "signals": signals,
+            }
+        )
+        supplier_rows.append(
+            {
+                "supplier_id": str(profile.get("supplier_id")),
+                "name": _supplier_name(profile),
+                "quarterly_otif": quarterly_series,
+                "trend": direction,
+                "trend_delta": delta,
+            }
+        )
+    trends.sort(key=lambda item: (str(item["direction"] != "declining"), str(item["supplier_id"])))
+    supplier_rows.sort(key=lambda item: (str(item["trend"] != "declining"), str(item["supplier_id"])))
+    return {
+        "suppliers": supplier_rows,
+        "trends": trends,
+        "total": len(trends),
+        "declining_count": sum(1 for item in trends if item["direction"] == "declining"),
+        "improving_count": sum(1 for item in trends if item["direction"] == "improving"),
+        "source": "fixture",
     }
 
 

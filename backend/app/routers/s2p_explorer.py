@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -84,6 +85,10 @@ def _decision_invoice_id(decision: dict[str, Any]) -> str:
     return ""
 
 
+def _graph_domain(graph_store: Any | None = None) -> str:
+    return str(getattr(graph_store, "domain", None) or "s2p")
+
+
 def _find_scored_decision(scorer: Any, invoice_id: str) -> dict[str, Any] | None:
     graph_store = getattr(scorer, "graph_store", None)
     get_decision = getattr(graph_store, "get_decision", None)
@@ -95,7 +100,7 @@ def _find_scored_decision(scorer: Any, invoice_id: str) -> dict[str, Any] | None
     get_all_decisions = getattr(graph_store, "get_all_decisions", None)
     if not callable(get_all_decisions):
         return None
-    for decision in get_all_decisions():
+    for decision in get_all_decisions(_graph_domain(graph_store)):
         if not isinstance(decision, dict):
             continue
         if _decision_invoice_id(decision) == invoice_id:
@@ -113,6 +118,52 @@ def _decision_factor_vector(decision: dict[str, Any]) -> list[float]:
     if isinstance(factors, dict):
         return [float(factors.get(name, 0.5)) for name in _get_config().factors]
     return []
+
+
+def _centroid_rows(scorer: Any) -> list[dict[str, Any]]:
+    config = _get_config()
+    rows = []
+    for category_index, category in enumerate(config.categories):
+        for action_index, action in enumerate(config.actions):
+            rows.append(
+                {
+                    "category": category,
+                    "category_index": category_index,
+                    "action": action,
+                    "action_index": action_index,
+                    "centroid": _rounded(_read_centroid(scorer, category, action)),
+                }
+            )
+    return rows
+
+
+@router.get("/export/centroids")
+def export_centroids(http_request: Request) -> dict[str, Any]:
+    scorer = _get_scorer(http_request)
+    config = _get_config()
+    rows = _centroid_rows(scorer)
+    return {
+        "export_timestamp": datetime.now(timezone.utc).isoformat(),
+        "tensor_shape": [config.n_categories, config.n_actions, config.n_factors],
+        "factors": list(config.factors),
+        "categories": list(config.categories),
+        "actions": list(config.actions),
+        "total_cells": len(rows),
+        "centroids": rows,
+        "format": "flat",
+    }
+
+
+@router.get("/export/csv")
+def export_centroids_csv(http_request: Request) -> dict[str, Any]:
+    scorer = _get_scorer(http_request)
+    config = _get_config()
+    header = ["category", "action"] + list(config.factors)
+    rows = [
+        [row["category"], row["action"], *row["centroid"]]
+        for row in _centroid_rows(scorer)
+    ]
+    return {"header": header, "rows": rows, "total_rows": len(rows)}
 
 
 @router.get("/centroid/{category}/{action}")

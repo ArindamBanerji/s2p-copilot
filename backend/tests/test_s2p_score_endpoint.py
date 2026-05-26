@@ -236,6 +236,8 @@ def test_reward_function_wired_in_scorer():
     assert reward_function.name == "s2p_graded_financial"
     assert reward_function.compute("auto_approve", "auto_approve", {}) == 1.0
     assert app.state.scorer._reward_fn is reward_function
+    assert app.state.scorer._credit is not None
+    assert app.state.scorer._explorer is not None
 
 
 def test_sdk_learn_route_exists_and_returns_reward_fields():

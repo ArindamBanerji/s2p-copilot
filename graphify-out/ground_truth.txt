@@ -1,0 +1,106 @@
+fc080d0 Batch C: S2P-SIMULATION BE (F21 disruption + F17-FULL discovery) +35 tests. 669 total. 4 scenarios, 8 extended discoveries, what-if mitigation, propagation paths.
+f54dfc5 Batch B: S2P-OBSERVABILITY (novelty+explorer) +36 tests, S2P-EVIDENCE-V2 (receipt chain+audit pack) +28 tests. Receipt gated on outcome proof. 634 total.
+795bde4 S2P-BACKEND-HARDEN: Rule #46 learn_decision skips evolver when conservation paused. +5 tests (570 total).
+dfa4c01 F16+F15+F19+G8: 16/16 S2P scenarios. +68 BE tests (565 total). Clustering, early warning, payment, discovery.
+5a1fb91 F13 SupplierProfileAccumulator + S2P-AUTO-APPROVE: profiles, hooks, endpoints, gate, expansion proof. 497 tests.
+ M backend/app/main.py
+ M backend/app/routers/s2p.py
+ M backend/app/routers/s2p_early_warning.py
+ M backend/app/routers/s2p_evidence.py
+ M backend/app/routers/s2p_explorer.py
+ M backend/app/routers/s2p_novelty.py
+ M backend/app/routers/s2p_performance.py
+ M backend/app/routers/s2p_pvg.py
+ M backend/app/routers/s2p_suppliers.py
+ M backend/app/services/novelty_tracker.py
+ M backend/tests/test_context_bridge_removed.py
+ M backend/tests/test_evidence_graph_query.py
+ M backend/tests/test_graphstore_consolidation.py
+ M backend/tests/test_learn_conservation_guard.py
+ M backend/tests/test_novelty.py
+ M backend/tests/test_s2p_evidence.py
+ M backend/tests/test_s2p_evolution_router.py
+ M backend/tests/test_s2p_iks.py
+ M backend/tests/test_s2p_outcome.py
+ M backend/tests/test_s2p_performance.py
+ M backend/tests/test_s2p_phase0_fixtures.py
+ M backend/tests/test_s2p_score_endpoint.py
+ M data/s2p_demo_suppliers.json
+ M data/synthetic_invoices.json
+?? backend/app/data/s2p.db
+?? backend/app/data/s2p.db-shm
+?? backend/app/data/s2p.db-wal
+?? backend/app/routers/s2p_governance.py
+?? backend/docs/g5_g6_g7_implementation_notes.md
+?? backend/docs/implementation_plans/s2p_preset_unified_scorer_plan.md
+?? backend/docs/s2p_phase2_scan.md
+?? backend/tests/test_financial_impact.py
+?? backend/tests/test_fixture_enrichment.py
+?? backend/tests/test_g5_g6_aggregate_endpoints.py
+?? backend/tests/test_governance.py
+?? backend/tests/test_optimizer_export.py
+?? backend/tests/test_s2p_clustering_router.py
+?? backend/tests/test_s2p_core_router.py
+?? backend/tests/test_s2p_discovery_router.py
+?? backend/tests/test_s2p_early_warning_router.py
+?? backend/tests/test_s2p_explorer_router.py
+?? backend/tests/test_s2p_governance_router.py
+?? backend/tests/test_s2p_novelty_router.py
+?? backend/tests/test_s2p_payment_router.py
+?? backend/tests/test_s2p_simulation_router.py
+?? backend/tests/test_supplier_aggregate.py
+?? docs/g5_g6_g7_s2p_plan.md
+?? graphify-out/ground_truth.txt
+fc080d0 Batch C: S2P-SIMULATION BE (F21 disruption + F17-FULL discovery) +35 tests. 669 total. 4 scenarios, 8 extended discoveries, what-if mitigation, propagation paths.
+f54dfc5 Batch B: S2P-OBSERVABILITY (novelty+explorer) +36 tests, S2P-EVIDENCE-V2 (receipt chain+audit pack) +28 tests. Receipt gated on outcome proof. 634 total.
+795bde4 S2P-BACKEND-HARDEN: Rule #46 learn_decision skips evolver when conservation paused. +5 tests (570 total).
+dfa4c01 F16+F15+F19+G8: 16/16 S2P scenarios. +68 BE tests (565 total). Clustering, early warning, payment, discovery.
+5a1fb91 F13 SupplierProfileAccumulator + S2P-AUTO-APPROVE: profiles, hooks, endpoints, gate, expansion proof. 497 tests.
+ M backend/app/main.py
+ M backend/app/routers/s2p.py
+ M backend/app/routers/s2p_early_warning.py
+ M backend/app/routers/s2p_evidence.py
+ M backend/app/routers/s2p_explorer.py
+ M backend/app/routers/s2p_novelty.py
+ M backend/app/routers/s2p_performance.py
+ M backend/app/routers/s2p_pvg.py
+ M backend/app/routers/s2p_suppliers.py
+ M backend/app/services/novelty_tracker.py
+ M backend/tests/test_context_bridge_removed.py
+ M backend/tests/test_evidence_graph_query.py
+ M backend/tests/test_graphstore_consolidation.py
+ M backend/tests/test_learn_conservation_guard.py
+ M backend/tests/test_novelty.py
+ M backend/tests/test_s2p_evidence.py
+ M backend/tests/test_s2p_evolution_router.py
+ M backend/tests/test_s2p_iks.py
+ M backend/tests/test_s2p_outcome.py
+ M backend/tests/test_s2p_performance.py
+ M backend/tests/test_s2p_phase0_fixtures.py
+ M backend/tests/test_s2p_score_endpoint.py
+ M data/s2p_demo_suppliers.json
+ M data/synthetic_invoices.json
+?? backend/app/data/s2p.db
+?? backend/app/data/s2p.db-shm
+?? backend/app/data/s2p.db-wal
+?? backend/app/routers/s2p_governance.py
+?? backend/docs/g5_g6_g7_implementation_notes.md
+?? backend/docs/implementation_plans/s2p_preset_unified_scorer_plan.md
+?? backend/docs/s2p_phase2_scan.md
+?? backend/tests/test_financial_impact.py
+?? backend/tests/test_fixture_enrichment.py
+?? backend/tests/test_g5_g6_aggregate_endpoints.py
+?? backend/tests/test_governance.py
+?? backend/tests/test_optimizer_export.py
+?? backend/tests/test_s2p_clustering_router.py
+?? backend/tests/test_s2p_core_router.py
+?? backend/tests/test_s2p_discovery_router.py
+?? backend/tests/test_s2p_early_warning_router.py
+?? backend/tests/test_s2p_explorer_router.py
+?? backend/tests/test_s2p_governance_router.py
+?? backend/tests/test_s2p_novelty_router.py
+?? backend/tests/test_s2p_payment_router.py
+?? backend/tests/test_s2p_simulation_router.py
+?? backend/tests/test_supplier_aggregate.py
+?? docs/g5_g6_g7_s2p_plan.md
+?? graphify-out/ground_truth.txt

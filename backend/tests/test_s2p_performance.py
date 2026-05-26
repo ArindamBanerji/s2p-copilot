@@ -12,6 +12,7 @@ client = TestClient(app)
 
 class FakeGraphStore:
     def __init__(self):
+        self.domain = "s2p"
         self.decisions = [
             {"decision_id": "D-1", "recommended_action": "auto_approve"},
             {"decision_id": "D-2", "recommended_action": "hold_for_review"},
@@ -22,22 +23,28 @@ class FakeGraphStore:
             {"decision_id": "D-2", "is_correct": False},
         ]
 
-    def get_centroid_checkpoints(self, limit=100):
+    def get_centroid_checkpoints(self, domain, **kwargs):
+        assert domain == self.domain
+        limit = kwargs.get("limit", 100)
         return [
             {"decision_id": "D-1", "category": "contract_gap", "centroids": {"auto_approve": [0.1]}},
             {"decision_id": "D-2", "category": "duplicate_risk", "centroids": {"hold_for_review": [0.2]}},
         ][:limit]
 
-    def count_verified(self):
+    def count_verified(self, domain):
+        assert domain == self.domain
         return len(self.verified)
 
-    def count_correct(self):
+    def count_correct(self, domain):
+        assert domain == self.domain
         return sum(1 for decision in self.verified if decision["is_correct"])
 
-    def get_all_decisions(self):
+    def get_all_decisions(self, domain):
+        assert domain == self.domain
         return list(self.decisions)
 
-    def get_verified_decisions(self):
+    def get_verified_decisions(self, domain):
+        assert domain == self.domain
         return list(self.verified)
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 import logging
+import math
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
@@ -98,7 +99,7 @@ def _record_score_novelty(
     factor_vector: list[float],
     category: str,
     scorer: Any,
-) -> None:
+) -> float | None:
     try:
         nearest_distance = compute_nearest_distance(
             factor_vector,
@@ -106,9 +107,22 @@ def _record_score_novelty(
             scorer,
             S2PDomainConfig,
         )
-        get_novelty_tracker().record(factor_vector, category, nearest_distance)
+        novelty_score = _json_safe_float(nearest_distance)
+        record_distance = novelty_score if novelty_score is not None else 0.0
+        tracker = get_novelty_tracker()
+        tracker.record(factor_vector, category, record_distance)
+        return novelty_score
     except (AttributeError, TypeError, ValueError, IndexError) as exc:
         log.warning("S2P novelty observation skipped: %s", exc)
+        return None
+
+
+def _json_safe_float(value: Any) -> float | None:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    return numeric if math.isfinite(numeric) else None
 
 
 def _graph_store_from_request(http_request: Request):
@@ -120,12 +134,17 @@ def _graph_store_from_request(http_request: Request):
     return graph_store
 
 
+def _graph_domain(graph_store: Any | None = None) -> str:
+    return str(getattr(graph_store, "domain", None) or "s2p")
+
+
 def _graph_verified_counts(http_request: Request) -> tuple[int, int]:
     graph_store = _graph_store_from_request(http_request)
+    domain = _graph_domain(graph_store)
     count_verified = getattr(graph_store, "count_verified", None)
     count_correct = getattr(graph_store, "count_correct", None)
-    verified_count = int(count_verified()) if callable(count_verified) else 0
-    correct_count = int(count_correct()) if callable(count_correct) else 0
+    verified_count = int(count_verified(domain)) if callable(count_verified) else 0
+    correct_count = int(count_correct(domain)) if callable(count_correct) else 0
     return max(verified_count, 0), max(correct_count, 0)
 
 
@@ -135,9 +154,10 @@ def _current_conservation_status(http_request: Request) -> str:
 
         verified_count, correct_count = _graph_verified_counts(http_request)
         graph_store = _graph_store_from_request(http_request)
+        domain = _graph_domain(graph_store)
         get_all_decisions = getattr(graph_store, "get_all_decisions", None)
         total_decisions = (
-            len(get_all_decisions()) if callable(get_all_decisions) else verified_count
+            len(get_all_decisions(domain)) if callable(get_all_decisions) else verified_count
         )
         check = conservation_status(
             verified_count=verified_count,
@@ -459,6 +479,54 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+def _trajectory_attr(trajectory: Any, name: str, default: Any) -> Any:
+    if isinstance(trajectory, dict):
+        return trajectory.get(name, default)
+    return getattr(trajectory, name, default)
+
+
+def _interpret_sdk_iks(iks: float, decisions: int) -> str:
+    if decisions <= 0:
+        return "Cold start. Awaiting first verified S2P outcomes."
+    if iks >= 80:
+        return "High institutional knowledge. Scorer well-calibrated."
+    if iks >= 50:
+        return "Moderate institutional knowledge. Calibration in progress."
+    if iks >= 20:
+        return "Early learning. Centroids moving from prior."
+    return "Cold start. Awaiting additional verified S2P outcomes."
+
+
+def _iks_status(iks: float, decisions: int) -> str:
+    if decisions <= 0:
+        return "CALIBRATING"
+    if iks >= 80:
+        return "ACTIVE"
+    if iks >= 20:
+        return "LEARNING"
+    return "CALIBRATING"
+
+
+def _iks_from_trajectory(trajectory: Any) -> dict[str, Any]:
+    iks = _json_safe_float(_trajectory_attr(trajectory, "current_iks", 0.0))
+    decisions_raw = _trajectory_attr(trajectory, "decisions_total", 0)
+    try:
+        decisions = max(int(decisions_raw), 0)
+    except (TypeError, ValueError):
+        decisions = 0
+    iks_value = iks if iks is not None else 0.0
+    return {
+        "iks": round(iks_value, 1),
+        "d_max": 0.20,
+        "mean_drift": 0.0,
+        "decisions": decisions,
+        "domain": "s2p",
+        "status": _iks_status(iks_value, decisions),
+        "learning_active": decisions > 0,
+        "interpretation": _interpret_sdk_iks(iks_value, decisions),
+    }
+
+
 def _validate_reason_code(outcome: str, reason_code: str | None) -> None:
     if outcome == "override" and not reason_code:
         raise HTTPException(status_code=400, detail="reason_code is required for override outcomes")
@@ -506,23 +574,25 @@ def _ensure_outcome_decision(scorer: Any, request: "OutcomeRequest") -> None:
     }
     category_index = S2PDomainConfig.get_category_index(request.category)
     recommended_index = S2PDomainConfig.get_action_index(request.predicted_action)
+    metadata = {
+        "decision_id": request.decision_id,
+        "domain": "s2p",
+        "entity_id": request.decision_id,
+        "category_index": category_index,
+        "factor_vector": list(request.factor_vector),
+        "recommended_index": recommended_index,
+        "probabilities": [
+            1.0 if index == recommended_index else 0.0
+            for index in range(S2PDomainConfig.n_actions)
+        ],
+    }
     scorer.graph_store.write_decision(
-        entity_id=request.decision_id,
+        domain=_graph_domain(scorer.graph_store),
         category=request.category,
         action=request.predicted_action,
         confidence=1.0,
         factors=factors,
-        metadata={
-            "decision_id": request.decision_id,
-            "domain": "s2p",
-            "category_index": category_index,
-            "factor_vector": list(request.factor_vector),
-            "recommended_index": recommended_index,
-            "probabilities": [
-                1.0 if index == recommended_index else 0.0
-                for index in range(S2PDomainConfig.n_actions)
-            ],
-        },
+        metadata=metadata,
     )
 
 
@@ -610,6 +680,7 @@ class ScoreResponse(BaseModel):
     process_context: Optional[dict] = None
     active_variant: Optional[dict] = None
     auto_approve: Optional[dict] = None
+    novelty_score: Optional[float] = None
 
 
 @router.post("/score")
@@ -693,7 +764,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
     auto_approve["action"] = score_result.action
     record_auto_approve_decision(auto_approve)
 
-    _record_score_novelty(factor_vector, request.category, scorer)
+    novelty_score = _record_score_novelty(factor_vector, request.category, scorer)
 
     return ScoreResponse(
         event_id=request.event_id,
@@ -708,6 +779,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
         process_context=_score_process_context(),
         active_variant=active_variant,
         auto_approve=auto_approve,
+        novelty_score=novelty_score,
     )
 
 
@@ -879,24 +951,14 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
 
 
 @router.get("/iks")
-def get_iks() -> dict:
+def get_iks(http_request: Request) -> dict[str, Any]:
     """
     GET /api/s2p/iks
     Returns current S2P Institutional Knowledge Score.
     """
-    from app.domains.s2p.scorer import get_s2p_iks
-    result = get_s2p_iks()
-
-    # Optionally enrich with Neo4j decision count
-    try:
-        from app.db.neo4j import neo4j_client
-        with neo4j_client.session() as session:
-            r = session.run("MATCH (d:S2PDecision) RETURN count(d) AS n")
-            result["decisions"] = r.single()["n"]
-    except Exception:
-        pass  # Neo4j unavailable — use placeholder 0
-
-    return result
+    scorer = _sdk_scorer(http_request)
+    trajectory = scorer.trajectory()
+    return _json_safe(_iks_from_trajectory(trajectory))
 
 
 @router.get("/learning-gate")

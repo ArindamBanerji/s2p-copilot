@@ -17,6 +17,7 @@ DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 class FakeGraphStore:
     def __init__(self):
+        self.domain = "s2p"
         self.decisions = [
             {
                 "decision_id": "D-1",
@@ -27,7 +28,8 @@ class FakeGraphStore:
             }
         ]
 
-    def get_all_decisions(self):
+    def get_all_decisions(self, domain):
+        assert domain == self.domain
         return list(self.decisions)
 
     def get_decision(self, decision_id):

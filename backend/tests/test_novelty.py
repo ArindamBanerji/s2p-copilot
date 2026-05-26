@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.main import app, build_s2p_scorer
+from app.routers import s2p as s2p_router
 from app.services.novelty_tracker import (
     NoveltyTracker,
     compute_nearest_distance,
@@ -159,6 +160,89 @@ def test_novelty_history_returns_200():
     assert len(response.json()["entries"]) == 1
 
 
+def test_novelty_history_still_works():
+    get_novelty_tracker().record([0.1] * 7, "price_variance", 0.2)
+    response = client.get("/api/s2p/novelty/history")
+    assert response.status_code == 200
+    assert response.json()["entries"][0]["category"] == "price_variance"
+
+
+def test_novelty_rate_returns_200():
+    response = client.get("/api/s2p/novelty/rate")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["overall_rate"] == 0.0
+    assert data["overall_status"] == "GREEN"
+    assert data["threshold"] == 0.20
+    assert data["auto_pause_threshold"] == 0.30
+    assert len(data["categories"]) == S2PDomainConfig.n_categories
+
+
+def test_novelty_rate_no_decisions_green():
+    response = client.get("/api/s2p/novelty/rate")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["overall_rate"] == 0.0
+    assert data["overall_status"] == "GREEN"
+    assert all(category["status"] == "GREEN" for category in data["categories"])
+
+
+def test_novelty_rate_status_mapping_green_amber_red():
+    tracker = get_novelty_tracker()
+    for _ in range(10):
+        tracker.record([0.1] * 7, "price_variance", 0.2)
+    for index in range(10):
+        tracker.record(
+            [0.2] * 7,
+            "duplicate_risk",
+            0.7 if index < 2 else 0.2,
+        )
+    for index in range(10):
+        tracker.record(
+            [0.3] * 7,
+            "contract_gap",
+            0.7 if index < 3 else 0.2,
+        )
+
+    response = client.get("/api/s2p/novelty/rate")
+    assert response.status_code == 200
+    by_name = {row["name"]: row for row in response.json()["categories"]}
+    assert by_name["price_variance"]["status"] == "GREEN"
+    assert by_name["duplicate_risk"]["novelty_rate"] == 0.2
+    assert by_name["duplicate_risk"]["status"] == "AMBER"
+    assert by_name["contract_gap"]["novelty_rate"] == 0.3
+    assert by_name["contract_gap"]["status"] == "RED"
+
+
+def test_novelty_auto_pause_returns_200():
+    response = client.get("/api/s2p/novelty/auto-pause")
+    assert response.status_code == 200
+    assert response.json()["paused_categories"] == []
+
+
+def test_novelty_auto_pause_advisory_only_true():
+    tracker = get_novelty_tracker()
+    for index in range(10):
+        tracker.record(
+            [0.3] * 7,
+            "contract_gap",
+            0.7 if index < 3 else 0.2,
+        )
+
+    response = client.get("/api/s2p/novelty/auto-pause")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["advisory_only"] is True
+    assert data["paused_categories"] == [
+        {
+            "category": S2PDomainConfig.categories.index("contract_gap"),
+            "name": "contract_gap",
+            "novelty_rate": 0.3,
+            "reason": "Exceeds 30% threshold",
+        }
+    ]
+
+
 def test_novelty_history_limit():
     tracker = get_novelty_tracker()
     for index in range(5):
@@ -174,6 +258,8 @@ def test_novelty_routes_mounted():
     paths = {route.path for route in app.routes}
     assert "/api/s2p/novelty/status" in paths
     assert "/api/s2p/novelty/history" in paths
+    assert "/api/s2p/novelty/rate" in paths
+    assert "/api/s2p/novelty/auto-pause" in paths
 
 
 def test_nearest_distance_uses_scorer_centroids():
@@ -194,8 +280,33 @@ def test_score_endpoint_records_novelty_if_centroids_available():
     assert response.status_code == 200
     data = response.json()
     assert "novelty" not in data
+    assert "novelty_score" in data
+    assert data["novelty_score"] is None or math.isfinite(data["novelty_score"])
     status = get_novelty_tracker().get_status()
     assert status["total_in_window"] == 1
     entry = get_novelty_tracker().get_history()[0]
     assert entry["category"] == VALID_REQUEST["category"]
     assert len(entry["factor_vector"]) == S2PDomainConfig.n_factors
+
+
+def test_score_response_includes_novelty_score_key():
+    response = client.post("/api/s2p/score", json=VALID_REQUEST)
+
+    assert response.status_code == 200
+    assert "novelty_score" in response.json()
+
+
+def test_score_novelty_score_json_safe_inf_to_null(monkeypatch):
+    monkeypatch.setattr(
+        s2p_router,
+        "compute_nearest_distance",
+        lambda *_args, **_kwargs: float("inf"),
+    )
+
+    response = client.post("/api/s2p/score", json=VALID_REQUEST)
+
+    assert response.status_code == 200
+    assert response.json()["novelty_score"] is None
+    history = get_novelty_tracker().get_history()
+    assert len(history) == 1
+    assert history[0]["nearest_distance"] == 0.0

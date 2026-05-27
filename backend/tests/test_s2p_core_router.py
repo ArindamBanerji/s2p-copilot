@@ -95,6 +95,12 @@ def test_core_score_rejects_unknown_category():
     assert isinstance(response.json()["detail"], str)
 
 
+def test_core_score_get_method_not_allowed():
+    response = client.get("/api/s2p/score")
+
+    assert response.status_code == 405
+
+
 def test_core_score_then_outcome_confirm_flow():
     score = score_event("ROUTER-CORE-FLOW")
 
@@ -154,6 +160,63 @@ def test_core_outcome_override_requires_reason_code():
     assert "reason_code" in response.json()["detail"]
 
 
+def test_core_outcome_rejects_invalid_outcome_value():
+    score = score_event("ROUTER-CORE-BAD-OUTCOME")
+    response = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": score["decision_id"],
+            "outcome": "maybe",
+            "analyst_action": score["action"],
+            "analyst_id": "A-ROUTER",
+            "factor_vector": score["factor_vector"],
+            "category": score["category"],
+            "predicted_action": score["action"],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "outcome must be" in response.json()["detail"]
+
+
+def test_core_outcome_rejects_invalid_analyst_action():
+    score = score_event("ROUTER-CORE-BAD-ACTION")
+    response = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": score["decision_id"],
+            "outcome": "confirm",
+            "analyst_action": "not_a_s2p_action",
+            "analyst_id": "A-ROUTER",
+            "factor_vector": score["factor_vector"],
+            "category": score["category"],
+            "predicted_action": score["action"],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "analyst_action must be one of" in response.json()["detail"]
+
+
+def test_core_outcome_rejects_wrong_factor_vector_length():
+    score = score_event("ROUTER-CORE-BAD-VECTOR")
+    response = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": score["decision_id"],
+            "outcome": "confirm",
+            "analyst_action": score["action"],
+            "analyst_id": "A-ROUTER",
+            "factor_vector": score["factor_vector"][:6],
+            "category": score["category"],
+            "predicted_action": score["action"],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "factor_vector must contain 7 values" in response.json()["detail"]
+
+
 def test_core_learn_after_score_uses_api_learn_path():
     score = score_event("ROUTER-CORE-LEARN")
 
@@ -179,6 +242,17 @@ def test_core_learn_unknown_decision_returns_404():
     assert response.status_code == 404
 
 
+def test_core_learn_rejects_invalid_actual_action():
+    score = score_event("ROUTER-CORE-BAD-LEARN")
+    response = client.post(
+        "/api/learn",
+        json={"decision_id": score["decision_id"], "actual_action": "not_a_s2p_action"},
+    )
+
+    assert response.status_code == 422
+    assert "actual_action must be one of" in response.json()["detail"]
+
+
 def test_core_auto_approve_endpoints_return_json_safe_dicts():
     stats = assert_dict_response(client.get("/api/s2p/auto-approve/stats"))
     proof = assert_dict_response(
@@ -187,6 +261,13 @@ def test_core_auto_approve_endpoints_return_json_safe_dicts():
 
     assert isinstance(stats, dict)
     assert proof["category"] == "price_variance"
+
+
+def test_core_auto_approve_expansion_proof_unknown_category_returns_404():
+    response = client.get("/api/s2p/auto-approve/expansion-proof", params={"category": "not_a_s2p_category"})
+
+    assert response.status_code == 404
+    assert "Unknown category" in response.json()["detail"]
 
 
 def test_core_status_endpoints_return_json_safe_dicts():

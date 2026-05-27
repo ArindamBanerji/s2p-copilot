@@ -47,6 +47,21 @@ def test_router_variants_returns_current_variants():
     assert data["sdk_summary"]["variant_count"] == 4
 
 
+def test_router_variants_filters_by_template_name():
+    reset_s2p_evolver()
+    response = client.get(
+        "/api/s2p/evolution/variants",
+        params={"template_name": "auto_approve_threshold_sweep"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert_json_safe(data)
+    assert data["total"] >= 1
+    assert data["variants"]
+    assert {row["template_name"] for row in data["variants"]} == {"auto_approve_threshold_sweep"}
+
+
 def test_evolution_variants_endpoint():
     reset_s2p_evolver()
 
@@ -111,6 +126,16 @@ def test_router_shadow_results_returns_data():
     assert_json_safe(data)
     assert data["variant_id"] == "auto_approve_threshold_sweep:price_variance:0.91"
     assert len(data["results"]) >= 3
+
+
+def test_router_shadow_results_without_variant_returns_all_results_mapping():
+    response = client.get("/api/s2p/evolution/shadow-results")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert_json_safe(data)
+    assert "total_variants" in data
+    assert isinstance(data["results"], dict)
 
 
 def test_router_promoted_returns_promoted_rules():

@@ -87,6 +87,17 @@ def test_explorer_centroid_unknown_category_returns_404():
     assert response.status_code == 404
 
 
+def test_explorer_centroid_unknown_action_returns_404():
+    reset_sdk_scorer()
+    response = client.get("/api/s2p/explorer/centroid/price_variance/not_an_action")
+
+    assert response.status_code == 404
+    data = response.json()
+    assert isinstance(data, dict)
+    assert_json_safe(data)
+    assert "Unknown action" in data["detail"]
+
+
 def test_explorer_drift_returns_all_actions_for_category():
     reset_sdk_scorer()
     data = assert_dict_response(client.get("/api/s2p/explorer/drift/price_variance"))
@@ -130,3 +141,14 @@ def test_explorer_contribution_unknown_invoice_returns_404():
     response = client.get("/api/s2p/explorer/contribution", params={"invoice_id": "UNKNOWN-INVOICE"})
 
     assert response.status_code == 404
+
+
+def test_explorer_contribution_requires_invoice_id_query_param():
+    reset_sdk_scorer()
+    response = client.get("/api/s2p/explorer/contribution")
+
+    assert response.status_code == 422
+    data = response.json()
+    assert isinstance(data, dict)
+    assert_json_safe(data)
+    assert "detail" in data

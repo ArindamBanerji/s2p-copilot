@@ -1,0 +1,4 @@
+4a97ae4 C1+C2+D1: Legacy ProfileScorer removed, theta_min canonical, 787 tests
+d52dd48 Checkpoint: B1-FIX + C3-BROKER + RL-WIRE + SCORER-INF + S2P-GAPS(partial) + S2P-PERSIST. 50+ SDK uncommitted changes.
+fc080d0 Batch C: S2P-SIMULATION BE (F21 disruption + F17-FULL discovery) +35 tests. 669 total. 4 scenarios, 8 extended discoveries, what-if mitigation, propagation paths.
+1 changed files

@@ -3,6 +3,7 @@ import math
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.domains.s2p.evolver_config import S2P_EVOLVER_CONFIG
 from app.services.s2p_evolver import get_evolution_summary, record_triage_outcome, reset_s2p_evolver
 
 
@@ -44,7 +45,7 @@ def test_router_variants_returns_current_variants():
     assert data["total"] >= 3
     assert any(row["variant_id"] == "auto_approve_threshold_sweep:price_variance:0.91" for row in data["variants"])
     assert data["sdk_summary"]["domain"] == "s2p"
-    assert data["sdk_summary"]["variant_count"] == 4
+    assert data["sdk_summary"]["variant_count"] == 8
 
 
 def test_router_variants_filters_by_template_name():
@@ -71,13 +72,26 @@ def test_evolution_variants_endpoint():
     data = response.json()
     assert_json_safe(data)
     sdk_summary = data["sdk_summary"]
-    assert sdk_summary["families"] == ["evidence_ordering", "routing_threshold"]
-    assert {row["id"] for row in sdk_summary["variants"]} >= {"EVIDENCE_ORDER_v1", "ROUTING_THRESHOLD_v1"}
+    assert sdk_summary["families"] == [
+        "evidence_ordering",
+        "routing_threshold",
+        "escalation_criteria",
+        "triage_weights",
+    ]
+    variants = {row["id"]: row for row in sdk_summary["variants"]}
+    assert set(variants) >= {
+        "EVIDENCE_ORDER_v1",
+        "ROUTING_THRESHOLD_v1",
+        "ESCALATION_CRITERIA_v1",
+        "TRIAGE_WEIGHTS_v1",
+    }
+    assert variants["ESCALATION_CRITERIA_v1"]["family"] == "escalation_criteria"
+    assert variants["TRIAGE_WEIGHTS_v1"]["family"] == "triage_weights"
 
 
 def test_evolution_promotion_check_endpoint():
     reset_s2p_evolver()
-    for _ in range(10):
+    for _ in range(S2P_EVOLVER_CONFIG.promotion_min_samples):
         record_triage_outcome("EVIDENCE_ORDER_v2", is_correct=True, category="price_variance")
 
     response = client.get("/api/s2p/evolution/promotion-check")
@@ -109,7 +123,7 @@ def test_evolution_reset_reregisters_variants():
     data = response.json()
     assert_json_safe(data)
     summary = get_evolution_summary()
-    assert summary["variant_count"] == 4
+    assert summary["variant_count"] == 8
     variant = next(row for row in summary["variants"] if row["id"] == "EVIDENCE_ORDER_v1")
     assert variant["status"] == "active"
     assert variant["total"] == 0

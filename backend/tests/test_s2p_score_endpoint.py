@@ -8,7 +8,11 @@ Run from backend/:
 import json
 import sys
 import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -41,6 +45,7 @@ def reset_sdk_scorer():
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
     app.state.s2p_reward_function = app.state.scorer._reward_fn
+    s2p_router._clear_score_conservation_status_cache()
     reset_s2p_evolver()
     supplier_profile_accumulator.reset()
     return app.state.scorer
@@ -76,6 +81,233 @@ def test_score_response_includes_active_variant():
     assert active_variant["id"] == "EVIDENCE_ORDER_v1"
     assert active_variant["family"] == "evidence_ordering"
     assert active_variant["metadata"]["order"] == ["factor_fingerprint", "similar_invoices", "audit_trail"]
+
+
+def test_score_response_includes_cached_conservation_status(monkeypatch):
+    reset_sdk_scorer()
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", lambda _request: "GREEN")
+
+    response = client.post("/api/s2p/score", json=VALID_REQUEST)
+
+    assert response.status_code == 200
+    assert response.json()["auto_approve"]["conservation_status"] == "GREEN"
+
+
+def test_score_conservation_status_cache_expires(monkeypatch):
+    reset_sdk_scorer()
+    calls = []
+
+    def status(_request):
+        calls.append(time.monotonic())
+        return f"GREEN-{len(calls)}"
+
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", status)
+    monkeypatch.setattr(s2p_router, "_SCORE_CONSERVATION_STATUS_TTL_SECONDS", 0.01)
+    request = SimpleNamespace(app=app)
+
+    first = s2p_router._score_conservation_status(request)
+    cached = s2p_router._score_conservation_status(request)
+    time.sleep(0.02)
+    refreshed = s2p_router._score_conservation_status(request)
+
+    assert first == "GREEN-1"
+    assert cached == "GREEN-1"
+    assert refreshed == "GREEN-2"
+    assert len(calls) == 2
+
+
+def test_concurrent_score_requests_coalesce_conservation_status(monkeypatch):
+    reset_sdk_scorer()
+    calls = 0
+    calls_lock = threading.Lock()
+
+    def slow_status(_request):
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+        time.sleep(0.05)
+        return "GREEN"
+
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", slow_status)
+    payloads = [
+        {**VALID_REQUEST, "event_id": f"E-CONCURRENT-{index}", "amount": 5000.0 + index}
+        for index in range(4)
+    ]
+
+    started = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        responses = list(pool.map(lambda payload: client.post("/api/s2p/score", json=payload), payloads))
+    elapsed = time.perf_counter() - started
+
+    assert [response.status_code for response in responses] == [200, 200, 200, 200]
+    assert calls == 1
+    assert elapsed < 1.5
+
+
+def test_concurrent_full_conservation_requests_coalesce_counts(monkeypatch):
+    reset_sdk_scorer()
+    calls = 0
+    calls_lock = threading.Lock()
+
+    def slow_counts(_graph_store, _domain=None):
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+        time.sleep(0.05)
+        return {
+            "verified_count": 12,
+            "correct_count": 10,
+            "total_decisions": 12,
+            "penalty_ratio": 5.0,
+        }
+
+    monkeypatch.setattr(s2p_router, "_read_conservation_counts", slow_counts)
+
+    started = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        responses = list(pool.map(lambda _index: client.get("/api/conservation/status"), range(4)))
+    elapsed = time.perf_counter() - started
+
+    assert [response.status_code for response in responses] == [200, 200, 200, 200]
+    assert calls == 1
+    assert elapsed < 1.5
+
+
+def test_browser_like_conservation_and_score_waterfall_shares_counts_cache(monkeypatch):
+    reset_sdk_scorer()
+    calls = 0
+    calls_lock = threading.Lock()
+
+    def slow_counts(_graph_store, _domain=None):
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+        time.sleep(0.05)
+        return {
+            "verified_count": 12,
+            "correct_count": 10,
+            "total_decisions": 12,
+            "penalty_ratio": 5.0,
+        }
+
+    monkeypatch.setattr(s2p_router, "_read_conservation_counts", slow_counts)
+
+    requests = [
+        lambda: client.get("/api/s2p/preview/queue"),
+        lambda: client.get("/api/s2p/preview/conservation"),
+        lambda: client.get("/api/conservation/status"),
+        lambda: client.post("/api/s2p/score", json=VALID_REQUEST),
+    ]
+
+    started = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        responses = list(pool.map(lambda call: call(), requests))
+    elapsed = time.perf_counter() - started
+
+    assert [response.status_code for response in responses] == [200, 200, 200, 200]
+    assert responses[-1].json()["auto_approve"]["conservation_status"]
+    assert calls == 1
+    assert elapsed < 1.5
+
+
+def test_read_conservation_counts_uses_verified_decision_count_for_conservation_v():
+    class Store:
+        domain = "s2p"
+
+        def count_verified(self, domain):
+            assert domain == "s2p"
+            return 2
+
+        def count_correct(self, domain):
+            assert domain == "s2p"
+            return 1
+
+        def count_verified_decisions(self, domain):
+            assert domain == "s2p"
+            return 2
+
+        def count_decisions(self, domain):
+            assert domain == "s2p"
+            return 7
+
+        def get_all_decisions(self, domain):
+            raise AssertionError("get_all_decisions should not be used for conservation V")
+
+    counts = s2p_router._read_conservation_counts(Store(), "s2p")
+
+    assert counts["verified_count"] == 2
+    assert counts["correct_count"] == 1
+    assert counts["total_decisions"] == 2
+    assert counts["penalty_ratio"] == 5.0
+
+
+def test_read_conservation_counts_falls_back_to_verified_count_not_all_rows():
+    class Store:
+        domain = "s2p"
+
+        def count_verified(self, domain):
+            assert domain == "s2p"
+            return 2
+
+        def count_correct(self, domain):
+            assert domain == "s2p"
+            return 1
+
+        def count_decisions(self, domain):
+            raise AssertionError("all-row count_decisions must not define conservation V")
+
+        def get_all_decisions(self, domain):
+            raise AssertionError("all-row get_all_decisions must not define conservation V")
+
+    counts = s2p_router._read_conservation_counts(Store(), "s2p")
+
+    assert counts["verified_count"] == 2
+    assert counts["correct_count"] == 1
+    assert counts["total_decisions"] == 2
+
+
+def test_full_conservation_counts_cache_expires(monkeypatch):
+    reset_sdk_scorer()
+    calls = []
+
+    def counts(_graph_store, _domain=None):
+        calls.append(time.monotonic())
+        return {
+            "verified_count": len(calls),
+            "correct_count": len(calls),
+            "total_decisions": len(calls),
+            "penalty_ratio": 5.0,
+        }
+
+    monkeypatch.setattr(s2p_router, "_read_conservation_counts", counts)
+    monkeypatch.setattr(s2p_router, "_SCORE_CONSERVATION_STATUS_TTL_SECONDS", 60.0)
+
+    first = s2p_router.cached_conservation_state_provider(app.state)
+    cached = s2p_router.cached_conservation_state_provider(app.state)
+    cache_key = s2p_router._conservation_cache_key(app.state.graph_store, "s2p")
+    with s2p_router._SCORE_CONSERVATION_STATUS_LOCK:
+        _timestamp, cached_counts = s2p_router._CONSERVATION_COUNTS_CACHE[cache_key]
+        s2p_router._CONSERVATION_COUNTS_CACHE[cache_key] = (
+            time.monotonic() - 61.0,
+            cached_counts,
+        )
+    refreshed = s2p_router.cached_conservation_state_provider(app.state)
+
+    assert first["verified_count"] == 1
+    assert cached["verified_count"] == 1
+    assert refreshed["verified_count"] == 2
+    assert len(calls) == 2
+
+
+def test_current_conservation_status_failure_remains_unknown(monkeypatch):
+    reset_sdk_scorer()
+
+    def broken_counts(_graph_store, _domain=None):
+        raise RuntimeError("conservation store unavailable")
+
+    monkeypatch.setattr(s2p_router, "_read_conservation_counts", broken_counts)
+
+    assert s2p_router._current_conservation_status(SimpleNamespace(app=app)) == "UNKNOWN"
 
 
 def test_score_action_is_valid_s2p_action():

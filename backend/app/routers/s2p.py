@@ -8,13 +8,19 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
+import hashlib
+import json
 import logging
 import math
+import threading
+import time
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Any, Optional
+
+from copilot_sdk.backend.conservation_utils import compute_conservation_metrics
 
 from app.domains.s2p.auto_approve import (
     AUTO_APPROVE_THRESHOLDS,
@@ -25,6 +31,7 @@ from app.domains.s2p.auto_approve import (
 )
 from app.domains.s2p.config import PENALTY_RATIO, S2PDomainConfig
 from app.domains.s2p.factors import S2PEvent, compute_all_factors
+from app.models.responses import GenericResponse, LearningGateResponse, S2PScoreResponse
 from app.routers.s2p_data_helpers import find_invoice
 from app.routers.s2p_preview import _load_celonis_cache
 from app.models.outcome_receipt import OutcomeReceipt
@@ -32,10 +39,17 @@ from app.services.receipt_store import get_receipt_store
 from app.services.novelty_tracker import compute_nearest_distance, get_novelty_tracker
 from app.services.s2p_evolver import get_active_variant, record_triage_outcome
 from app.services.supplier_profile_accumulator import accumulator as supplier_profile_accumulator
+from app.s2p_shadow import S2PShadowState
 
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 learn_router = APIRouter(prefix="/api", tags=["S2P"])
 log = logging.getLogger(__name__)
+_GRAPH_LINK_ADVISORY_LOCK = threading.RLock()
+_SCORE_CONSERVATION_STATUS_TTL_SECONDS = 2.0
+_SCORE_CONSERVATION_STATUS_LOCK = threading.RLock()
+_L5_CONSERVATION_STATE_LOCK = threading.RLock()
+_SCORE_CONSERVATION_STATUS_CACHE: dict[str, tuple[float, str]] = {}
+_CONSERVATION_COUNTS_CACHE: dict[str, tuple[float, dict[str, float | int]]] = {}
 
 def _resolve_graph_context(invoice_id: str, http_request: Request):
     state = getattr(http_request.app, "state", None)
@@ -95,6 +109,178 @@ def _sdk_scorer(http_request: Request):
     return scorer
 
 
+def _s2p_shadow_state(http_request: Request) -> S2PShadowState | None:
+    state = getattr(http_request.app, "state", None)
+    shadow = getattr(state, "s2p_shadow", None)
+    return shadow if isinstance(shadow, S2PShadowState) else None
+
+
+def _shadow_latency_ms(start: float) -> float:
+    return round((time.perf_counter() - start) * 1000.0, 3)
+
+
+def _handle_shadow_error(
+    shadow: S2PShadowState,
+    *,
+    operation: str,
+    operation_id: str,
+    error: BaseException,
+    start: float,
+) -> None:
+    shadow.diagnostics.record(
+        operation=operation,
+        status="failed",
+        operation_id=operation_id,
+        error=error,
+        latency_ms=_shadow_latency_ms(start),
+    )
+    if shadow.config.strict:
+        raise HTTPException(
+            status_code=502,
+            detail=f"S2P AGE shadow {operation} failed: {error.__class__.__name__}",
+        ) from error
+
+
+def _record_score_shadow(
+    http_request: Request,
+    *,
+    score_request: "ScoreRequest",
+    score_result: Any,
+    factor_vector: list[float],
+    invoice: dict[str, Any],
+    active_variant: dict[str, Any] | None,
+) -> None:
+    shadow = _s2p_shadow_state(http_request)
+    if shadow is None or not shadow.config.enabled:
+        return
+    if shadow.store is None:
+        shadow.diagnostics.record(
+            operation="score_shadow",
+            status="skipped",
+            operation_id=str(getattr(score_result, "decision_id", "")),
+            parity={"reason": "shadow_store_unavailable"},
+        )
+        return
+
+    operation_id = str(score_result.decision_id)
+    start = time.perf_counter()
+    try:
+        shadow.store.write_governed_decision(
+            decision_id=score_result.decision_id,
+            domain=shadow.config.domain,
+            category=score_request.category,
+            category_index=S2PDomainConfig.get_category_index(score_request.category),
+            recommended_action=score_result.action,
+            recommended_index=score_result.action_index,
+            confidence=score_result.confidence,
+            probabilities=score_result.probabilities,
+            factor_vector=factor_vector,
+            factor_names=list(S2PDomainConfig.factors),
+            source="s2p_score_shadow",
+            scorer_version="s2p_shadow_phase2",
+            preset_version="s2p",
+            factor_schema_version="s2p_factor_schema_v1",
+            metadata={
+                "shadow": True,
+                "shadow_run_id": shadow.diagnostics.shadow_run_id,
+                "shadow_operation": "score_shadow",
+                "operation_id": operation_id,
+                "event_id": score_request.event_id,
+                "invoice_id": invoice.get("invoice_id") or score_request.event_id,
+                "supplier_id": score_request.supplier_id,
+                "amount": score_request.amount,
+                "active_variant": active_variant,
+            },
+        )
+    except Exception as exc:
+        _handle_shadow_error(
+            shadow,
+            operation="score_shadow",
+            operation_id=operation_id,
+            error=exc,
+            start=start,
+        )
+        return
+
+    shadow.diagnostics.record(
+        operation="score_shadow",
+        status="succeeded",
+        operation_id=operation_id,
+        latency_ms=_shadow_latency_ms(start),
+        parity={
+            "decision_id": score_result.decision_id,
+            "decision_id_match": True,
+            "status_match": True,
+        },
+    )
+
+
+def _record_outcome_shadow(
+    http_request: Request,
+    *,
+    operation: str,
+    decision: dict[str, Any] | None,
+    decision_id: str,
+    actual_action: str,
+    outcome: str,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    shadow = _s2p_shadow_state(http_request)
+    if shadow is None or not shadow.config.enabled:
+        return
+    if shadow.store is None:
+        shadow.diagnostics.record(
+            operation=operation,
+            status="skipped",
+            operation_id=decision_id,
+            parity={"reason": "shadow_store_unavailable"},
+        )
+        return
+
+    recommended_action = _decision_recommended_action(decision)
+    is_correct = str(actual_action) == str(recommended_action) if recommended_action else outcome in {
+        "confirm",
+        "confirmed",
+    }
+    start = time.perf_counter()
+    try:
+        shadow.store.write_outcome(
+            decision_id=decision_id,
+            actual_action=actual_action,
+            is_correct=is_correct,
+            metadata={
+                "shadow": True,
+                "shadow_run_id": shadow.diagnostics.shadow_run_id,
+                "shadow_operation": operation,
+                "operation_id": decision_id,
+                "outcome": outcome,
+                **dict(metadata or {}),
+            },
+        )
+    except Exception as exc:
+        _handle_shadow_error(
+            shadow,
+            operation=operation,
+            operation_id=decision_id,
+            error=exc,
+            start=start,
+        )
+        return
+
+    shadow.diagnostics.record(
+        operation=operation,
+        status="succeeded",
+        operation_id=decision_id,
+        latency_ms=_shadow_latency_ms(start),
+        parity={
+            "decision_id": decision_id,
+            "decision_id_match": True,
+            "outcome_match": True,
+            "is_correct": is_correct,
+        },
+    )
+
+
 def _record_score_novelty(
     factor_vector: list[float],
     category: str,
@@ -138,37 +324,215 @@ def _graph_domain(graph_store: Any | None = None) -> str:
     return str(getattr(graph_store, "domain", None) or "s2p")
 
 
+def _learning_store_from_request(http_request: Request) -> Any | None:
+    state = getattr(http_request.app, "state", None)
+    for candidate in (
+        getattr(state, "learning_store", None),
+        getattr(state, "_learning_store", None),
+        _graph_store_from_request(http_request),
+    ):
+        if candidate is None:
+            continue
+        if callable(getattr(candidate, "get_conservation_state", None)) and callable(
+            getattr(candidate, "update_conservation_state", None)
+        ):
+            return candidate
+    return None
+
+
+def _persist_l5_conservation_state(http_request: Request, decision_id: str | None) -> None:
+    store = _learning_store_from_request(http_request)
+    if store is None:
+        return None
+    state = getattr(http_request.app, "state", None)
+    scorer = getattr(state, "scorer", None)
+    if scorer is None:
+        return None
+    domain = _graph_domain(_graph_store_from_request(http_request))
+    try:
+        metrics = compute_conservation_metrics(scorer, domain=domain)
+    except Exception as exc:
+        log.warning("S2P L5 conservation state skipped: %s", exc)
+        return None
+    with _L5_CONSERVATION_STATE_LOCK:
+        try:
+            old_state = store.get_conservation_state(domain)
+        except Exception as exc:
+            log.warning("S2P L5 conservation state read failed: %s", exc)
+            return None
+        old_status = None
+        if isinstance(old_state, dict):
+            stored_status = old_state.get("status")
+            old_status = None if stored_status is None else str(stored_status)
+        try:
+            store.update_conservation_state(
+                domain=domain,
+                status=str(metrics["status"]),
+                alpha=float(metrics["alpha"]),
+                q=float(metrics["q"]),
+                V=int(metrics["V"]),
+                theta_min=float(metrics["theta_min"]),
+                product=float(metrics["product"]),
+                categories_total=int(metrics["categories_total"]),
+                categories_with_data=int(metrics["categories_with_data"]),
+                baseline_product=float(metrics["baseline_product"]),
+                relative_threshold=float(metrics["relative_threshold"]),
+                complacency_flag=str(metrics["complacency_flag"]),
+                caused_by_decision_id=decision_id,
+                old_status=old_status,
+            )
+        except Exception as exc:
+            log.warning("S2P L5 conservation state write failed: %s", exc)
+    return None
+
+
+def _link_decision_to_invoice(
+    graph_store: Any,
+    decision_id: str | None,
+    invoice_id: str | None,
+) -> None:
+    if not decision_id or not invoice_id:
+        return
+    link = getattr(graph_store, "link_decision_to_entity", None)
+    if not callable(link):
+        return
+    try:
+        get_links = getattr(graph_store, "get_decision_links", None)
+        if callable(get_links):
+            existing = get_links(decision_id)
+            if any(
+                item.get("entity_id") == invoice_id
+                and item.get("edge_type") == "DECIDED_ON"
+                for item in existing
+                if isinstance(item, dict)
+            ):
+                return
+        link(decision_id, invoice_id, "DECIDED_ON")
+    except Exception:
+        log.exception("S2P graph invoice link skipped for decision %s", decision_id)
+
+
+def _has_decision_invoice_link(graph_store: Any, decision_id: str | None, invoice_id: str | None) -> bool:
+    if not decision_id or not invoice_id:
+        return False
+    get_links = getattr(graph_store, "get_decision_links", None)
+    if not callable(get_links):
+        return False
+    try:
+        return any(
+            str(item.get("entity_id")) == str(invoice_id)
+            and item.get("edge_type") == "DECIDED_ON"
+            for item in get_links(decision_id)
+            if isinstance(item, dict)
+        )
+    except Exception:
+        return False
+
+
 def _graph_verified_counts(http_request: Request) -> tuple[int, int]:
     graph_store = _graph_store_from_request(http_request)
     domain = _graph_domain(graph_store)
+    counts = _cached_conservation_counts(graph_store, domain)
+    return int(counts["verified_count"]), int(counts["correct_count"])
+
+
+def _conservation_cache_key(graph_store: Any | None, domain: str | None = None) -> str:
+    selected_domain = domain or _graph_domain(graph_store)
+    return f"{id(graph_store)}:{selected_domain}"
+
+
+def _read_conservation_counts(
+    graph_store: Any | None,
+    domain: str | None = None,
+) -> dict[str, float | int]:
+    selected_domain = domain or _graph_domain(graph_store)
     count_verified = getattr(graph_store, "count_verified", None)
     count_correct = getattr(graph_store, "count_correct", None)
-    verified_count = int(count_verified(domain)) if callable(count_verified) else 0
-    correct_count = int(count_correct(domain)) if callable(count_correct) else 0
-    return max(verified_count, 0), max(correct_count, 0)
+    verified_count = int(count_verified(selected_domain)) if callable(count_verified) else 0
+    correct_count = int(count_correct(selected_domain)) if callable(count_correct) else 0
+    # Conservation V is verified decisions only; pending decisions are excluded.
+    count_verified_decisions = getattr(graph_store, "count_verified_decisions", None)
+    if callable(count_verified_decisions):
+        total_decisions = int(count_verified_decisions(selected_domain))
+    else:
+        total_decisions = verified_count
+    return {
+        "verified_count": max(verified_count, 0),
+        "correct_count": max(correct_count, 0),
+        "total_decisions": max(int(total_decisions), 0),
+        "penalty_ratio": PENALTY_RATIO,
+    }
+
+
+def _cached_conservation_counts(
+    graph_store: Any | None,
+    domain: str | None = None,
+) -> dict[str, float | int]:
+    now = time.monotonic()
+    key = _conservation_cache_key(graph_store, domain)
+    with _SCORE_CONSERVATION_STATUS_LOCK:
+        cached = _CONSERVATION_COUNTS_CACHE.get(key)
+        if cached is not None:
+            timestamp, counts = cached
+            if now - timestamp <= _SCORE_CONSERVATION_STATUS_TTL_SECONDS:
+                return dict(counts)
+
+        counts = _read_conservation_counts(graph_store, domain)
+        _CONSERVATION_COUNTS_CACHE[key] = (time.monotonic(), dict(counts))
+        return dict(counts)
+
+
+def cached_conservation_state_provider(app_state: Any) -> dict[str, float | int]:
+    graph_store = getattr(app_state, "graph_store", None)
+    if graph_store is None:
+        scorer = getattr(app_state, "scorer", None)
+        graph_store = getattr(scorer, "graph_store", None)
+    return _cached_conservation_counts(graph_store, _graph_domain(graph_store))
 
 
 def _current_conservation_status(http_request: Request) -> str:
     try:
         from gae.calibration import conservation_status
 
-        verified_count, correct_count = _graph_verified_counts(http_request)
         graph_store = _graph_store_from_request(http_request)
-        domain = _graph_domain(graph_store)
-        get_all_decisions = getattr(graph_store, "get_all_decisions", None)
-        total_decisions = (
-            len(get_all_decisions(domain)) if callable(get_all_decisions) else verified_count
-        )
+        counts = _cached_conservation_counts(graph_store, _graph_domain(graph_store))
         check = conservation_status(
-            verified_count=verified_count,
-            correct_count=correct_count,
-            total_decisions=max(total_decisions, 0),
-            penalty_ratio=PENALTY_RATIO,
+            verified_count=int(counts["verified_count"]),
+            correct_count=int(counts["correct_count"]),
+            total_decisions=int(counts["total_decisions"]),
+            penalty_ratio=float(counts["penalty_ratio"]),
         )
         return str(check.status)
     except Exception:
         log.exception("Unable to evaluate conservation status for auto-approve gate")
         return "UNKNOWN"
+
+
+def _score_conservation_cache_key(http_request: Request) -> str:
+    graph_store = _graph_store_from_request(http_request)
+    return f"{id(graph_store)}:{_graph_domain(graph_store)}"
+
+
+def _clear_score_conservation_status_cache() -> None:
+    with _SCORE_CONSERVATION_STATUS_LOCK:
+        _SCORE_CONSERVATION_STATUS_CACHE.clear()
+        _CONSERVATION_COUNTS_CACHE.clear()
+
+
+def _score_conservation_status(http_request: Request) -> str:
+    """Short-lived score-path cache for expensive graph-wide conservation checks."""
+    now = time.monotonic()
+    key = _score_conservation_cache_key(http_request)
+    with _SCORE_CONSERVATION_STATUS_LOCK:
+        cached = _SCORE_CONSERVATION_STATUS_CACHE.get(key)
+        if cached is not None:
+            timestamp, status = cached
+            if now - timestamp <= _SCORE_CONSERVATION_STATUS_TTL_SECONDS:
+                return status
+
+        status = _current_conservation_status(http_request)
+        _SCORE_CONSERVATION_STATUS_CACHE[key] = (time.monotonic(), status)
+        return status
 
 
 def _is_learning_paused(conservation: Any) -> bool:
@@ -312,6 +676,27 @@ def _decision_factor_vector(decision: dict[str, Any] | None) -> list[float]:
     return []
 
 
+def _decision_factors(decision: dict[str, Any] | None) -> dict[str, float]:
+    if not isinstance(decision, dict):
+        return {}
+    factors = decision.get("factors")
+    if not isinstance(factors, dict):
+        factors = _decision_metadata(decision).get("factors")
+    if isinstance(factors, dict):
+        try:
+            return {name: float(factors.get(name, 0.0) or 0.0) for name in S2PDomainConfig.factors}
+        except (TypeError, ValueError):
+            return {}
+    vector = _decision_factor_vector(decision)
+    if vector:
+        return {
+            name: float(vector[index])
+            for index, name in enumerate(S2PDomainConfig.factors)
+            if index < len(vector)
+        }
+    return {}
+
+
 def _receipt_conservation_snapshot(http_request: Request) -> dict[str, Any]:
     try:
         status = _current_conservation_status(http_request)
@@ -354,6 +739,29 @@ def _outcome_recorded_for_receipt(
     return False
 
 
+def _receipt_amount_recovered(is_correct: bool | None, amount: Any) -> float | None:
+    if is_correct is False:
+        return 0.0
+    if is_correct is True:
+        try:
+            return float(amount)
+        except (TypeError, ValueError):
+            # Correct outcomes without invoice amount metadata cannot recover a financial amount.
+            return 0.0
+    return None
+
+
+def _receipt_invoice_number(context: dict[str, Any], decision_id: str) -> str | None:
+    for key in ("invoice_number", "source_invoice_id", "invoice_id"):
+        value = context.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text and text != decision_id:
+            return text
+    return None
+
+
 def _record_outcome_receipt(
     *,
     decision: dict[str, Any] | None,
@@ -362,31 +770,225 @@ def _record_outcome_receipt(
     reason_code: str | None,
     conservation_before: dict[str, Any],
     conservation_after: dict[str, Any],
+    context: dict[str, Any] | None = None,
 ) -> None:
     try:
         store = get_receipt_store()
-        invoice_id = str(payload.get("invoice_id") or _decision_invoice_id(decision) or payload.get("decision_id") or "")
+        context = _decision_context(decision, context)
+        invoice_id = str(payload.get("invoice_id") or _decision_invoice_id(decision) or "")
+        decision_id = str(payload.get("decision_id") or (decision or {}).get("decision_id") or "")
+        recommended_action = _decision_recommended_action(decision)
+        factors = _decision_factors(decision)
+        is_correct = actual_action == recommended_action if recommended_action else None
+        amount = context.get("amount") or context.get("total_amount")
         receipt = OutcomeReceipt(
             receipt_id=f"RCPT-{uuid4()}",
             invoice_id=invoice_id,
+            decision_id=decision_id or None,
             timestamp=datetime.now(timezone.utc).isoformat(),
-            scored_action=_decision_recommended_action(decision),
+            scored_action=recommended_action,
+            recommended_action=recommended_action,
             confidence=_decision_confidence(decision),
             factor_vector=_decision_factor_vector(decision),
+            factors=factors or None,
             category=_decision_category(decision) or "",
             human_action=actual_action,
+            actual_action=actual_action,
+            is_correct=is_correct,
             override_reason=reason_code,
+            amount=amount,
+            amount_at_risk=context.get("at_risk") or context.get("amount_at_risk"),
             reward=float(payload.get("reward") or 0.0),
             centroid_updated=_receipt_centroid_updated(payload, conservation_before, conservation_after),
+            conservation_status=str(conservation_after.get("state") or conservation_before.get("state") or "UNKNOWN"),
             conservation_state_before=str(conservation_before.get("state") or ""),
             conservation_state_after=str(conservation_after.get("state") or ""),
             verified_count_before=int(conservation_before.get("verified_count") or 0),
             verified_count_after=int(conservation_after.get("verified_count") or 0),
             previous_receipt_hash=store.last_hash,
+            amount_recovered=_receipt_amount_recovered(is_correct, amount),
+            supplier_name=context.get("supplier_name"),
+            invoice_number=_receipt_invoice_number(context, decision_id),
+            po_number=context.get("po_number"),
         )
         store.add(receipt)
     except (TypeError, ValueError, AttributeError) as exc:
         log.warning("S2P outcome receipt creation skipped: %s", exc)
+
+
+def _receipt_factor_hash(decision: dict[str, Any] | None) -> str:
+    factors = _decision_factors(decision)
+    if factors:
+        payload: Any = {name: factors.get(name, 0.0) for name in S2PDomainConfig.factors}
+    else:
+        payload = _decision_factor_vector(decision)
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _evidence_receipt_payload(
+    *,
+    decision: dict[str, Any] | None,
+    decision_id: str,
+    actual_action: str,
+    outcome: str,
+    conservation_before: dict[str, Any],
+    context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    receipt_context = _decision_context(decision, context)
+    return {
+        "decision_id": decision_id,
+        "domain": "s2p",
+        "actual_action": actual_action,
+        "outcome": outcome,
+        "confidence": _decision_confidence(decision),
+        "category": _decision_category(decision),
+        "recommended_action": _decision_recommended_action(decision),
+        "invoice_id": receipt_context.get("invoice_id") or _decision_invoice_id(decision) or None,
+        "factor_hash": _receipt_factor_hash(decision),
+        "factor_names": list(S2PDomainConfig.factors),
+        "factor_vector": _decision_factor_vector(decision),
+        "timestamp": _decision_metadata(decision).get("timestamp")
+        or _decision_metadata(decision).get("created_at")
+        or (decision or {}).get("timestamp")
+        or (decision or {}).get("created_at"),
+        "conservation_before": _json_safe(conservation_before),
+    }
+
+
+def _enqueue_evidence_receipt_intent(
+    *,
+    graph_store: Any,
+    receipt_intent_id: str,
+    domain: str,
+    decision_id: str,
+    canonical_payload: dict[str, Any],
+    actor: str,
+    source_route: str,
+    metadata: dict[str, Any],
+) -> int:
+    enqueue = getattr(graph_store, "enqueue_to_outbox", None)
+    if not callable(enqueue):
+        raise RuntimeError("graph store does not support receipt outbox fallback")
+    return int(
+        enqueue(
+            domain=domain,
+            operation_type="append_evidence_receipt",
+            target_key=f"{domain}:{receipt_intent_id}",
+            payload={
+                "receipt_intent_id": receipt_intent_id,
+                "domain": domain,
+                "decision_id": decision_id,
+                "canonical_payload": canonical_payload,
+                "actor": actor,
+                "source_route": source_route,
+                "metadata": metadata,
+            },
+            causal_decision_id=decision_id,
+        )
+    )
+
+
+def _append_evidence_receipt_before_outcome(
+    *,
+    graph_store: Any,
+    decision: dict[str, Any] | None,
+    decision_id: str,
+    actual_action: str,
+    outcome: str,
+    actor: str,
+    source_route: str,
+    conservation_before: dict[str, Any],
+    context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    append = getattr(graph_store, "append_evidence_receipt", None)
+    domain = _graph_domain(graph_store)
+    receipt_intent_id = f"RCP-{uuid4().hex[:12]}"
+    canonical_payload = _evidence_receipt_payload(
+        decision=decision,
+        decision_id=decision_id,
+        actual_action=actual_action,
+        outcome=outcome,
+        conservation_before=conservation_before,
+        context=context,
+    )
+    metadata = {
+        "receipt_intent_id": receipt_intent_id,
+        "phase": "pre_outcome",
+        "factor_schema_version": "s2p_factor_schema_v2",
+    }
+    if not callable(append):
+        try:
+            outbox_id = _enqueue_evidence_receipt_intent(
+                graph_store=graph_store,
+                receipt_intent_id=receipt_intent_id,
+                domain=domain,
+                decision_id=decision_id,
+                canonical_payload=canonical_payload,
+                actor=actor,
+                source_route=source_route,
+                metadata=metadata,
+            )
+            return {
+                "receipt_intent_id": receipt_intent_id,
+                "chain_index": None,
+                "payload_hash": None,
+                "receipt_queued": True,
+                "outbox_id": outbox_id,
+            }
+        except Exception as outbox_exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Evidence receipt persistence is unavailable",
+            ) from outbox_exc
+
+    try:
+        chain_index, payload_hash = append(
+            receipt_intent_id=receipt_intent_id,
+            domain=domain,
+            decision_id=decision_id,
+            canonical_payload=canonical_payload,
+            actor=actor,
+            source_route=source_route,
+            metadata=metadata,
+        )
+        return {
+            "receipt_intent_id": receipt_intent_id,
+            "chain_index": chain_index,
+            "payload_hash": payload_hash,
+            "receipt_queued": False,
+            "outbox_id": None,
+        }
+    except Exception as append_exc:
+        try:
+            outbox_id = _enqueue_evidence_receipt_intent(
+                graph_store=graph_store,
+                receipt_intent_id=receipt_intent_id,
+                domain=domain,
+                decision_id=decision_id,
+                canonical_payload=canonical_payload,
+                actor=actor,
+                source_route=source_route,
+                metadata=metadata,
+            )
+            log.warning(
+                "S2P evidence receipt append failed before outcome; queued outbox_id=%s: %s",
+                outbox_id,
+                append_exc,
+            )
+            return {
+                "receipt_intent_id": receipt_intent_id,
+                "chain_index": None,
+                "payload_hash": None,
+                "receipt_queued": True,
+                "outbox_id": outbox_id,
+            }
+        except Exception as outbox_exc:
+            log.exception("S2P evidence receipt persistence failed before outcome")
+            raise HTTPException(
+                status_code=503,
+                detail="Evidence receipt persistence failed before outcome write",
+            ) from outbox_exc
 
 
 def _decision_context(
@@ -407,6 +1009,8 @@ def _decision_context(
         "commodity",
         "amount",
         "total_amount",
+        "invoice_number",
+        "po_number",
     ):
         value = metadata.get(key)
         if value is None and isinstance(decision, dict):
@@ -548,20 +1152,51 @@ def _learn_with_scorer(
         decision = scorer.graph_store.get_decision(decision_id)
     except Exception:
         decision = None
-    try:
-        result = scorer.learn(
-            decision_id,
-            actual_action,
-            outcome,
-            context=_decision_context(decision, context),
-        )
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Unknown decision: {decision_id}") from exc
+    invoice_id_before = _decision_invoice_id(decision) if isinstance(decision, dict) else ""
+    had_invoice_link = _has_decision_invoice_link(scorer.graph_store, decision_id, invoice_id_before)
+    learn_context = _decision_context(decision, context)
+    with _GRAPH_LINK_ADVISORY_LOCK:
+        original_link = getattr(scorer.graph_store, "link_decision_to_entity", None)
+        restore_link = False
+        try:
+            if callable(original_link):
+                def _advisory_invoice_link(
+                    linked_decision_id: str,
+                    entity_id: str,
+                    edge_type: str = "DECIDED_ON",
+                ) -> None:
+                    if (
+                        had_invoice_link
+                        and str(linked_decision_id) == str(decision_id)
+                        and str(entity_id) == str(invoice_id_before)
+                        and edge_type == "DECIDED_ON"
+                    ):
+                        return
+                    try:
+                        original_link(linked_decision_id, entity_id, edge_type=edge_type)
+                    except Exception:
+                        log.exception("S2P graph invoice link skipped for decision %s", linked_decision_id)
+
+                scorer.graph_store.link_decision_to_entity = _advisory_invoice_link
+                restore_link = True
+            result = scorer.learn(
+                decision_id,
+                actual_action,
+                outcome,
+                context=learn_context,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"Unknown decision: {decision_id}") from exc
+        finally:
+            if restore_link:
+                scorer.graph_store.link_decision_to_entity = original_link
     payload = _json_safe(result)
     if isinstance(payload, dict) and isinstance(decision, dict):
-        invoice_id = _decision_invoice_id(decision)
+        invoice_id = invoice_id_before
         if invoice_id:
             payload.setdefault("invoice_id", invoice_id)
+            if not had_invoice_link:
+                _link_decision_to_invoice(scorer.graph_store, decision_id, invoice_id)
     return payload
 
 
@@ -683,7 +1318,7 @@ class ScoreResponse(BaseModel):
     novelty_score: Optional[float] = None
 
 
-@router.post("/score")
+@router.post("/score", response_model=S2PScoreResponse)
 def score_procurement_event(request: ScoreRequest, http_request: Request) -> ScoreResponse:
     """
     Score a procurement event and return recommended action.
@@ -752,7 +1387,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
     except Exception:
         pass
 
-    conservation_status = _current_conservation_status(http_request)
+    conservation_status = _score_conservation_status(http_request)
     auto_approve = _should_auto_approve(
         request.category,
         score_result.confidence,
@@ -765,6 +1400,15 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
     record_auto_approve_decision(auto_approve)
 
     novelty_score = _record_score_novelty(factor_vector, request.category, scorer)
+    _link_decision_to_invoice(scorer.graph_store, score_result.decision_id, str(lookup_id))
+    _record_score_shadow(
+        http_request,
+        score_request=request,
+        score_result=score_result,
+        factor_vector=factor_vector,
+        invoice=invoice,
+        active_variant=active_variant,
+    )
 
     return ScoreResponse(
         event_id=request.event_id,
@@ -783,12 +1427,12 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
     )
 
 
-@router.get("/auto-approve/stats")
+@router.get("/auto-approve/stats", response_model=GenericResponse)
 def get_auto_approve_stats_endpoint() -> dict[str, Any]:
     return get_auto_approve_stats()
 
 
-@router.get("/auto-approve/expansion-proof")
+@router.get("/auto-approve/expansion-proof", response_model=GenericResponse)
 def get_auto_approve_expansion_proof(
     http_request: Request,
     category: Optional[str] = None,
@@ -837,7 +1481,7 @@ class LearnRequest(BaseModel):
     variant_id: Optional[str] = None
 
 
-@learn_router.post("/learn")
+@learn_router.post("/learn", response_model=GenericResponse)
 def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, Any]:
     """SDK-shaped learn endpoint backed by the S2P CompoundingScorer."""
     if request.actual_action not in S2PDomainConfig.actions:
@@ -855,6 +1499,17 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
     except Exception:
         decision = None
     conservation_before = _receipt_conservation_snapshot(http_request)
+    _append_evidence_receipt_before_outcome(
+        graph_store=scorer.graph_store,
+        decision=decision,
+        decision_id=request.decision_id,
+        actual_action=request.actual_action,
+        outcome=request.outcome,
+        actor="api/learn",
+        source_route="/api/learn",
+        conservation_before=conservation_before,
+        context=context,
+    )
     payload = _learn_with_scorer(
         scorer,
         request.decision_id,
@@ -862,6 +1517,8 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         request.outcome,
         context,
     )
+    _clear_score_conservation_status_cache()
+    _persist_l5_conservation_state(http_request, request.decision_id)
     conservation_after = _receipt_conservation_snapshot(http_request)
     if _outcome_recorded_for_receipt(
         payload,
@@ -875,6 +1532,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             reason_code=context.get("reason_code"),
             conservation_before=conservation_before,
             conservation_after=conservation_after,
+            context=context,
         )
     _record_supplier_profile(decision, payload, request.actual_action, context)
     _record_evolver_outcome_if_allowed(
@@ -884,10 +1542,19 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         category=_decision_category(decision),
         http_request=http_request,
     )
+    _record_outcome_shadow(
+        http_request,
+        operation="learn_shadow",
+        decision=decision,
+        decision_id=request.decision_id,
+        actual_action=request.actual_action,
+        outcome=request.outcome,
+        metadata={"reason_code": context.get("reason_code")},
+    )
     return payload
 
 
-@router.post("/outcome")
+@router.post("/outcome", response_model=GenericResponse)
 def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, Any]:
     """
     Record analyst outcome and optionally update centroids.
@@ -906,14 +1573,6 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
         raise HTTPException(status_code=422,
             detail=f"factor_vector must contain {S2PDomainConfig.n_factors} values")
 
-    try:
-        from app.db.neo4j import neo4j_client
-        from app.domains.s2p.graph import write_s2p_outcome
-        write_s2p_outcome(neo4j_client, request.decision_id,
-            request.outcome, request.analyst_action, request.analyst_id)
-    except Exception:
-        pass  # Neo4j unavailable — outcome still processed
-
     scorer = _sdk_scorer(http_request)
     _ensure_outcome_decision(scorer, request)
     try:
@@ -928,6 +1587,26 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
         "reason_code": request.reason_code,
         "invoice_id": invoice_id or None,
     }
+    conservation_before = _receipt_conservation_snapshot(http_request)
+    _append_evidence_receipt_before_outcome(
+        graph_store=scorer.graph_store,
+        decision=decision,
+        decision_id=request.decision_id,
+        actual_action=request.analyst_action,
+        outcome=request.outcome,
+        actor=request.analyst_id,
+        source_route="/api/s2p/outcome",
+        conservation_before=conservation_before,
+        context=outcome_context,
+    )
+    try:
+        from app.db.neo4j import neo4j_client
+        from app.domains.s2p.graph import write_s2p_outcome
+        write_s2p_outcome(neo4j_client, request.decision_id,
+            request.outcome, request.analyst_action, request.analyst_id)
+    except Exception:
+        pass  # Neo4j unavailable — outcome still processed
+
     payload = _learn_with_scorer(
         scorer,
         request.decision_id,
@@ -936,6 +1615,23 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
         outcome_context,
     )
     payload["outcome"] = request.outcome
+    _clear_score_conservation_status_cache()
+    _persist_l5_conservation_state(http_request, request.decision_id)
+    conservation_after = _receipt_conservation_snapshot(http_request)
+    if _outcome_recorded_for_receipt(
+        payload,
+        conservation_before.get("verified_count"),
+        conservation_after.get("verified_count"),
+    ):
+        _record_outcome_receipt(
+            decision=decision,
+            payload=payload,
+            actual_action=request.analyst_action,
+            reason_code=request.reason_code,
+            conservation_before=conservation_before,
+            conservation_after=conservation_after,
+            context=outcome_context,
+        )
     _record_supplier_profile(decision, payload, request.analyst_action, outcome_context)
     _record_evolver_outcome_if_allowed(
         payload,
@@ -947,10 +1643,23 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
     if request.reason_code:
         payload["reason_code"] = request.reason_code
     payload["learning_applied"] = payload.get("status") != "paused"
+    _record_outcome_shadow(
+        http_request,
+        operation="outcome_shadow",
+        decision=decision,
+        decision_id=request.decision_id,
+        actual_action=request.analyst_action,
+        outcome=request.outcome,
+        metadata={
+            "analyst_id": request.analyst_id,
+            "reason_code": request.reason_code,
+            "invoice_id": invoice_id or None,
+        },
+    )
     return payload
 
 
-@router.get("/iks")
+@router.get("/iks", response_model=GenericResponse)
 def get_iks(http_request: Request) -> dict[str, Any]:
     """
     GET /api/s2p/iks
@@ -961,7 +1670,7 @@ def get_iks(http_request: Request) -> dict[str, Any]:
     return _json_safe(_iks_from_trajectory(trajectory))
 
 
-@router.get("/learning-gate")
+@router.get("/learning-gate", response_model=LearningGateResponse)
 def get_learning_gate() -> dict:
     """
     GET /api/s2p/learning-gate

@@ -55,6 +55,14 @@ def test_governance_conservation_proof_returns_current_state():
     assert "proof_complete" in data
 
 
+def test_governance_sox_readiness_returns_components():
+    data = assert_dict_response("/api/s2p/governance/sox-readiness")
+
+    assert 0.0 <= data["sox_readiness_score"] <= 100.0
+    assert {"audit_chain", "tamper_check", "conservation", "volume"} <= set(data["components"])
+    assert data["recommendation"] in {"SOX-ready", "Not yet ready"}
+
+
 def test_governance_rationalization_returns_recommendations():
     data = assert_dict_response("/api/s2p/governance/rationalization")
 

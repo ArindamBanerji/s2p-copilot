@@ -7,6 +7,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from app.models.responses import GenericResponse
+
 router = APIRouter(prefix="/api/s2p/simulation", tags=["s2p-simulation"])
 
 
@@ -191,13 +193,13 @@ def _find_mitigation(actions: list[dict[str, Any]], mitigation: str | None) -> d
     return next((action for action in actions if action["action"] == mitigation), None)
 
 
-@router.get("/scenarios")
+@router.get("/scenarios", response_model=GenericResponse)
 def list_scenarios() -> dict[str, Any]:
     scenarios = [_scenario_summary(scenario) for scenario in SCENARIOS]
     return {"scenarios": scenarios, "total": len(scenarios)}
 
 
-@router.get("/scenarios/{scenario_id}")
+@router.get("/scenarios/{scenario_id}", response_model=GenericResponse)
 def scenario_detail(scenario_id: str) -> dict[str, Any]:
     scenario = _find_scenario(scenario_id)
     if scenario is None:
@@ -205,7 +207,7 @@ def scenario_detail(scenario_id: str) -> dict[str, Any]:
     return deepcopy(scenario)
 
 
-@router.get("/what-if/{scenario_id}")
+@router.get("/what-if/{scenario_id}", response_model=GenericResponse)
 def scenario_what_if(scenario_id: str, mitigation: str | None = None) -> dict[str, Any]:
     scenario = _find_scenario(scenario_id)
     if scenario is None:
@@ -235,7 +237,7 @@ def scenario_what_if(scenario_id: str, mitigation: str | None = None) -> dict[st
     }
 
 
-@router.get("/impact-summary")
+@router.get("/impact-summary", response_model=GenericResponse)
 def impact_summary() -> dict[str, Any]:
     impacts = [scenario["impact"] for scenario in SCENARIOS]
     return {

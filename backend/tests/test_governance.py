@@ -99,6 +99,28 @@ def test_has_sox_readiness():
     assert 0.0 <= data["sox_readiness"]["score"] <= 1.0
 
 
+def test_sox_readiness_endpoint_empty_store_200():
+    response = client.get("/api/s2p/governance/sox-readiness")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert 0.0 <= data["sox_readiness_score"] <= 100.0
+    assert {"audit_chain", "tamper_check", "conservation", "volume"} <= set(data["components"])
+    assert data["recommendation"] in {"SOX-ready", "Not yet ready"}
+
+
+def test_sox_readiness_endpoint_with_receipts():
+    get_receipt_store().add(make_receipt())
+
+    response = client.get("/api/s2p/governance/sox-readiness")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_decisions_screened"] == 1
+    assert data["components"]["audit_chain"]["ready"] is True
+    assert data["components"]["volume"]["total_receipts"] == 1
+
+
 def test_gaps_endpoint():
     get_receipt_store().add(make_receipt(factor_vector=[0.1]))
 
@@ -284,6 +306,7 @@ def test_governance_routes_mounted():
     assert "/api/s2p/governance/compliance-screening" in paths
     assert "/api/s2p/governance/compliance-gaps" in paths
     assert "/api/s2p/governance/conservation-proof" in paths
+    assert "/api/s2p/governance/sox-readiness" in paths
     assert "/api/s2p/governance/rationalization" in paths
     assert "/api/s2p/governance/rationalization/overlap" in paths
     assert "/api/s2p/governance/rationalization/supplier/{supplier_id}" in paths

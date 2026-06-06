@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+from uuid import uuid4
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ import numpy as np
 from fastapi import APIRouter, Request
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.models.responses import GenericResponse
 
 router = APIRouter(prefix="/api/s2p/preview", tags=["s2p-preview"])
 
@@ -136,6 +138,17 @@ def _get_scorer(request: Request):
     return request.app.state.scorer
 
 
+def _get_graph_store(request: Request, scorer: Any) -> Any:
+    return getattr(request.app.state, "graph_store", None) or getattr(scorer, "graph_store", None)
+
+
+def _score_read_only(scorer: Any, factors: dict[str, float], category: str) -> Any:
+    score_read_only = getattr(scorer, "score_read_only", None)
+    if not callable(score_read_only):
+        raise RuntimeError("S2P preview requires a read-only scorer path")
+    return score_read_only(factors, category)
+
+
 def _score_invoice(invoice: dict[str, Any], scorer) -> dict[str, Any]:
     actions = _get_action_list()
     category = str(invoice["category"])
@@ -144,15 +157,10 @@ def _score_invoice(invoice: dict[str, Any], scorer) -> dict[str, Any]:
     factor_vector = [float(factors[name]) for name in factor_names]
     scored_factors = {name: float(factors[name]) for name in factor_names}
     metadata = invoice.get("metadata") if isinstance(invoice.get("metadata"), dict) else {}
-    score_result = scorer.score(
+    score_result = _score_read_only(
+        scorer,
         scored_factors,
         category,
-        metadata={
-            **metadata,
-            "invoice_id": invoice["invoice_id"],
-            "supplier_id": invoice["supplier_id"],
-            "source": "s2p_preview",
-        },
     )
     action_name = str(score_result.action)
     action_index = int(score_result.action_index)
@@ -179,16 +187,58 @@ def _score_invoice(invoice: dict[str, Any], scorer) -> dict[str, Any]:
         "ground_truth_action": invoice["ground_truth_action"],
         "ground_truth_action_index": actions.index(invoice["ground_truth_action"]),
         "metadata": metadata,
-    }
+      }
+
+
+def _write_preview_observation(request: Request, invoice: dict[str, Any]) -> None:
+    scorer = _get_scorer(request)
+    graph_store = _get_graph_store(request, scorer)
+    write_observation = getattr(graph_store, "write_observation", None)
+    if not callable(write_observation):
+        return
+
+    factor_names = _get_factor_list()
+    metadata = dict(invoice.get("metadata") or {})
+    metadata.update(
+        {
+            "preview": True,
+            "invoice_id": invoice.get("invoice_id"),
+            "supplier_id": invoice.get("supplier_id"),
+            "supplier_name": invoice.get("supplier_name"),
+            "amount": invoice.get("amount"),
+            "po_reference": invoice.get("po_reference"),
+        }
+    )
+    write_observation(
+        observation_id=f"OBS-{uuid4().hex[:12]}",
+        domain="s2p",
+        category=str(invoice["category"]),
+        recommended_action=str(invoice["recommended_action"]),
+        confidence=float(invoice["confidence"]),
+        source_route="preview",
+        scorer_version=getattr(scorer, "version", ENGINE_VERSION) or "unknown",
+        factor_schema_version="s2p_factor_schema_v2",
+        entity_id=str(invoice["invoice_id"]),
+        factor_vector=[float(value) for value in invoice["factor_vector"]],
+        factor_names=factor_names,
+        metadata=metadata,
+    )
+
+
+def _get_fixture_invoices(n: int = 50) -> list[dict[str, Any]]:
+    global _invoices
+    if _invoices is None:
+        _invoices = _load_fixture_json("synthetic_invoices.json")[:n]
+    return _invoices
+
+
+def _score_invoices(request: Request, invoices: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    scorer = _get_scorer(request)
+    return [_score_invoice(invoice, scorer) for invoice in invoices]
 
 
 def _get_scored_invoices(request: Request, n: int = 50, seed: int = 42) -> list[dict[str, Any]]:
-    global _invoices, _scored_invoices
-    if _scored_invoices is None:
-        _invoices = _load_fixture_json("synthetic_invoices.json")[:n]
-        scorer = _get_scorer(request)
-        _scored_invoices = [_score_invoice(invoice, scorer) for invoice in _invoices]
-    return list(_scored_invoices)
+    return _score_invoices(request, _get_fixture_invoices(n))
 
 
 def _get_preview_simulation_scorer():
@@ -324,6 +374,30 @@ def _clamp_limit(limit: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(int(limit), maximum))
 
 
+def _preview_slice_with_action_diversity(invoices: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    preview = list(invoices[:limit])
+    if len(preview) < 2:
+        return preview
+
+    actions = {str(invoice.get("scored_action", "")) for invoice in preview}
+    actions.discard("")
+    if len(actions) >= 2:
+        return preview
+
+    first_action = str(preview[0].get("scored_action", "")) if preview else ""
+    diverse_invoice = next(
+        (
+            invoice
+            for invoice in invoices[limit:]
+            if str(invoice.get("scored_action", "")) and str(invoice.get("scored_action", "")) != first_action
+        ),
+        None,
+    )
+    if diverse_invoice is not None:
+        preview[-1] = diverse_invoice
+    return preview
+
+
 def reset_preview_state() -> None:
     global _invoices, _scored_invoices, _centroids
     _invoices = None
@@ -331,22 +405,37 @@ def reset_preview_state() -> None:
     _centroids = None
 
 
-@router.get("/queue")
+@router.get("/queue", response_model=GenericResponse)
 def preview_queue(request: Request, limit: int = 5) -> dict[str, Any]:
+    clamped_limit = _clamp_limit(limit, 1, 50)
+    fixture_invoices = _get_fixture_invoices()
+    preview_size = min(max(clamped_limit, 10), len(fixture_invoices))
     invoices = sorted(
-        _get_scored_invoices(request),
+        _score_invoices(request, fixture_invoices[:preview_size]),
         key=lambda invoice: invoice["confidence"],
         reverse=True,
     )
-    clamped_limit = _clamp_limit(limit, 1, 50)
-    shown = invoices[:clamped_limit]
+    while len({invoice["scored_action"] for invoice in invoices}) < 2 and preview_size < len(fixture_invoices):
+        next_size = min(preview_size + 10, len(fixture_invoices))
+        invoices = sorted(
+            _score_invoices(request, fixture_invoices[:next_size]),
+            key=lambda invoice: invoice["confidence"],
+            reverse=True,
+        )
+        preview_size = next_size
+    shown = _preview_slice_with_action_diversity(invoices, clamped_limit)
+    for invoice in shown:
+        _write_preview_observation(request, invoice)
     process_context = _build_process_context(_load_celonis_cache())
-    exceptions = [_with_process_context(invoice, process_context) for invoice in invoices[:10]]
+    exceptions = [
+        _with_process_context(invoice, process_context)
+        for invoice in shown
+    ]
     auto_approve_count = sum(1 for invoice in invoices if invoice["scored_action"] == "auto_approve")
     confidence_avg = sum(invoice["confidence"] for invoice in invoices) / len(invoices) if invoices else 0.0
     return {
         "engine_version": ENGINE_VERSION,
-        "total": len(invoices),
+        "total": len(fixture_invoices),
         "showing": len(shown),
         "exceptions": exceptions,
         "invoices": shown,
@@ -361,7 +450,7 @@ def preview_queue(request: Request, limit: int = 5) -> dict[str, Any]:
     }
 
 
-@router.get("/conservation")
+@router.get("/conservation", response_model=GenericResponse)
 def preview_conservation(request: Request) -> dict[str, Any]:
     invoices = _get_scored_invoices(request)
     auto_approve_count = sum(
@@ -398,7 +487,7 @@ def preview_conservation(request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/compounding")
+@router.get("/compounding", response_model=GenericResponse)
 def preview_compounding() -> dict[str, Any]:
     simulation = _build_compounding_trajectory()
     points = simulation["points"]
@@ -416,7 +505,7 @@ def preview_compounding() -> dict[str, Any]:
     }
 
 
-@router.get("/suppliers")
+@router.get("/suppliers", response_model=GenericResponse)
 def preview_suppliers(limit: int | None = None) -> dict[str, Any]:
     suppliers = [_preview_supplier(supplier) for supplier in _get_supplier_fixture()]
     if limit is None:
@@ -433,7 +522,7 @@ def preview_suppliers(limit: int | None = None) -> dict[str, Any]:
     }
 
 
-@router.get("/config")
+@router.get("/config", response_model=GenericResponse)
 def preview_config() -> dict[str, Any]:
     return {
         "engine_version": ENGINE_VERSION,

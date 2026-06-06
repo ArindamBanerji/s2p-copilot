@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import load_suppliers
 from app.services.supplier_profile_accumulator import accumulator
 
@@ -170,7 +171,7 @@ def _summary(strategies: list[dict[str, Any]], total_discount: float, dpo_days: 
     )
 
 
-@router.get("/payment-strategy")
+@router.get("/payment-strategy", response_model=GenericResponse)
 def payment_strategy() -> dict[str, Any]:
     strategies = _build_payment_behaviors(_load_supplier_profiles())
     total_discount = sum(float(row["discount_opportunity"]) for row in strategies)
@@ -184,7 +185,7 @@ def payment_strategy() -> dict[str, Any]:
     }
 
 
-@router.get("/payment-behavior")
+@router.get("/payment-behavior", response_model=GenericResponse)
 def payment_behavior(supplier_id: str) -> dict[str, Any]:
     profile = next(
         (row for row in _load_supplier_profiles() if str(row.get("supplier_id")) == supplier_id),

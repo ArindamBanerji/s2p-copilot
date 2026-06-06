@@ -12,19 +12,20 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_intents_returns_five_s2p_intents():
+def test_intents_returns_expanded_s2p_intents():
     response = client.get("/api/s2p/control-tower/intents")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["count"] == 5
-    assert len(data["intents"]) == 5
+    assert data["count"] >= 15
+    assert len(data["intents"]) == data["count"]
+    assert "triage_price" in {intent["intent_id"] for intent in data["intents"]}
 
 
 def test_intent_fields_present():
     intent = client.get("/api/s2p/control-tower/intents").json()["intents"][0]
 
-    assert {"name", "description", "categories", "route", "evidence_panels"}.issubset(intent)
+    assert {"name", "description", "categories", "route", "evidence_panels", "category", "default_action", "priority"}.issubset(intent)
     assert intent["evidence_panels"]
 
 
@@ -42,8 +43,9 @@ def test_category_mapping_price_variance():
     ).json()
 
     assert data["category"] == "price_variance"
-    assert data["intent"] == "invoice_price_variance"
-    assert data["route"] == "insight"
+    assert data["intent"] == "triage_price"
+    assert data["route"] == "triage"
+    assert data["intent_category"] == "triage"
 
 
 def test_duplicate_risk_maps_to_invoice_duplicate_risk():
@@ -52,7 +54,7 @@ def test_duplicate_risk_maps_to_invoice_duplicate_risk():
         params={"invoice_id": "S2P-INV-0001", "category": "duplicate_risk"},
     ).json()
 
-    assert data["intent"] == "invoice_duplicate_risk"
+    assert data["intent"] == "triage_duplicate"
     assert "similar_invoices" in data["evidence_panels"]
 
 
@@ -62,8 +64,8 @@ def test_contract_gap_routes_to_evidence():
         params={"invoice_id": "S2P-INV-0001", "category": "contract_gap"},
     ).json()
 
-    assert data["intent"] == "contract_compliance_gap"
-    assert data["route"] == "evidence"
+    assert data["intent"] == "triage_contract"
+    assert data["route"] == "triage"
 
 
 def test_queue_respects_limit():
@@ -88,6 +90,25 @@ def test_priority_fields_numeric():
     assert isinstance(item["amount"], (int, float))
 
 
+def test_queue_preserves_compatibility_keys():
+    item = client.get("/api/s2p/control-tower/queue", params={"limit": 1}).json()["queue"][0]
+
+    assert {
+        "invoice_id",
+        "intent",
+        "intent_id",
+        "priority",
+        "amount",
+        "category",
+        "supplier",
+        "supplier_id",
+        "route",
+        "dominant_factor",
+        "factors",
+    }.issubset(item)
+    assert isinstance(item["intent"], str)
+
+
 def test_classify_with_invoice_id_returns_invoice_and_intent():
     data = client.get(
         "/api/s2p/control-tower/classify",
@@ -97,6 +118,18 @@ def test_classify_with_invoice_id_returns_invoice_and_intent():
     assert data["invoice_id"] == "S2P-INV-0001"
     assert data["intent"] in {intent["intent_id"] for intent in client.get("/api/s2p/control-tower/intents").json()["intents"]}
     assert set(data["factors"]) == set(S2PDomainConfig.factors)
+    assert isinstance(data["intent"], str)
+    assert {"intent", "intent_id", "intent_name", "description", "route", "confidence", "evidence_panels"}.issubset(data)
+
+
+def test_post_classify_accepts_body_and_returns_string_intent():
+    response = client.post("/api/s2p/control-tower/classify", json={"category": "price_variance"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["intent"] == "triage_price"
+    assert isinstance(data["intent"], str)
+    assert data["classification"]["intent"] == "triage_price"
 
 
 def test_unknown_category_returns_validation_error():

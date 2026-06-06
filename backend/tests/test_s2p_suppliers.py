@@ -13,7 +13,10 @@ from app.main import app
 from app.services.supplier_profile_accumulator import accumulator
 
 client = TestClient(app)
-FIXTURE_SUPPLIERS = json.loads(Path("../data/s2p_demo_suppliers.json").read_text(encoding="utf-8"))
+FIXTURE_SUPPLIERS = json.loads(
+    (Path(__file__).parent.parent / "app" / "data" / "s2p_demo_suppliers.json")
+    .read_text(encoding="utf-8")
+)
 
 
 @pytest.fixture(autouse=True)

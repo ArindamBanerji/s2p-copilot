@@ -80,6 +80,87 @@ def test_audit_chain_integrity():
 
     assert result["verified"] is True
     assert result["chain_length"] == 4
+    assert result["entries_checked"] == 4
+    assert result["tamper_evidence"] == []
+
+
+def test_empty_audit_chain_reports_no_tamper():
+    result = audit.verify_chain()
+
+    assert result["verified"] is True
+    assert result["entries_checked"] == 0
+    assert result["tamper_evidence"] == []
+
+
+def test_audit_verify_chain_reports_action_tamper_evidence():
+    audit.record_decision(
+        alert_id="PO-TAMPER-1",
+        situation_type="contract_gap",
+        action_taken="escalate_to_buyer",
+        factors=["supplier_exception_history"],
+        confidence=0.88,
+    )
+    entry = audit._LEDGER._entries[0]
+    entry.action = "pay_now"
+
+    result = audit.verify_chain()
+
+    assert result["verified"] is False
+    assert result["broken_at_index"] == 0
+    evidence = result["tamper_evidence"][0]
+    assert evidence["index"] == 0
+    assert evidence["type"] == "decision"
+    assert evidence["decision_id"] == entry.decision_id
+    assert evidence["detail"] == "entry_hash mismatch"
+    assert evidence["expected_hash"] != evidence["actual_hash"]
+
+
+def test_audit_verify_chain_reports_prev_hash_tamper_evidence():
+    audit.record_decision(
+        alert_id="PO-TAMPER-2",
+        situation_type="contract_gap",
+        action_taken="escalate_to_buyer",
+        factors=["supplier_exception_history"],
+        confidence=0.88,
+    )
+    audit.record_decision(
+        alert_id="PO-TAMPER-3",
+        situation_type="contract_gap",
+        action_taken="escalate_to_buyer",
+        factors=["supplier_exception_history"],
+        confidence=0.88,
+    )
+    entry = audit._LEDGER._entries[1]
+    entry.prev_hash = "broken"
+
+    result = audit.verify_chain()
+
+    assert result["verified"] is False
+    assert any(item["detail"] == "prev_hash linkage mismatch" for item in result["tamper_evidence"])
+    prev_evidence = next(item for item in result["tamper_evidence"] if item["detail"] == "prev_hash linkage mismatch")
+    assert prev_evidence["index"] == 1
+    assert prev_evidence["actual_prev_hash"] == "broken"
+
+
+def test_audit_verify_chain_reports_outcome_tamper_evidence():
+    decision = audit.record_decision(
+        alert_id="PO-TAMPER-4",
+        situation_type="duplicate_risk",
+        action_taken="flag_leakage",
+        factors=["duplicate_score"],
+        confidence=0.93,
+    )
+    audit.record_outcome(decision["decision_id"], "confirmed")
+    outcome = audit._LEDGER._entries[1]
+    outcome.outcome = "overridden"
+
+    result = audit.verify_chain()
+
+    assert result["verified"] is False
+    evidence = result["tamper_evidence"][0]
+    assert evidence["index"] == 1
+    assert evidence["type"] == "outcome"
+    assert evidence["detail"] == "entry_hash mismatch"
 
 
 def test_epoch_archive_creates_snapshot():

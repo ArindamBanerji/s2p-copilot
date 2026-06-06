@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
+from app.models.responses import CollectionResponse, GenericResponse
 from app.routers.s2p_data_helpers import load_invoices, load_suppliers
 from app.services.supplier_profile_accumulator import SupplierProfile, accumulator
 
@@ -176,8 +177,8 @@ def _pearson(xs: list[float], ys: list[float]) -> float:
     return max(-1.0, min(1.0, numerator / (denom_x * denom_y)))
 
 
-@router.get("")
-@router.get("/")
+@router.get("", response_model=CollectionResponse)
+@router.get("/", response_model=CollectionResponse)
 def suppliers() -> dict[str, Any]:
     rows = [_profile_summary(profile) for profile in accumulator.get_all_profiles()]
     return {
@@ -187,7 +188,7 @@ def suppliers() -> dict[str, Any]:
     }
 
 
-@router.get("/clustering")
+@router.get("/clustering", response_model=GenericResponse)
 def clustering() -> dict[str, Any]:
     summaries = [_summary(supplier) for supplier in load_suppliers()]
     buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -216,13 +217,13 @@ def clustering() -> dict[str, Any]:
     return {"clusters": clusters, "total_clusters": len(clusters), "method": "threshold"}
 
 
-@router.get("/declining")
+@router.get("/declining", response_model=CollectionResponse)
 def declining_suppliers() -> dict[str, Any]:
     rows = [_profile_summary(profile) for profile in accumulator.get_declining_suppliers()]
     return {"suppliers": rows, "total": len(rows), "source": "accumulator"}
 
 
-@router.get("/heatmap")
+@router.get("/heatmap", response_model=GenericResponse)
 def aggregate_heatmap() -> dict[str, Any]:
     rows = []
     supplier_ids = []
@@ -279,7 +280,7 @@ def aggregate_heatmap() -> dict[str, Any]:
     }
 
 
-@router.get("/correlations")
+@router.get("/correlations", response_model=GenericResponse)
 def supplier_correlations() -> dict[str, Any]:
     suppliers = load_suppliers()
     metrics: dict[str, list[float]] = {
@@ -332,7 +333,7 @@ def supplier_correlations() -> dict[str, Any]:
     }
 
 
-@router.get("/{supplier_id}/profile")
+@router.get("/{supplier_id}/profile", response_model=GenericResponse)
 def profile(supplier_id: str) -> dict[str, Any]:
     supplier_profile = accumulator.get_profile(supplier_id)
     if supplier_profile is None:
@@ -340,7 +341,7 @@ def profile(supplier_id: str) -> dict[str, Any]:
     return _profile_detail(supplier_profile)
 
 
-@router.get("/{supplier_id}/history")
+@router.get("/{supplier_id}/history", response_model=GenericResponse)
 def supplier_history(supplier_id: str, limit: int = 200) -> dict[str, Any]:
     supplier_profile = accumulator.get_profile(supplier_id)
     if supplier_profile is None:
@@ -349,7 +350,7 @@ def supplier_history(supplier_id: str, limit: int = 200) -> dict[str, Any]:
     return {"events": events, "total": len(events)}
 
 
-@router.get("/{supplier_id}/heatmap")
+@router.get("/{supplier_id}/heatmap", response_model=GenericResponse)
 def heatmap(supplier_id: str) -> dict[str, Any]:
     _find_supplier(supplier_id)
     invoices = _supplier_invoices(supplier_id)

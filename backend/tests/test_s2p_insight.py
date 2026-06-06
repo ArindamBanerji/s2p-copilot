@@ -55,6 +55,50 @@ def test_similar_excludes_self():
     assert all(item["invoice_id"] != "S2P-INV-0001" for item in response.json()["similar"])
 
 
+def test_process_context_returns_fixture_timeline():
+    response = client.get("/api/s2p/insight/process-context/S2P-INV-0001")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["invoice_id"] == "S2P-INV-0001"
+    assert data["supplier_id"] == "SUP-001"
+    assert data["category"] == "contract_gap"
+    assert data["source"] == "fixture"
+    assert data["engine"] == "ci-platform-s2p"
+    assert data["total_cycle_time_hours"] == 24.0
+    assert len(data["activities"]) == 6
+    assert data["activity_timeline"] == data["activities"]
+    assert {"activity", "pct_of_total", "duration_hours", "system"}.issubset(data["activities"][0])
+
+
+def test_process_context_bottleneck_is_longest_activity():
+    response = client.get("/api/s2p/insight/process-context/S2P-INV-0001")
+
+    assert response.status_code == 200
+    data = response.json()
+    longest = max(data["activities"], key=lambda item: item["duration_hours"])
+    assert data["bottleneck"]["activity"] == longest["activity"]
+    assert data["bottleneck"]["duration_hours"] == longest["duration_hours"]
+    assert data["bottleneck"]["pct_of_total"] == longest["pct_of_total"]
+    assert data["bottleneck"]["reason"]
+    assert data["bottleneck"]["system"] == longest["system"]
+
+
+def test_process_context_missing_invoice_returns_404():
+    response = client.get("/api/s2p/insight/process-context/missing")
+
+    assert response.status_code == 404
+
+
+def test_process_context_activity_durations_sum_to_total():
+    response = client.get("/api/s2p/insight/process-context/S2P-INV-0001")
+
+    assert response.status_code == 200
+    data = response.json()
+    total = sum(activity["duration_hours"] for activity in data["activities"])
+    assert abs(total - data["total_cycle_time_hours"]) <= 0.02
+
+
 def test_cross_graph_returns_correlations():
     response = client.get("/api/s2p/insight/cross-graph")
 
@@ -96,6 +140,7 @@ def test_all_insight_endpoints_200():
     paths = [
         "/api/s2p/insight/fingerprint?invoice_id=S2P-INV-0001",
         "/api/s2p/insight/similar?invoice_id=S2P-INV-0001",
+        "/api/s2p/insight/process-context/S2P-INV-0001",
         "/api/s2p/insight/cross-graph",
         "/api/s2p/insight/process-signals",
     ]

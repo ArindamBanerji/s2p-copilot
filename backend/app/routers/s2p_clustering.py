@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
+from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import load_suppliers
 from app.services.supplier_profile_accumulator import accumulator
 
@@ -113,7 +114,7 @@ def _cluster_potential(cluster: dict[str, Any]) -> str:
     return "low"
 
 
-@router.get("/clusters")
+@router.get("/clusters", response_model=GenericResponse)
 def clusters() -> dict[str, Any]:
     profiles = _load_supplier_profiles()
     grouped = _build_demo_clusters(profiles)
@@ -132,7 +133,7 @@ def clusters() -> dict[str, Any]:
     }
 
 
-@router.get("/similarity")
+@router.get("/similarity", response_model=GenericResponse)
 def similarity(supplier_id: str) -> dict[str, Any]:
     profiles = _load_supplier_profiles()
     target = next((profile for profile in profiles if profile.get("supplier_id") == supplier_id), None)

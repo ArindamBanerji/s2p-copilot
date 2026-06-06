@@ -1,0 +1,324 @@
+import os
+import sys
+
+from fastapi.testclient import TestClient
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from app.main import app, build_s2p_scorer  # noqa: E402
+from app.routers import s2p as s2p_router  # noqa: E402
+from app.s2p_shadow import (  # noqa: E402
+    S2PShadowConfig,
+    S2PShadowDiagnostics,
+    S2PShadowState,
+    initialize_s2p_shadow_state,
+)
+
+
+SCORE_BODY = {
+    "event_id": "S2P-SHADOW-PHASE2",
+    "category": "price_variance",
+    "amount": 5000.0,
+    "supplier_id": "SUP-SHADOW",
+    "match_status": 0.92,
+    "amount_variance_ratio": 0.08,
+    "duplicate_score": 0.04,
+    "supplier_exception_history": 0.05,
+    "payment_terms_impact": 0.48,
+    "commodity_index_correlation": 0.76,
+    "tax_regulatory_compliance": 0.90,
+}
+
+
+class FakeShadowStore:
+    def __init__(self, *, fail_governed: bool = False, fail_outcome: bool = False) -> None:
+        self.fail_governed = fail_governed
+        self.fail_outcome = fail_outcome
+        self.governed_decisions: list[dict] = []
+        self.outcomes: list[dict] = []
+
+    def write_governed_decision(self, **kwargs):
+        if self.fail_governed:
+            raise RuntimeError("postgresql://postgres:secret@127.0.0.1/db?password=abc")
+        self.governed_decisions.append(dict(kwargs))
+        return kwargs.get("decision_id")
+
+    def write_outcome(self, **kwargs):
+        if self.fail_outcome:
+            raise RuntimeError("postgresql://postgres:secret@127.0.0.1/db?password=abc")
+        self.outcomes.append(dict(kwargs))
+        return kwargs.get("decision_id")
+
+
+def _enabled_config(*, strict: bool = False) -> S2PShadowConfig:
+    return S2PShadowConfig.from_env(
+        {
+            "S2P_SHADOW_AGE": "1",
+            "S2P_SHADOW_STRICT": "1" if strict else "0",
+            "S2P_AGE_DSN": "postgresql://postgres:secret@127.0.0.1/db",
+            "S2P_AGE_GRAPH": "protocol_v2_test_shadow",
+            "S2P_AGE_TEST_MODE": "1",
+        }
+    )
+
+
+def _shadow_state(
+    store: FakeShadowStore | None = None,
+    *,
+    strict: bool = False,
+) -> S2PShadowState:
+    return S2PShadowState(
+        config=_enabled_config(strict=strict),
+        diagnostics=S2PShadowDiagnostics(max_events=20, shadow_run_id="phase2-test"),
+        store=store or FakeShadowStore(),
+    )
+
+
+def _reset_app_state(shadow: S2PShadowState | None = None) -> None:
+    app.state.scorer = build_s2p_scorer()
+    app.state.graph_store = app.state.scorer.graph_store
+    app.state.s2p_reward_function = app.state.scorer._reward_fn
+    app.state.s2p_shadow = shadow or initialize_s2p_shadow_state(env={})
+    s2p_router._clear_score_conservation_status_cache()
+
+
+@pytest.fixture(autouse=True)
+def reset_app_after_test():
+    _reset_app_state()
+    yield
+    _reset_app_state()
+
+
+def _score(client: TestClient, event_id: str = "S2P-SHADOW-PHASE2"):
+    return client.post("/api/s2p/score", json={**SCORE_BODY, "event_id": event_id})
+
+
+def test_shadow_disabled_by_default_does_not_construct_age_store():
+    shadow = initialize_s2p_shadow_state(env={})
+    _reset_app_state(shadow)
+
+    response = _score(TestClient(app), "S2P-SHADOW-DISABLED")
+
+    assert response.status_code == 200
+    assert shadow.config.enabled is False
+    assert shadow.store is None
+
+
+def test_enabled_shadow_state_constructs_store_with_injected_factory():
+    fake = FakeShadowStore()
+    state = initialize_s2p_shadow_state(
+        env={
+            "S2P_SHADOW_AGE": "1",
+            "S2P_AGE_DSN": "postgresql://postgres:secret@127.0.0.1/db",
+            "S2P_AGE_GRAPH": "protocol_v2_test_shadow",
+            "S2P_AGE_TEST_MODE": "1",
+        },
+        store_factory=lambda config: fake,
+    )
+
+    assert state.config.enabled is True
+    assert state.config.graph == "protocol_v2_test_shadow"
+    assert state.store is fake
+
+
+def test_score_shadow_success_uses_authoritative_decision_id_and_keeps_response_shape():
+    fake = FakeShadowStore()
+    shadow = _shadow_state(fake)
+    _reset_app_state(shadow)
+
+    response = _score(TestClient(app), "S2P-SHADOW-SCORE-SUCCESS")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(fake.governed_decisions) == 1
+    shadow_write = fake.governed_decisions[0]
+    assert shadow_write["decision_id"] == body["decision_id"]
+    assert shadow_write["domain"] == "s2p"
+    assert shadow_write["factor_names"] == s2p_router.S2PDomainConfig.factors
+    assert shadow_write["metadata"]["shadow_run_id"] == "phase2-test"
+    assert shadow_write["metadata"]["shadow_operation"] == "score_shadow"
+    assert shadow_write["metadata"]["operation_id"] == body["decision_id"]
+    assert "shadow" not in body
+    event = shadow.diagnostics.events()[-1]
+    assert event.status == "succeeded"
+    assert event.parity["decision_id_match"] is True
+    assert event.parity["status_match"] is True
+
+
+def test_outcome_shadow_success_runs_after_authoritative_outcome():
+    fake = FakeShadowStore()
+    shadow = _shadow_state(fake)
+    _reset_app_state(shadow)
+    client = TestClient(app)
+    score_response = _score(client, "S2P-SHADOW-OUTCOME-SUCCESS")
+    score = score_response.json()
+
+    response = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": score["decision_id"],
+            "outcome": "confirm",
+            "analyst_action": score["action"],
+            "analyst_id": "pytest",
+            "factor_vector": score["factor_vector"],
+            "category": score["category"],
+            "predicted_action": score["action"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(fake.outcomes) == 1
+    assert fake.outcomes[0]["decision_id"] == score["decision_id"]
+    assert fake.outcomes[0]["actual_action"] == score["action"]
+    assert fake.outcomes[0]["metadata"]["shadow_run_id"] == "phase2-test"
+    assert fake.outcomes[0]["metadata"]["shadow_operation"] == "outcome_shadow"
+    assert fake.outcomes[0]["metadata"]["operation_id"] == score["decision_id"]
+    event = shadow.diagnostics.events()[-1]
+    assert event.operation == "outcome_shadow"
+    assert event.status == "succeeded"
+    assert event.parity["decision_id_match"] is True
+    assert event.parity["outcome_match"] is True
+
+
+def test_learn_shadow_success_uses_distinct_operation_name():
+    fake = FakeShadowStore()
+    shadow = _shadow_state(fake)
+    _reset_app_state(shadow)
+    client = TestClient(app)
+    score_response = _score(client, "S2P-SHADOW-LEARN-SUCCESS")
+    score = score_response.json()
+
+    response = client.post(
+        "/api/learn",
+        json={
+            "decision_id": score["decision_id"],
+            "actual_action": score["action"],
+            "outcome": "confirmed",
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(fake.outcomes) == 1
+    assert fake.outcomes[0]["metadata"]["shadow_operation"] == "learn_shadow"
+    assert fake.outcomes[0]["metadata"]["operation_id"] == score["decision_id"]
+    event = shadow.diagnostics.events()[-1]
+    assert event.operation == "learn_shadow"
+    assert event.status == "succeeded"
+    assert event.parity["decision_id_match"] is True
+    assert event.parity["outcome_match"] is True
+
+
+def test_non_strict_score_shadow_failure_keeps_sqlite_response_and_redacts_error():
+    fake = FakeShadowStore(fail_governed=True)
+    shadow = _shadow_state(fake, strict=False)
+    _reset_app_state(shadow)
+
+    response = _score(TestClient(app), "S2P-SHADOW-SCORE-FAIL")
+
+    assert response.status_code == 200
+    event = shadow.diagnostics.events()[-1]
+    assert event.status == "failed"
+    assert "secret" not in event.error_message
+    assert "password=abc" not in event.error_message
+    assert "password=***" in event.error_message
+
+
+def test_strict_score_shadow_failure_fails_clearly_after_authoritative_write():
+    fake = FakeShadowStore(fail_governed=True)
+    shadow = _shadow_state(fake, strict=True)
+    _reset_app_state(shadow)
+
+    response = _score(TestClient(app), "S2P-SHADOW-SCORE-STRICT")
+
+    assert response.status_code == 502
+    assert "score_shadow failed" in response.json()["detail"]
+    assert shadow.diagnostics.events()[-1].status == "failed"
+
+
+def test_non_strict_outcome_shadow_failure_keeps_sqlite_response():
+    fake = FakeShadowStore(fail_outcome=True)
+    shadow = _shadow_state(fake, strict=False)
+    _reset_app_state(shadow)
+    client = TestClient(app)
+    score_response = _score(client, "S2P-SHADOW-OUTCOME-FAIL")
+    score = score_response.json()
+
+    response = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": score["decision_id"],
+            "outcome": "confirm",
+            "analyst_action": score["action"],
+            "analyst_id": "pytest",
+            "factor_vector": score["factor_vector"],
+            "category": score["category"],
+            "predicted_action": score["action"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert shadow.diagnostics.events()[-1].operation == "outcome_shadow"
+    assert shadow.diagnostics.events()[-1].status == "failed"
+
+
+def test_strict_outcome_shadow_failure_fails_clearly_after_authoritative_write():
+    fake = FakeShadowStore(fail_outcome=True)
+    shadow = _shadow_state(fake, strict=True)
+    _reset_app_state(shadow)
+    client = TestClient(app)
+    score_response = _score(client, "S2P-SHADOW-OUTCOME-STRICT")
+    score = score_response.json()
+
+    response = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": score["decision_id"],
+            "outcome": "confirm",
+            "analyst_action": score["action"],
+            "analyst_id": "pytest",
+            "factor_vector": score["factor_vector"],
+            "category": score["category"],
+            "predicted_action": score["action"],
+        },
+    )
+
+    assert response.status_code == 502
+    assert "outcome_shadow failed" in response.json()["detail"]
+    assert shadow.diagnostics.events()[-1].operation == "outcome_shadow"
+    assert shadow.diagnostics.events()[-1].status == "failed"
+
+
+def test_preview_routes_do_not_write_age_decisions():
+    fake = FakeShadowStore()
+    shadow = _shadow_state(fake)
+    _reset_app_state(shadow)
+
+    response = TestClient(app).get("/api/s2p/preview/queue")
+
+    assert response.status_code == 200
+    assert fake.governed_decisions == []
+    assert not [
+        event for event in shadow.diagnostics.events() if event.operation == "score_shadow"
+    ]
+
+
+def test_duplicate_outcome_invariant_still_blocks_second_authoritative_write():
+    fake = FakeShadowStore()
+    shadow = _shadow_state(fake)
+    _reset_app_state(shadow)
+    client = TestClient(app, raise_server_exceptions=False)
+    score_response = _score(client, "S2P-SHADOW-DUPLICATE-OUTCOME")
+    score = score_response.json()
+    payload = {
+        "decision_id": score["decision_id"],
+        "actual_action": score["action"],
+        "outcome": "confirmed",
+    }
+
+    first = client.post("/api/learn", json=payload)
+    second = client.post("/api/learn", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code != 200
+    assert len(fake.outcomes) == 1

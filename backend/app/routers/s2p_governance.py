@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import load_suppliers
 from app.services.receipt_store import get_receipt_store
 
@@ -120,12 +121,12 @@ def _screen_receipts(request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/compliance-screening")
+@router.get("/compliance-screening", response_model=GenericResponse)
 def compliance_screening(request: Request) -> dict[str, Any]:
     return _screen_receipts(request)
 
 
-@router.get("/compliance-gaps")
+@router.get("/compliance-gaps", response_model=GenericResponse)
 def compliance_gaps() -> dict[str, Any]:
     receipts = get_receipt_store().get_chain(limit=10000)
     gaps = [gap for receipt in receipts for gap in _check_receipt_compliance(receipt)]
@@ -133,7 +134,7 @@ def compliance_gaps() -> dict[str, Any]:
     return {"total_gaps": len(gaps), "issue_summary": issue_summary, "gaps": gaps[:100]}
 
 
-@router.get("/conservation-proof")
+@router.get("/conservation-proof", response_model=GenericResponse)
 def conservation_proof(request: Request) -> dict[str, Any]:
     snapshot = _safe_conservation_snapshot(request)
     receipts = get_receipt_store().get_chain(limit=10000)
@@ -149,6 +150,53 @@ def conservation_proof(request: Request) -> dict[str, Any]:
         "total_decisions": snapshot["total_decisions"],
         "state_transitions": dict(sorted(transitions.items())),
         "proof_complete": snapshot["state"] != "UNKNOWN" and get_receipt_store().verify_chain().get("verified") is True,
+    }
+
+
+@router.get("/sox-readiness", response_model=GenericResponse)
+def sox_readiness(request: Request) -> dict[str, Any]:
+    screening = _screen_receipts(request)
+    sox = dict(screening.get("sox_readiness") or {})
+    chain = dict(screening.get("chain_integrity") or {})
+    conservation = dict(screening.get("conservation_state") or {})
+    receipt_stats = dict(screening.get("receipt_stats") or {})
+    total = int(screening.get("total_decisions_screened") or 0)
+    gaps = int(screening.get("with_gaps") or 0)
+    raw_score = float(sox.get("score") or 0.0)
+    readiness_score = round(max(0.0, min(100.0, raw_score * 100.0)), 2)
+    components = {
+        "audit_chain": {
+            "ready": bool(sox.get("hash_chain_valid")),
+            "chain_length": int(chain.get("chain_length") or 0),
+            "last_hash": chain.get("last_hash") or "",
+        },
+        "tamper_check": {
+            "ready": bool(chain.get("verified")),
+            "broken_at_index": chain.get("broken_at_index"),
+        },
+        "conservation": {
+            "ready": bool(sox.get("conservation_proof_available")),
+            "state": conservation.get("state") or "UNKNOWN",
+            "verified_count": int(conservation.get("verified_count") or 0),
+            "correct_count": int(conservation.get("correct_count") or 0),
+        },
+        "volume": {
+            "ready": total > 0 and gaps == 0,
+            "total_receipts": total,
+            "total_decisions_screened": total,
+            "compliance_rate": screening.get("compliance_rate", 1.0),
+            "overrides": int(receipt_stats.get("overrides") or 0),
+            "confirms": int(receipt_stats.get("confirms") or 0),
+        },
+    }
+    recommendation = "SOX-ready" if readiness_score >= 100.0 and gaps == 0 and total > 0 else "Not yet ready"
+    return {
+        "screening_timestamp": screening.get("screening_timestamp"),
+        "sox_readiness_score": readiness_score,
+        "components": components,
+        "recommendation": recommendation,
+        "total_decisions_screened": total,
+        "gaps": screening.get("gaps", []),
     }
 
 
@@ -276,7 +324,7 @@ def _recommendations() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     return suppliers, [_classify_supplier(supplier) for supplier in suppliers]
 
 
-@router.get("/rationalization")
+@router.get("/rationalization", response_model=GenericResponse)
 def rationalization() -> dict[str, Any]:
     suppliers, recommendations = _recommendations()
     buckets: dict[str, list[dict[str, Any]]] = {
@@ -297,7 +345,7 @@ def rationalization() -> dict[str, Any]:
     }
 
 
-@router.get("/rationalization/overlap")
+@router.get("/rationalization/overlap", response_model=GenericResponse)
 def rationalization_overlap() -> dict[str, Any]:
     suppliers, recommendations = _recommendations()
     by_region: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -326,7 +374,7 @@ def rationalization_overlap() -> dict[str, Any]:
     }
 
 
-@router.get("/rationalization/supplier/{supplier_id}")
+@router.get("/rationalization/supplier/{supplier_id}", response_model=GenericResponse)
 def rationalization_supplier(supplier_id: str) -> dict[str, Any]:
     for supplier in _load_supplier_data():
         if supplier.get("supplier_id") == supplier_id:

@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Query
 
 from app.domains.s2p.factors import compute_all_factors
+from app.models.responses import CollectionResponse, FinancialImpactResponse, GenericResponse
 from app.routers.s2p_data_helpers import load_invoices
 
 router = APIRouter(prefix="/api/s2p", tags=["s2p-pvg"])
@@ -125,12 +126,12 @@ def _financial_impact_from_fixtures() -> dict[str, Any]:
     }
 
 
-@router.get("/financial-impact")
+@router.get("/financial-impact", response_model=FinancialImpactResponse)
 def financial_impact() -> dict[str, Any]:
     return _financial_impact_from_fixtures()
 
 
-@router.get("/pvg/variants")
+@router.get("/pvg/variants", response_model=CollectionResponse)
 def variants() -> dict[str, Any]:
     process_data = _load_process_data()
     activities = _process_activities(process_data)
@@ -171,7 +172,7 @@ def variants() -> dict[str, Any]:
     return {"variants": fallback, "count": len(fallback), "source": "synthetic_invoices.json"}
 
 
-@router.get("/pvg/impact")
+@router.get("/pvg/impact", response_model=GenericResponse)
 def impact(period: str = Query("annual", pattern="^(monthly|quarterly|annual)$")) -> dict[str, Any]:
     scale = {"monthly": 1 / 12, "quarterly": 1 / 4, "annual": 1}[period]
     total = round(ANNUAL_TARGET_USD * scale, 2)
@@ -189,7 +190,7 @@ def impact(period: str = Query("annual", pattern="^(monthly|quarterly|annual)$")
     }
 
 
-@router.get("/pvg/leakage")
+@router.get("/pvg/leakage", response_model=GenericResponse)
 def leakage() -> dict[str, Any]:
     flagged: list[dict[str, Any]] = []
     for invoice in load_invoices():
@@ -224,7 +225,7 @@ def leakage() -> dict[str, Any]:
     }
 
 
-@router.get("/pvg/cycle-time")
+@router.get("/pvg/cycle-time", response_model=GenericResponse)
 def cycle_time() -> dict[str, Any]:
     process_data = _load_process_data()
     activities = _process_activities(process_data)

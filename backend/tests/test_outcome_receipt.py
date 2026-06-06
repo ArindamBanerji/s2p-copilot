@@ -35,13 +35,27 @@ VALID_SCORE_REQUEST = {
 def make_receipt(**overrides) -> OutcomeReceipt:
     payload = {
         "receipt_id": "R-1",
+        "decision_id": "D-1",
         "invoice_id": "INV-1",
         "timestamp": "2026-01-01T00:00:00Z",
         "scored_action": "hold_for_review",
+        "recommended_action": "hold_for_review",
         "confidence": 0.81234567,
+        "factors": {
+            name: value
+            for name, value in zip(
+                S2PDomainConfig.factors,
+                [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+            )
+        },
         "factor_vector": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
         "category": "price_variance",
         "human_action": "hold_for_review",
+        "actual_action": "hold_for_review",
+        "is_correct": True,
+        "conservation_status": "RED",
+        "amount": 1000.0,
+        "amount_at_risk": 250.0,
         "reward": 1.0,
         "centroid_updated": True,
         "conservation_state_before": "RED",
@@ -109,13 +123,21 @@ def test_to_dict_has_all_fields():
 
     assert {
         "receipt_id",
+        "decision_id",
         "invoice_id",
         "timestamp",
         "scored_action",
+        "recommended_action",
+        "actual_action",
+        "is_correct",
         "confidence",
+        "factors",
         "factor_vector",
         "category",
         "human_action",
+        "conservation_status",
+        "amount",
+        "amount_at_risk",
         "override_reason",
         "reward",
         "centroid_updated",
@@ -211,6 +233,17 @@ def test_clear():
 
     assert store.count == 0
     assert store.get_for_invoice("INV-1") == []
+    assert store.get_for_decision("D-1") == []
+
+
+def test_store_get_for_decision():
+    store = get_receipt_store()
+    store.add(make_receipt(decision_id="DECISION-RCPT-1"))
+
+    receipts = store.get_for_decision("DECISION-RCPT-1")
+
+    assert len(receipts) == 1
+    assert receipts[0]["decision_id"] == "DECISION-RCPT-1"
 
 
 def test_receipts_endpoint_200():
@@ -248,11 +281,29 @@ def test_invoice_receipts_404_unknown():
     assert response.status_code == 404
 
 
+def test_decision_receipts_endpoint_200():
+    get_receipt_store().add(make_receipt(decision_id="DECISION-RCPT-1"))
+
+    response = client.get("/api/s2p/evidence/receipts/decision/DECISION-RCPT-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["decision_id"] == "DECISION-RCPT-1"
+    assert data["receipts"][0]["decision_id"] == "DECISION-RCPT-1"
+
+
+def test_decision_receipts_404_unknown():
+    response = client.get("/api/s2p/evidence/receipts/decision/UNKNOWN")
+
+    assert response.status_code == 404
+
+
 def test_receipt_routes_mounted():
     paths = {route.path for route in app.routes}
 
     assert "/api/s2p/evidence/receipts" in paths
     assert "/api/s2p/evidence/receipts/{invoice_id}" in paths
+    assert "/api/s2p/evidence/receipts/decision/{decision_id}" in paths
     assert "/api/s2p/evidence/chain-integrity" in paths
     assert "/api/s2p/evidence/audit-pack" in paths
 
@@ -266,8 +317,14 @@ def test_learn_creates_receipt():
     assert len(receipts) == 1
     receipt = receipts[0]
     assert receipt["invoice_id"] == VALID_SCORE_REQUEST["event_id"]
+    assert receipt["decision_id"] == score["decision_id"]
     assert receipt["scored_action"] == score["action"]
+    assert receipt["recommended_action"] == score["action"]
     assert receipt["human_action"] == score["action"]
+    assert receipt["actual_action"] == score["action"]
+    assert receipt["is_correct"] is True
+    assert set(receipt["factors"]) == set(S2PDomainConfig.factors)
+    assert receipt["conservation_status"]
     assert len(receipt["factor_vector"]) == S2PDomainConfig.n_factors
     assert receipt["receipt_hash"]
 
@@ -332,7 +389,34 @@ def test_override_learn_receipt_has_override_reason():
 
     receipt = get_receipt_store().get_for_invoice(VALID_SCORE_REQUEST["event_id"])[0]
     assert receipt["human_action"] == override_action
+    assert receipt["actual_action"] == override_action
+    assert receipt["is_correct"] is False
     assert receipt["override_reason"] == "wrong_action"
+
+
+def test_outcome_route_creates_receipt():
+    score = score_for_receipt(event_id="EVID-RCPT-OUTCOME")
+
+    response = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": score["decision_id"],
+            "outcome": "confirm",
+            "analyst_action": score["action"],
+            "analyst_id": "receipt-test",
+            "factor_vector": score["factor_vector"],
+            "category": score["category"],
+            "predicted_action": score["action"],
+            "amount": 5000.0,
+            "at_risk": 750.0,
+        },
+    )
+
+    assert response.status_code == 200
+    receipts = get_receipt_store().get_for_decision(score["decision_id"])
+    assert len(receipts) == 1
+    assert receipts[0]["amount"] == 5000.0
+    assert receipts[0]["amount_at_risk"] == 750.0
 
 
 def test_paused_learning_without_variant_still_creates_receipt(monkeypatch):

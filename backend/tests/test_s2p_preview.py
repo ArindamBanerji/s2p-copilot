@@ -4,13 +4,15 @@ tests/test_s2p_preview.py - S2P v2 preview endpoint tests.
 
 import os
 import sys
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
 
 from app.domains.s2p.config import S2PDomainConfig
-from app.main import app
+from app.main import app, build_s2p_scorer
+from app.s2p_shadow import S2PShadowConfig, S2PShadowDiagnostics, S2PShadowState
 
 client = TestClient(app)
 
@@ -31,6 +33,19 @@ def test_queue_default_limit_5():
     assert data["total"] == 50
     assert data["showing"] == 5
     assert len(data["invoices"]) == 5
+
+
+def test_queue_default_preview_has_action_diversity():
+    data = _queue().json()
+    preview_rows = data.get("exceptions") or data.get("invoices") or []
+    actions = {
+        row.get("scored_action") or row.get("action") or row.get("recommended_action")
+        for row in preview_rows
+    }
+    actions.discard(None)
+    actions.discard("")
+
+    assert len(actions) >= 2
 
 
 def test_queue_custom_limit():
@@ -242,7 +257,8 @@ def test_reset_clears_cache():
     import app.routers.s2p_preview as preview_module
 
     assert client.get("/api/s2p/preview/queue").status_code == 200
-    assert preview_module._scored_invoices is not None
+    assert preview_module._invoices is not None
+    assert preview_module._scored_invoices is None
 
     preview_module.reset_preview_state()
     assert preview_module._invoices is None
@@ -262,10 +278,12 @@ def test_preview_module_has_no_profile_scorer_reference():
 
 def test_preview_queue_uses_app_state_scorer(monkeypatch):
     import app.routers.s2p_preview as preview_module
-    from types import SimpleNamespace
 
     class SentinelScorer:
         def score(self, factors, category, metadata=None):
+            raise AssertionError("preview queue must use score_read_only")
+
+        def score_read_only(self, factors, category):
             return SimpleNamespace(
                 action="auto_approve",
                 action_index=0,
@@ -282,3 +300,165 @@ def test_preview_queue_uses_app_state_scorer(monkeypatch):
     assert response.status_code == 200
     assert data["invoices"][0]["recommended_action"] == "auto_approve"
     assert data["invoices"][0]["confidence"] == 0.99
+
+
+def test_preview_queue_recomputes_after_live_scorer_state_changes(monkeypatch):
+    import app.routers.s2p_preview as preview_module
+
+    class StatefulScorer:
+        def __init__(self):
+            self.action = "auto_approve"
+            self.confidence = 0.99
+            self.calls = 0
+
+        def score(self, factors, category, metadata=None):
+            raise AssertionError("preview queue must use score_read_only")
+
+        def score_read_only(self, factors, category):
+            self.calls += 1
+            return SimpleNamespace(
+                action=self.action,
+                action_index=0 if self.action == "auto_approve" else 1,
+                confidence=self.confidence,
+                probabilities=[1.0, 0.0, 0.0, 0.0, 0.0],
+                decision_id=f"SENTINEL-{self.calls}",
+            )
+
+    scorer = StatefulScorer()
+    preview_module.reset_preview_state()
+    monkeypatch.setattr(app.state, "scorer", scorer, raising=False)
+
+    first = client.get("/api/s2p/preview/queue?limit=1")
+    first_calls = scorer.calls
+    scorer.action = "hold_for_review"
+    scorer.confidence = 0.77
+    second = client.get("/api/s2p/preview/queue?limit=1")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["invoices"][0]["recommended_action"] == "auto_approve"
+    assert second.json()["invoices"][0]["recommended_action"] == "hold_for_review"
+    assert second.json()["invoices"][0]["confidence"] == 0.77
+    assert scorer.calls > first_calls
+
+
+def test_preview_queue_limit_does_not_score_full_fixture(monkeypatch):
+    import app.routers.s2p_preview as preview_module
+
+    class CountingScorer:
+        def __init__(self):
+            self.calls = 0
+
+        def score(self, factors, category, metadata=None):
+            raise AssertionError("preview queue must use score_read_only")
+
+        def score_read_only(self, factors, category):
+            self.calls += 1
+            action_index = self.calls % len(S2PDomainConfig.actions)
+            action = S2PDomainConfig.actions[action_index]
+            return SimpleNamespace(
+                action=action,
+                action_index=action_index,
+                confidence=0.9 - (self.calls * 0.001),
+                probabilities=[0.2, 0.2, 0.2, 0.2, 0.2],
+                decision_id=f"COUNTING-{self.calls}",
+            )
+
+    scorer = CountingScorer()
+    preview_module.reset_preview_state()
+    monkeypatch.setattr(app.state, "scorer", scorer, raising=False)
+
+    response = client.get("/api/s2p/preview/queue?limit=1")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 50
+    assert response.json()["showing"] == 1
+    assert scorer.calls == 10
+
+
+def test_preview_queue_does_not_write_sqlite_decisions():
+    import app.routers.s2p_preview as preview_module
+
+    original_scorer = app.state.scorer
+    original_graph_store = app.state.graph_store
+    try:
+        scorer = build_s2p_scorer()
+        app.state.scorer = scorer
+        app.state.graph_store = scorer.graph_store
+        preview_module.reset_preview_state()
+
+        before = scorer.graph_store.count_decisions("s2p")
+        response = client.get("/api/s2p/preview/queue?limit=5")
+
+        assert response.status_code == 200
+        assert scorer.graph_store.count_decisions("s2p") == before
+    finally:
+        app.state.scorer = original_scorer
+        app.state.graph_store = original_graph_store
+        preview_module.reset_preview_state()
+
+
+def test_preview_queue_preserves_live_learned_scorer_state():
+    import numpy as np
+    import app.routers.s2p_preview as preview_module
+
+    original_scorer = app.state.scorer
+    original_graph_store = app.state.graph_store
+    try:
+        scorer = build_s2p_scorer()
+        factors = {
+            name: 0.55
+            for name in S2PDomainConfig.factors
+        }
+        decision = scorer.score(factors, "price_variance")
+        scorer.learn(decision.decision_id, decision.action, "confirmed")
+        learned_centroids = np.array(scorer._scorer.centroids, copy=True)
+
+        app.state.scorer = scorer
+        app.state.graph_store = scorer.graph_store
+        preview_module.reset_preview_state()
+        before = scorer.graph_store.count_decisions("s2p")
+        response = client.get("/api/s2p/preview/queue?limit=5")
+
+        assert response.status_code == 200
+        assert scorer.graph_store.count_decisions("s2p") == before
+        assert np.allclose(scorer._scorer.centroids, learned_centroids)
+    finally:
+        app.state.scorer = original_scorer
+        app.state.graph_store = original_graph_store
+        preview_module.reset_preview_state()
+
+
+def test_preview_queue_does_not_write_age_shadow_decisions():
+    import app.routers.s2p_preview as preview_module
+
+    class FakeShadowStore:
+        def __init__(self):
+            self.governed_decisions = []
+
+        def write_governed_decision(self, **kwargs):
+            self.governed_decisions.append(dict(kwargs))
+
+    original_shadow = app.state.s2p_shadow
+    fake = FakeShadowStore()
+    app.state.s2p_shadow = S2PShadowState(
+        config=S2PShadowConfig(
+            enabled=True,
+            strict=False,
+            dsn="postgresql://postgres:secret@127.0.0.1/db",
+            graph="protocol_v2_test_shadow",
+            domain="s2p",
+            test_mode=True,
+        ),
+        diagnostics=S2PShadowDiagnostics(max_events=10),
+        store=fake,
+    )
+    try:
+        preview_module.reset_preview_state()
+        response = client.get("/api/s2p/preview/queue?limit=5")
+
+        assert response.status_code == 200
+        assert fake.governed_decisions == []
+    finally:
+        app.state.s2p_shadow = original_shadow
+        preview_module.reset_preview_state()

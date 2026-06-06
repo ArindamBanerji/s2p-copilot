@@ -28,22 +28,101 @@ def test_s2p_evolver_config_has_expected_categories():
     assert S2P_EVOLVER_CONFIG.categories == list(S2PDomainConfig.categories)
 
 
-def test_s2p_variants_registered_4_total():
-    assert len(S2P_VARIANTS) == 4
-    assert len(s2p_evolver.get_registered_variants()) == 4
+def test_s2p_variants_registered_8_total():
+    assert len(S2P_VARIANTS) == 8
+    assert len(s2p_evolver.get_registered_variants()) == 8
 
 
-def test_s2p_two_families_two_variants_each():
+def test_s2p_four_families_two_variants_each():
     variants = s2p_evolver.get_registered_variants()
     families = {}
     for variant in variants:
         families.setdefault(variant["family"], []).append(variant)
 
-    assert set(families) == {"evidence_ordering", "routing_threshold"}
+    assert set(families) == {
+        "evidence_ordering",
+        "routing_threshold",
+        "escalation_criteria",
+        "triage_weights",
+    }
     assert {family: len(rows) for family, rows in families.items()} == {
         "evidence_ordering": 2,
         "routing_threshold": 2,
+        "escalation_criteria": 2,
+        "triage_weights": 2,
     }
+    assert {
+        family: {variant["status"] for variant in rows}
+        for family, rows in families.items()
+    } == {
+        "evidence_ordering": {"active", "shadow"},
+        "routing_threshold": {"active", "shadow"},
+        "escalation_criteria": {"active", "shadow"},
+        "triage_weights": {"active", "shadow"},
+    }
+
+
+def test_s2p_supplement_preserves_original_variants():
+    variants = {variant.id: variant for variant in S2P_VARIANTS}
+
+    assert variants["EVIDENCE_ORDER_v1"].family == "evidence_ordering"
+    assert variants["EVIDENCE_ORDER_v1"].version == 1
+    assert variants["EVIDENCE_ORDER_v1"].status == "active"
+    assert variants["EVIDENCE_ORDER_v1"].metadata == {
+        "order": ["factor_fingerprint", "similar_invoices", "audit_trail"],
+    }
+    assert variants["EVIDENCE_ORDER_v2"].family == "evidence_ordering"
+    assert variants["EVIDENCE_ORDER_v2"].version == 2
+    assert variants["EVIDENCE_ORDER_v2"].status == "shadow"
+    assert variants["EVIDENCE_ORDER_v2"].metadata == {
+        "order": ["supplier_history", "contract_terms", "factor_fingerprint"],
+    }
+    assert variants["ROUTING_THRESHOLD_v1"].family == "routing_threshold"
+    assert variants["ROUTING_THRESHOLD_v1"].version == 1
+    assert variants["ROUTING_THRESHOLD_v1"].status == "active"
+    assert variants["ROUTING_THRESHOLD_v1"].metadata == {
+        "auto_approve_confidence": 0.86,
+        "escalate_confidence": 0.68,
+    }
+    assert variants["ROUTING_THRESHOLD_v2"].family == "routing_threshold"
+    assert variants["ROUTING_THRESHOLD_v2"].version == 2
+    assert variants["ROUTING_THRESHOLD_v2"].status == "shadow"
+    assert variants["ROUTING_THRESHOLD_v2"].metadata == {
+        "auto_approve_confidence": 0.91,
+        "escalate_confidence": 0.72,
+    }
+
+
+def test_s2p_supplement_new_variant_metadata():
+    variants = {variant.id: variant for variant in S2P_VARIANTS}
+
+    assert variants["ESCALATION_CRITERIA_v1"].metadata == {
+        "missing_po_escalate": True,
+        "amount_threshold": 50000,
+    }
+    assert variants["ESCALATION_CRITERIA_v2"].metadata == {
+        "missing_po_escalate": True,
+        "amount_threshold": 25000,
+    }
+    assert variants["ESCALATION_CRITERIA_v2"].metadata["amount_threshold"] < variants[
+        "ESCALATION_CRITERIA_v1"
+    ].metadata["amount_threshold"]
+    assert all(
+        variants[variant_id].metadata["missing_po_escalate"] is True
+        for variant_id in ("ESCALATION_CRITERIA_v1", "ESCALATION_CRITERIA_v2")
+    )
+
+    for variant_id in ("TRIAGE_WEIGHTS_v1", "TRIAGE_WEIGHTS_v2"):
+        metadata = variants[variant_id].metadata
+        assert 0.0 <= metadata["amount_variance_weight"] <= 1.0
+        assert 0.0 <= metadata["match_status_weight"] <= 1.0
+        assert metadata["amount_variance_weight"] + metadata["match_status_weight"] == pytest.approx(1.0)
+
+
+def test_s2p_supplement_config_promotes_after_50_samples():
+    assert S2P_EVOLVER_CONFIG.promotion_min_samples == 50
+    assert S2P_EVOLVER_CONFIG.promotion_min_samples != 10
+    assert len({variant.id for variant in S2P_VARIANTS}) == len(S2P_VARIANTS)
 
 
 def test_s2p_evolver_selects_active_variant():
@@ -140,7 +219,7 @@ def test_s2p_reset_re_registers_variants():
 
     s2p_evolver.reset_s2p_evolver()
 
-    assert len(s2p_evolver.get_registered_variants()) == 4
+    assert len(s2p_evolver.get_registered_variants()) == 8
     assert s2p_evolver.get_active_variant(family="evidence_ordering")["id"] == "EVIDENCE_ORDER_v1"
     assert _stats("EVIDENCE_ORDER_v1")["total"] == 0
 

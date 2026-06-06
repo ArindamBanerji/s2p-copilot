@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.models.responses import GenericResponse
 from app.services.novelty_tracker import get_novelty_tracker
 
 
@@ -39,12 +40,12 @@ def _category_rate_rows() -> list[dict]:
     return rows
 
 
-@router.get("/status")
+@router.get("/status", response_model=GenericResponse)
 def novelty_status() -> dict:
     return get_novelty_tracker().get_status()
 
 
-@router.get("/history")
+@router.get("/history", response_model=GenericResponse)
 def novelty_history(limit: int = 50) -> dict:
     tracker = get_novelty_tracker()
     return {
@@ -54,7 +55,7 @@ def novelty_history(limit: int = 50) -> dict:
     }
 
 
-@router.get("/rate")
+@router.get("/rate", response_model=GenericResponse)
 def novelty_rate() -> dict:
     tracker = get_novelty_tracker()
     overall_rate = float(tracker.novelty_rate)
@@ -67,7 +68,7 @@ def novelty_rate() -> dict:
     }
 
 
-@router.get("/auto-pause")
+@router.get("/auto-pause", response_model=GenericResponse)
 def novelty_auto_pause() -> dict:
     paused_categories = [
         {

@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
 from gae.calibration import compute_theta_min
 
+from app.models.responses import GenericResponse
+
 router = APIRouter(prefix="/api/s2p/performance", tags=["s2p-performance"])
 
 PENALTY_RATIO = 5.0
 ANNUAL_TARGET_USD = 680000
+SUMMARY_CACHE_TTL_SECONDS = 2.0
+_SUMMARY_CACHE_LOCK = threading.RLock()
+_SUMMARY_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 def _graph_store(request: Request) -> Any | None:
@@ -24,6 +31,15 @@ def _graph_store(request: Request) -> Any | None:
 
 def _graph_domain(graph_store: Any | None = None) -> str:
     return str(getattr(graph_store, "domain", None) or "s2p")
+
+
+def _summary_cache_key(graph_store: Any | None, domain: str | None = None) -> str:
+    return f"{id(graph_store)}:{domain or _graph_domain(graph_store)}"
+
+
+def clear_summary_cache() -> None:
+    with _SUMMARY_CACHE_LOCK:
+        _SUMMARY_CACHE.clear()
 
 
 def _safe_call(target: Any, name: str, default: Any, *args: Any, **kwargs: Any) -> Any:
@@ -61,6 +77,51 @@ def _count_correct(graph_store: Any) -> int:
     return int(_safe_call(graph_store, "count_correct", 0, _graph_domain(graph_store)) or 0)
 
 
+def _count_decisions(graph_store: Any, domain: str) -> int:
+    count_decisions = getattr(graph_store, "count_decisions", None)
+    if callable(count_decisions):
+        try:
+            return int(count_decisions(domain))
+        except Exception:
+            pass
+    decisions = _safe_call(graph_store, "get_all_decisions", [], domain)
+    return len(decisions) if isinstance(decisions, list) else 0
+
+
+def _count_recommended_action(graph_store: Any, domain: str, action: str) -> int:
+    count_action = getattr(graph_store, "count_recommended_action", None)
+    if callable(count_action):
+        try:
+            return int(count_action(domain, action))
+        except Exception:
+            pass
+
+    connection = getattr(graph_store, "connection", None)
+    if connection is not None:
+        try:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS n
+                FROM decisions
+                WHERE domain = ? AND recommended_action = ?
+                """,
+                (str(domain), str(action)),
+            ).fetchone()
+            if row is not None:
+                return int(row["n"] if hasattr(row, "keys") and "n" in row.keys() else row[0])
+        except Exception:
+            pass
+
+    decisions = _safe_call(graph_store, "get_all_decisions", [], domain)
+    if not isinstance(decisions, list):
+        return 0
+    return sum(
+        1
+        for decision in decisions
+        if (decision.get("recommended_action") or decision.get("action")) == action
+    )
+
+
 def _current_q(graph_store: Any) -> float:
     verified = _count_verified(graph_store)
     if verified <= 0:
@@ -80,6 +141,39 @@ def _is_override_decision(decision: dict[str, Any]) -> bool:
     return decision.get("is_correct") is False
 
 
+def _build_summary(graph_store: Any, domain: str) -> dict[str, Any]:
+    total = _count_decisions(graph_store, domain)
+    verified = _count_verified(graph_store)
+    correct = _count_correct(graph_store)
+    auto_approvals = _count_recommended_action(graph_store, domain, "auto_approve")
+    auto_rate = round(auto_approvals / total, 4) if total else 0.0
+    accuracy = round(correct / verified, 4) if verified else 0.0
+    return {
+        "total_scored": total,
+        "total_verified": verified,
+        "accuracy": accuracy,
+        "auto_approve_rate": auto_rate,
+        "savings_estimate_usd": round(auto_rate * total * 5000 * 0.67, 2),
+        "annual_target_usd": ANNUAL_TARGET_USD,
+        "penalty_ratio": PENALTY_RATIO,
+    }
+
+
+def _cached_summary(graph_store: Any, domain: str) -> dict[str, Any]:
+    now = time.monotonic()
+    key = _summary_cache_key(graph_store, domain)
+    with _SUMMARY_CACHE_LOCK:
+        cached = _SUMMARY_CACHE.get(key)
+        if cached is not None:
+            timestamp, payload = cached
+            if now - timestamp <= SUMMARY_CACHE_TTL_SECONDS:
+                return dict(payload)
+
+        payload = _build_summary(graph_store, domain)
+        _SUMMARY_CACHE[key] = (time.monotonic(), dict(payload))
+        return dict(payload)
+
+
 def _projected_theta_min(
     graph_store: Any,
     new_verified: int,
@@ -97,7 +191,7 @@ def _projected_theta_min(
         return 1.0
 
 
-@router.get("/trajectory")
+@router.get("/trajectory", response_model=GenericResponse)
 def trajectory(request: Request) -> dict[str, Any]:
     graph_store = _graph_store(request)
     checkpoints = _safe_call(
@@ -116,7 +210,7 @@ def trajectory(request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/what-if")
+@router.get("/what-if", response_model=GenericResponse)
 def what_if(
     request: Request,
     additional_correct: int = Query(10, ge=0, le=100),
@@ -150,30 +244,8 @@ def what_if(
     }
 
 
-@router.get("/summary")
+@router.get("/summary", response_model=GenericResponse)
 def summary(request: Request) -> dict[str, Any]:
     graph_store = _graph_store(request)
     domain = _graph_domain(graph_store)
-    decisions = _safe_call(graph_store, "get_all_decisions", [], domain)
-    verified_decisions = _safe_call(graph_store, "get_verified_decisions", [], domain)
-    decisions = decisions if isinstance(decisions, list) else []
-    verified_decisions = verified_decisions if isinstance(verified_decisions, list) else []
-    auto_approvals = sum(
-        1
-        for decision in decisions
-        if (decision.get("recommended_action") or decision.get("action")) == "auto_approve"
-    )
-    total = len(decisions)
-    verified = len(verified_decisions)
-    correct = sum(1 for decision in verified_decisions if decision.get("is_correct") is True)
-    auto_rate = round(auto_approvals / total, 4) if total else 0.0
-    accuracy = round(correct / verified, 4) if verified else 0.0
-    return {
-        "total_scored": total,
-        "total_verified": verified,
-        "accuracy": accuracy,
-        "auto_approve_rate": auto_rate,
-        "savings_estimate_usd": round(auto_rate * total * 5000 * 0.67, 2),
-        "annual_target_usd": ANNUAL_TARGET_USD,
-        "penalty_ratio": PENALTY_RATIO,
-    }
+    return _cached_summary(graph_store, domain)

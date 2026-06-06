@@ -6,6 +6,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from app.models.responses import GenericResponse
+
 router = APIRouter(prefix="/api/s2p/discovery", tags=["s2p-discovery"])
 
 
@@ -213,7 +215,7 @@ EXTENDED_DISCOVERIES: tuple[dict[str, Any], ...] = (
 )
 
 
-@router.get("/alerts")
+@router.get("/alerts", response_model=GenericResponse)
 def discovery_alerts() -> dict[str, Any]:
     """Return deterministic cross-system discovery examples for the S2P demo."""
 
@@ -230,7 +232,7 @@ def discovery_alerts() -> dict[str, Any]:
     }
 
 
-@router.get("/disruptions")
+@router.get("/disruptions", response_model=GenericResponse)
 def disruption_recovery() -> dict[str, Any]:
     """Return deterministic tariff-shock recovery history for the S2P demo."""
 
@@ -296,7 +298,7 @@ def _by_type(discoveries: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(distribution.items()))
 
 
-@router.get("/extended")
+@router.get("/extended", response_model=GenericResponse)
 def extended_discoveries() -> dict[str, Any]:
     """Return deterministic extended discovery graph examples for S2P."""
 
@@ -311,7 +313,7 @@ def extended_discoveries() -> dict[str, Any]:
     }
 
 
-@router.get("/supplier/{supplier_id}")
+@router.get("/supplier/{supplier_id}", response_model=GenericResponse)
 def supplier_discoveries(supplier_id: str) -> dict[str, Any]:
     """Return extended discoveries involving one supplier."""
 
@@ -328,7 +330,7 @@ def supplier_discoveries(supplier_id: str) -> dict[str, Any]:
     }
 
 
-@router.get("/propagation/{discovery_id}")
+@router.get("/propagation/{discovery_id}", response_model=GenericResponse)
 def discovery_propagation(discovery_id: str) -> dict[str, Any]:
     """Return propagation path metadata for one extended discovery."""
 

@@ -369,6 +369,38 @@ def record_reset_marker(mode: str) -> None:
     _run_sync(async_record_reset_marker(mode))
 
 
+def compute_hash(entry: AuditEntry) -> str:
+    """Return the expected hash for an audit entry using the entry's sealed fields."""
+    return entry.compute_hash()
+
+
+def _tamper_evidence(
+    entry: AuditEntry,
+    index: int,
+    *,
+    detail: str,
+    expected_hash: Optional[str] = None,
+    actual_hash: Optional[str] = None,
+    expected_prev_hash: Optional[str] = None,
+    actual_prev_hash: Optional[str] = None,
+) -> Dict[str, Any]:
+    evidence: Dict[str, Any] = {
+        "index": index,
+        "type": "outcome" if isinstance(entry, OutcomeEntry) else "decision",
+        "decision_id": entry.decision_id,
+        "detail": detail,
+    }
+    if expected_hash is not None:
+        evidence["expected_hash"] = expected_hash
+    if actual_hash is not None:
+        evidence["actual_hash"] = actual_hash
+    if expected_prev_hash is not None:
+        evidence["expected_prev_hash"] = expected_prev_hash
+    if actual_prev_hash is not None:
+        evidence["actual_prev_hash"] = actual_prev_hash
+    return evidence
+
+
 def verify_chain() -> Dict[str, Any]:
     """Verify the mixed decision/outcome hash chain."""
     entries = _LEDGER.entries()
@@ -377,17 +409,47 @@ def verify_chain() -> Dict[str, Any]:
     if chain_len == 0:
         return {
             "chain_length": 0,
+            "entries_checked": 0,
             "verified": True,
+            "tamper_evidence": [],
             "first_record": None,
             "last_record": None,
             "epoch": len(_ARCHIVED_EPOCHS) + 1,
             "archived_epochs": len(_ARCHIVED_EPOCHS),
         }
 
-    verified = _LEDGER.verify_chain()
+    tamper_evidence: List[Dict[str, Any]] = []
+    expected_prev = "0" * 64
+    for index, entry in enumerate(entries):
+        expected_hash = compute_hash(entry)
+        if entry.entry_hash != expected_hash:
+            tamper_evidence.append(
+                _tamper_evidence(
+                    entry,
+                    index,
+                    detail="entry_hash mismatch",
+                    expected_hash=expected_hash,
+                    actual_hash=entry.entry_hash,
+                )
+            )
+        if entry.prev_hash != expected_prev:
+            tamper_evidence.append(
+                _tamper_evidence(
+                    entry,
+                    index,
+                    detail="prev_hash linkage mismatch",
+                    expected_prev_hash=expected_prev,
+                    actual_prev_hash=entry.prev_hash,
+                )
+            )
+        expected_prev = entry.entry_hash
+
+    verified = not tamper_evidence
     result: Dict[str, Any] = {
         "chain_length": chain_len,
+        "entries_checked": chain_len,
         "verified": verified,
+        "tamper_evidence": tamper_evidence,
         "first_record": entries[0].timestamp,
         "last_record": entries[-1].timestamp,
         "epoch": len(_ARCHIVED_EPOCHS) + 1,
@@ -395,11 +457,6 @@ def verify_chain() -> Dict[str, Any]:
     }
 
     if not verified:
-        expected_prev = "0" * 64
-        for index, entry in enumerate(entries):
-            if not entry.is_valid() or entry.prev_hash != expected_prev:
-                result["broken_at_index"] = index
-                break
-            expected_prev = entry.entry_hash
+        result["broken_at_index"] = tamper_evidence[0]["index"]
 
     return result

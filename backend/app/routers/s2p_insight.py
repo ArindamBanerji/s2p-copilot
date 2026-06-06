@@ -8,16 +8,34 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
+from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import find_invoice, load_invoices, load_suppliers
 
 router = APIRouter(prefix="/api/s2p/insight", tags=["s2p-insight"])
 
 _load_invoices = load_invoices
 _load_suppliers = load_suppliers
+
+_PROCESS_ACTIVITY_TEMPLATE: tuple[dict[str, Any], ...] = (
+    {"name": "PO Creation", "pct_of_total": 15.0, "system": "SAP S/4HANA"},
+    {"name": "Goods Receipt", "pct_of_total": 20.0, "system": "SAP S/4HANA"},
+    {"name": "Invoice Receipt", "pct_of_total": 10.0, "system": "SAP S/4HANA"},
+    {"name": "Three-Way Match", "pct_of_total": 30.0, "system": "SAP S/4HANA"},
+    {"name": "Exception Resolution", "pct_of_total": 15.0, "system": "S2P Copilot"},
+    {"name": "Payment Release", "pct_of_total": 10.0, "system": "SAP S/4HANA"},
+)
+
+_BOTTLENECK_REASONS: dict[str, str] = {
+    "contract_gap": "Contract terms require buyer review before match completion.",
+    "duplicate_risk": "Potential duplicate invoice requires exception handling.",
+    "price_variance": "Price variance slows three-way match approval.",
+    "quantity_mismatch": "Quantity mismatch requires goods receipt reconciliation.",
+    "format_compliance": "Invoice format compliance requires manual validation.",
+}
 
 
 def _repo_root() -> Path:
@@ -72,7 +90,38 @@ def _supplier_name(invoice: dict[str, Any], suppliers: dict[str, dict[str, Any]]
     return invoice.get("supplier_name") or (supplier or {}).get("name")
 
 
-@router.get("/fingerprint")
+def _cycle_time_hours(invoice: dict[str, Any]) -> float:
+    try:
+        return max(float(invoice.get("cycle_time_hours") or 0.0), 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _process_activities(total_hours: float) -> list[dict[str, Any]]:
+    return [
+        {
+            "activity": item["name"],
+            "pct_of_total": item["pct_of_total"],
+            "duration_hours": round(total_hours * (item["pct_of_total"] / 100.0), 2),
+            "system": item["system"],
+        }
+        for item in _PROCESS_ACTIVITY_TEMPLATE
+    ]
+
+
+def _process_bottleneck(invoice: dict[str, Any], activities: list[dict[str, Any]]) -> dict[str, Any]:
+    bottleneck = max(activities, key=lambda item: float(item.get("duration_hours") or 0.0), default={})
+    category = str(invoice.get("category") or "")
+    return {
+        "activity": bottleneck.get("activity"),
+        "duration_hours": bottleneck.get("duration_hours", 0.0),
+        "pct_of_total": bottleneck.get("pct_of_total", 0.0),
+        "reason": _BOTTLENECK_REASONS.get(category, "Longest fixture activity in the invoice process."),
+        "system": bottleneck.get("system"),
+    }
+
+
+@router.get("/fingerprint", response_model=GenericResponse)
 def fingerprint(invoice_id: str) -> dict[str, Any]:
     invoice = find_invoice(invoice_id)
     if invoice is None:
@@ -87,7 +136,7 @@ def fingerprint(invoice_id: str) -> dict[str, Any]:
     }
 
 
-@router.get("/similar")
+@router.get("/similar", response_model=GenericResponse)
 def similar(invoice_id: str, limit: int = Query(5, ge=1, le=50)) -> dict[str, Any]:
     invoice = find_invoice(invoice_id)
     if invoice is None:
@@ -119,7 +168,28 @@ def similar(invoice_id: str, limit: int = Query(5, ge=1, le=50)) -> dict[str, An
     return {"invoice_id": invoice.get("invoice_id", invoice_id), "similar": matches[:limit], "count": len(matches)}
 
 
-@router.get("/cross-graph")
+@router.get("/process-context/{invoice_id}", response_model=GenericResponse)
+def process_context(invoice_id: str) -> dict[str, Any]:
+    invoice = find_invoice(invoice_id)
+    if invoice is None:
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+    total_hours = _cycle_time_hours(invoice)
+    activities = _process_activities(total_hours)
+    bottleneck = _process_bottleneck(invoice, activities)
+    return {
+        "invoice_id": invoice.get("invoice_id", invoice_id),
+        "supplier_id": invoice.get("supplier_id"),
+        "category": invoice.get("category"),
+        "total_cycle_time_hours": round(total_hours, 2),
+        "activities": activities,
+        "activity_timeline": activities,
+        "bottleneck": bottleneck,
+        "source": "fixture",
+        "engine": "ci-platform-s2p",
+    }
+
+
+@router.get("/cross-graph", response_model=GenericResponse)
 def cross_graph() -> dict[str, Any]:
     suppliers = _load_suppliers()
     celonis = _load_celonis()
@@ -151,7 +221,7 @@ def cross_graph() -> dict[str, Any]:
     }
 
 
-@router.get("/process-signals")
+@router.get("/process-signals", response_model=GenericResponse)
 def process_signals(supplier_id: str | None = None) -> dict[str, Any]:
     celonis = _load_celonis()
     activities = celonis.get("activities") if isinstance(celonis.get("activities"), list) else []

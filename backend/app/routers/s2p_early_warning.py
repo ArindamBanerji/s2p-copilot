@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import load_suppliers
 from app.services.supplier_profile_accumulator import accumulator
 
@@ -130,7 +131,7 @@ def _lead_time_weeks(risk_score: float, pattern: str) -> int:
     return 16
 
 
-@router.get("/early-warnings")
+@router.get("/early-warnings", response_model=GenericResponse)
 def early_warnings() -> dict[str, Any]:
     profiles = _load_supplier_profiles()
     warnings = [_warning_payload(profile) for profile in profiles]
@@ -144,7 +145,7 @@ def early_warnings() -> dict[str, Any]:
     }
 
 
-@router.get("/trends")
+@router.get("/trends", response_model=GenericResponse)
 def supplier_trends() -> dict[str, Any]:
     profiles = _load_supplier_profiles()
     trends = []
@@ -191,7 +192,7 @@ def supplier_trends() -> dict[str, Any]:
     }
 
 
-@router.get("/trend-signals")
+@router.get("/trend-signals", response_model=GenericResponse)
 def trend_signals(supplier_id: str) -> dict[str, Any]:
     profile = next(
         (row for row in _load_supplier_profiles() if str(row.get("supplier_id")) == supplier_id),

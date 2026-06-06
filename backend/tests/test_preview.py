@@ -16,15 +16,24 @@ client = TestClient(app)
 ENGINE_VERSION = "v0.7.23"
 
 
-def _queue():
-    return client.get("/api/s2p/preview/queue").json()
+def _queue(limit: int | None = None):
+    path = "/api/s2p/preview/queue"
+    if limit is not None:
+        path = f"{path}?limit={limit}"
+    return client.get(path).json()
 
 
 def test_preview_queue_returns_exceptions():
     data = _queue()
     assert data["total"] == 50
-    assert len(data["exceptions"]) == 10
+    assert len(data["exceptions"]) == 5
     assert all("invoice_id" in row for row in data["exceptions"])
+
+
+def test_preview_queue_explicit_limit_returns_matching_exceptions():
+    data = _queue(10)
+    assert data["showing"] == 10
+    assert len(data["exceptions"]) == 10
 
 
 def test_preview_queue_includes_process_context_when_celonis_cache_available(monkeypatch):

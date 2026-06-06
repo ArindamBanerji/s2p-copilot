@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
+from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import load_invoices
 from app.services.receipt_store import get_receipt_store
 
@@ -137,7 +138,7 @@ def _graph_linked_decisions(graph_store: Any, invoice_id: str) -> list[dict[str,
     return decisions
 
 
-@router.get("/audit-trail/{invoice_id}")
+@router.get("/audit-trail/{invoice_id}", response_model=GenericResponse)
 def audit_trail(invoice_id: str, request: Request) -> dict[str, Any]:
     graph_store = _graph_store(request)
     decisions: list[dict[str, Any]] = []
@@ -163,13 +164,13 @@ def audit_trail(invoice_id: str, request: Request) -> dict[str, Any]:
     return {"invoice_id": invoice_id, "decisions": decisions, "count": len(decisions)}
 
 
-@router.get("/receipts")
+@router.get("/receipts", response_model=GenericResponse)
 def receipts(limit: int = 50) -> dict[str, Any]:
     store = get_receipt_store()
     return {"receipts": store.get_chain(limit=limit), "stats": store.stats}
 
 
-@router.get("/receipts/{invoice_id}")
+@router.get("/receipts/{invoice_id}", response_model=GenericResponse)
 def receipts_for_invoice(invoice_id: str) -> dict[str, Any]:
     store = get_receipt_store()
     invoice_receipts = store.get_for_invoice(invoice_id)
@@ -178,12 +179,21 @@ def receipts_for_invoice(invoice_id: str) -> dict[str, Any]:
     return {"invoice_id": invoice_id, "receipts": invoice_receipts}
 
 
-@router.get("/chain-integrity")
+@router.get("/receipts/decision/{decision_id}", response_model=GenericResponse)
+def receipts_for_decision(decision_id: str) -> dict[str, Any]:
+    store = get_receipt_store()
+    decision_receipts = store.get_for_decision(decision_id)
+    if not decision_receipts:
+        raise HTTPException(status_code=404, detail=f"No receipts for decision {decision_id}")
+    return {"decision_id": decision_id, "receipts": decision_receipts}
+
+
+@router.get("/chain-integrity", response_model=GenericResponse)
 def chain_integrity() -> dict[str, Any]:
     return get_receipt_store().verify_chain()
 
 
-@router.get("/audit-pack")
+@router.get("/audit-pack", response_model=GenericResponse)
 def audit_pack(request: Request, limit: int = 100) -> dict[str, Any]:
     store = get_receipt_store()
     receipts_payload = store.get_chain(limit=limit)
@@ -265,7 +275,7 @@ def _template_variables(invoice: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-@router.get("/template")
+@router.get("/template", response_model=GenericResponse)
 def evidence_template(category: str, invoice_id: str) -> dict[str, Any]:
     if category not in S2PDomainConfig.evidence_templates:
         raise HTTPException(status_code=400, detail=f"Unknown category: {category}")
@@ -284,7 +294,7 @@ def evidence_template(category: str, invoice_id: str) -> dict[str, Any]:
     }
 
 
-@router.get("/rules")
+@router.get("/rules", response_model=GenericResponse)
 def rules() -> dict[str, Any]:
     ruleset = [
         {
@@ -324,7 +334,7 @@ def rules() -> dict[str, Any]:
     }
 
 
-@router.get("/compliance")
+@router.get("/compliance", response_model=GenericResponse)
 def compliance() -> dict[str, Any]:
     invoices = _load_invoices()
     flagged: list[dict[str, Any]] = []

@@ -13,6 +13,7 @@ class ReceiptStore:
         self.max_receipts = int(max_receipts)
         self._receipts: deque[OutcomeReceipt] = deque(maxlen=self.max_receipts)
         self._by_invoice: dict[str, list[OutcomeReceipt]] = defaultdict(list)
+        self._by_decision: dict[str, list[OutcomeReceipt]] = defaultdict(list)
 
     @property
     def last_hash(self) -> str:
@@ -32,8 +33,15 @@ class ReceiptStore:
             self._by_invoice[evicted.invoice_id] = [
                 item for item in invoice_receipts if item.receipt_id != evicted.receipt_id
             ]
+            if evicted.decision_id:
+                decision_receipts = self._by_decision.get(evicted.decision_id, [])
+                self._by_decision[evicted.decision_id] = [
+                    item for item in decision_receipts if item.receipt_id != evicted.receipt_id
+                ]
         self._receipts.append(receipt)
         self._by_invoice[receipt.invoice_id].append(receipt)
+        if receipt.decision_id:
+            self._by_decision[receipt.decision_id].append(receipt)
         return receipt
 
     def get_chain(self, limit: int = 100) -> list[dict[str, Any]]:
@@ -44,6 +52,9 @@ class ReceiptStore:
 
     def get_for_invoice(self, invoice_id: str) -> list[dict[str, Any]]:
         return [receipt.to_dict() for receipt in self._by_invoice.get(invoice_id, [])]
+
+    def get_for_decision(self, decision_id: str) -> list[dict[str, Any]]:
+        return [receipt.to_dict() for receipt in self._by_decision.get(decision_id, [])]
 
     def verify_chain(self) -> dict[str, Any]:
         expected_previous = ""
@@ -76,6 +87,7 @@ class ReceiptStore:
     def clear(self) -> None:
         self._receipts.clear()
         self._by_invoice.clear()
+        self._by_decision.clear()
 
 
 _receipt_store = ReceiptStore()

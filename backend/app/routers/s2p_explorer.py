@@ -1,13 +1,17 @@
-"""Read-only S2P centroid explorer endpoints."""
+"""S2P centroid explorer endpoints."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import math
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+import numpy as np
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.models.responses import ExplorerCentroidResponse, GenericResponse
 
 
 router = APIRouter(prefix="/api/s2p/explorer", tags=["s2p-explorer"])
@@ -23,6 +27,13 @@ def _get_scorer(http_request: Request) -> Any:
 
 def _get_config() -> type[S2PDomainConfig]:
     return S2PDomainConfig
+
+
+def _gae_scorer_from_scorer(scorer: Any) -> Any:
+    gae_scorer = getattr(scorer, "gae_scorer", None)
+    if gae_scorer is None:
+        raise HTTPException(status_code=503, detail="GAE scorer is unavailable")
+    return gae_scorer
 
 
 def _centroids_from_scorer(scorer: Any) -> Any:
@@ -69,6 +80,207 @@ def _read_dk_weights(scorer: Any) -> list[float] | None:
 
 def _rounded(values: list[float]) -> list[float]:
     return [round(float(value), 6) for value in values]
+
+
+def _centroid_shape(centroids: Any) -> list[int]:
+    if not isinstance(centroids, list):
+        return []
+    shape: list[int] = []
+    current = centroids
+    while isinstance(current, list):
+        shape.append(len(current))
+        if not current:
+            break
+        first = current[0]
+        if any(not isinstance(item, list) for item in current):
+            if any(isinstance(item, list) for item in current):
+                return []
+            return shape
+        first_shape = _centroid_shape(first)
+        for item in current[1:]:
+            if _centroid_shape(item) != first_shape:
+                return []
+        current = first
+    return shape
+
+
+def _validate_centroid_values(centroids: list) -> str | None:
+    def walk(value: Any, path: str) -> str | None:
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                error = walk(item, f"{path}[{index}]")
+                if error:
+                    return error
+            return None
+        if value is None:
+            return f"{path} is null"
+        if isinstance(value, bool):
+            return f"{path} must be numeric, not boolean"
+        if not isinstance(value, (int, float)):
+            return f"{path} must be numeric"
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            return f"{path} must be finite"
+        if numeric < 0.0 or numeric > 1.0:
+            return f"{path} must be between 0.0 and 1.0"
+        return None
+
+    return walk(centroids, "centroids")
+
+
+def _copy_nested_float_centroids(centroids: list) -> list:
+    return [
+        _copy_nested_float_centroids(item) if isinstance(item, list) else float(item)
+        for item in centroids
+    ]
+
+
+def _current_conservation_status(http_request: Request) -> str:
+    try:
+        from gae.calibration import conservation_status
+
+        state = getattr(http_request.app, "state", None)
+        graph_store = getattr(state, "graph_store", None)
+        if graph_store is None:
+            scorer = getattr(state, "scorer", None)
+            graph_store = getattr(scorer, "graph_store", None)
+        domain = _graph_domain(graph_store)
+        count_verified = getattr(graph_store, "count_verified", None)
+        count_correct = getattr(graph_store, "count_correct", None)
+        count_verified_decisions = getattr(graph_store, "count_verified_decisions", None)
+        verified_count = int(count_verified(domain)) if callable(count_verified) else 0
+        correct_count = int(count_correct(domain)) if callable(count_correct) else 0
+        total_decisions = (
+            int(count_verified_decisions(domain))
+            if callable(count_verified_decisions)
+            else verified_count
+        )
+        check = conservation_status(
+            verified_count=max(verified_count, 0),
+            correct_count=max(correct_count, 0),
+            total_decisions=max(total_decisions, 0),
+            penalty_ratio=float(getattr(_get_config(), "penalty_ratio", 5.0)),
+        )
+        return str(check.status).upper()
+    except Exception:
+        return "UNKNOWN"
+
+
+def _checkpoint_imported_centroids(
+    http_request: Request,
+    checkpoint_id: str,
+    centroids: np.ndarray,
+) -> bool:
+    state = getattr(http_request.app, "state", None)
+    graph_store = getattr(state, "graph_store", None)
+    if graph_store is None:
+        scorer = getattr(state, "scorer", None)
+        graph_store = getattr(scorer, "graph_store", None)
+    save_centroids = getattr(graph_store, "save_centroids", None)
+    if not callable(save_centroids):
+        return False
+    config = _get_config()
+    save_centroids(
+        _graph_domain(graph_store),
+        "import",
+        centroids,
+        metadata={
+            "checkpoint_id": checkpoint_id,
+            "source": "s2p_explorer_import",
+            "imported_at": datetime.now(timezone.utc).isoformat(),
+            "shape": [config.n_categories, config.n_actions, config.n_factors],
+            "categories": list(config.categories),
+            "actions": list(config.actions),
+            "factors": list(config.factors),
+        },
+        decision_id=checkpoint_id,
+    )
+    return True
+
+
+def _uniform_ranked(factors: list[str]) -> list[dict[str, Any]]:
+    weight = round(1.0 / len(factors), 6) if factors else 0.0
+    return [
+        {"factor": factor, "weight": weight, "source": "uniform"}
+        for factor in factors
+    ]
+
+
+def _safe_read_dk_weights(scorer: Any, expected_len: int) -> list[float] | None:
+    for owner in (scorer, getattr(scorer, "gae_scorer", None)):
+        if owner is None:
+            continue
+        for name in ("dk_weights", "precision_weights", "kernel_weights"):
+            try:
+                weights = getattr(owner, name, None)
+            except Exception:
+                continue
+            if weights is None:
+                continue
+            if callable(weights):
+                try:
+                    weights = weights()
+                except Exception:
+                    continue
+            if weights is None:
+                continue
+            if isinstance(weights, (dict, str, bytes)):
+                return None
+            if hasattr(weights, "tolist"):
+                try:
+                    weights = weights.tolist()
+                except Exception:
+                    return None
+            try:
+                values = [float(value) for value in list(weights)]
+            except Exception:
+                return None
+            if len(values) != expected_len:
+                return None
+            return values
+    return None
+
+
+def _sigma_ranked_fallback(
+    scorer: Any,
+    config: Any,
+    factors: list[str],
+) -> list[dict[str, Any]]:
+    centroids = None
+    for owner in (scorer, getattr(scorer, "gae_scorer", None), getattr(scorer, "_scorer", None)):
+        if owner is None:
+            continue
+        for name in ("centroids", "mu", "_mu"):
+            centroids = getattr(owner, name, None)
+            if centroids is not None:
+                break
+        if centroids is not None:
+            break
+
+    if centroids is None:
+        return _uniform_ranked(factors)
+
+    try:
+        import numpy as np
+
+        values = np.asarray(centroids, dtype=float)
+        if values.ndim < 2 or values.shape[-1] != int(config.n_factors):
+            return _uniform_ranked(factors)
+        rows = values.reshape(-1, values.shape[-1])
+        variances = np.var(rows, axis=0).tolist()
+    except Exception:
+        return _uniform_ranked(factors)
+
+    if len(variances) != len(factors):
+        return _uniform_ranked(factors)
+    return [
+        {
+            "factor": factor,
+            "weight": round(float(variances[index]), 6),
+            "source": "centroid_variance",
+        }
+        for index, factor in enumerate(factors)
+    ]
 
 
 def _decision_metadata(decision: dict[str, Any]) -> dict[str, Any]:
@@ -137,7 +349,7 @@ def _centroid_rows(scorer: Any) -> list[dict[str, Any]]:
     return rows
 
 
-@router.get("/export/centroids")
+@router.get("/export/centroids", response_model=GenericResponse)
 def export_centroids(http_request: Request) -> dict[str, Any]:
     scorer = _get_scorer(http_request)
     config = _get_config()
@@ -154,7 +366,7 @@ def export_centroids(http_request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/export/csv")
+@router.get("/export/csv", response_model=GenericResponse)
 def export_centroids_csv(http_request: Request) -> dict[str, Any]:
     scorer = _get_scorer(http_request)
     config = _get_config()
@@ -166,7 +378,73 @@ def export_centroids_csv(http_request: Request) -> dict[str, Any]:
     return {"header": header, "rows": rows, "total_rows": len(rows)}
 
 
-@router.get("/centroid/{category}/{action}")
+@router.post("/import/centroids", response_model=GenericResponse)
+def import_centroids(payload: dict[str, Any], http_request: Request) -> dict[str, Any]:
+    config = _get_config()
+    if "centroids" not in payload:
+        raise HTTPException(status_code=400, detail="Missing centroids")
+    centroids = payload["centroids"]
+    if not isinstance(centroids, list):
+        raise HTTPException(status_code=400, detail="centroids must be a nested list")
+
+    expected_shape = [config.n_categories, config.n_actions, config.n_factors]
+    shape = _centroid_shape(centroids)
+    if shape != expected_shape:
+        raise HTTPException(
+            status_code=400,
+            detail=f"centroids shape must be {expected_shape}; got {shape or 'ragged'}",
+        )
+
+    validation_error = _validate_centroid_values(centroids)
+    if validation_error:
+        raise HTTPException(status_code=400, detail=validation_error)
+
+    conservation_status = _current_conservation_status(http_request)
+    if conservation_status != "GREEN":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Centroid import requires GREEN conservation; got {conservation_status}",
+        )
+
+    scorer = _get_scorer(http_request)
+    gae_scorer = _gae_scorer_from_scorer(scorer)
+    previous_centroids = np.array(gae_scorer.centroids, dtype=float, copy=True)
+    imported = np.asarray(_copy_nested_float_centroids(centroids), dtype=float)
+    checkpoint_id = f"CKP-IMPORT-{uuid.uuid4()}"
+
+    gae_scorer.centroids = imported
+    try:
+        checkpoint_saved = _checkpoint_imported_centroids(
+            http_request,
+            checkpoint_id,
+            imported,
+        )
+    except Exception as exc:
+        gae_scorer.centroids = previous_centroids
+        raise HTTPException(
+            status_code=500,
+            detail=f"Centroid import checkpoint failed: {exc}",
+        ) from exc
+
+    if not checkpoint_saved:
+        gae_scorer.centroids = previous_centroids
+        raise HTTPException(
+            status_code=503,
+            detail="Centroid checkpoint persistence is unavailable",
+        )
+
+    return {
+        "imported": True,
+        "checkpoint_id": checkpoint_id,
+        "checkpoint_saved": True,
+        "shape": expected_shape,
+        "n_cells": config.n_categories * config.n_actions,
+        "n_values": config.n_categories * config.n_actions * config.n_factors,
+        "conservation_status": conservation_status,
+    }
+
+
+@router.get("/centroid/{category}/{action}", response_model=ExplorerCentroidResponse)
 def centroid(category: str, action: str, http_request: Request) -> dict[str, Any]:
     scorer = _get_scorer(http_request)
     config = _get_config()
@@ -181,7 +459,7 @@ def centroid(category: str, action: str, http_request: Request) -> dict[str, Any
     }
 
 
-@router.get("/drift/{category}")
+@router.get("/drift/{category}", response_model=GenericResponse)
 def drift(category: str, http_request: Request) -> dict[str, Any]:
     scorer = _get_scorer(http_request)
     config = _get_config()
@@ -198,7 +476,7 @@ def drift(category: str, http_request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/dk-weights")
+@router.get("/dk-weights", response_model=GenericResponse)
 def dk_weights(http_request: Request) -> dict[str, Any]:
     scorer = _get_scorer(http_request)
     config = _get_config()
@@ -208,7 +486,51 @@ def dk_weights(http_request: Request) -> dict[str, Any]:
     return {"factors": list(config.factors), "weights": _rounded(weights), "available": True}
 
 
-@router.get("/contribution")
+@router.get("/ranking", response_model=GenericResponse)
+def factor_ranking(http_request: Request) -> dict[str, Any]:
+    scorer = _get_scorer(http_request)
+    config = _get_config()
+    factors = list(config.factors)
+    n_factors = len(factors)
+    weights = _safe_read_dk_weights(scorer, n_factors)
+
+    if weights is not None:
+        ranked_raw = [
+            {
+                "factor": factor,
+                "weight": round(float(weights[index]), 6),
+                "source": "dk_weights",
+            }
+            for index, factor in enumerate(factors)
+        ]
+    else:
+        ranked_raw = _sigma_ranked_fallback(scorer, config, factors)
+
+    ranked = sorted(ranked_raw, key=lambda item: (item["weight"], item["factor"]))
+    ranked = [
+        {
+            **item,
+            "rank": index,
+        }
+        for index, item in enumerate(ranked, start=1)
+    ]
+    swap = ranked[0] if ranked else {"factor": "", "weight": 0.0, "source": "uniform"}
+    rationale = (
+        f"{swap['factor']} is the swap candidate because it has the lowest "
+        f"discriminatory weight ({swap['weight']}) among the S2P factors."
+    )
+    return {
+        "factors": factors,
+        "ranked": ranked,
+        "swap_candidate": swap["factor"],
+        "swap_candidate_weight": swap["weight"],
+        "rationale": rationale,
+        "weight_source": swap["source"],
+        "n_factors": n_factors,
+    }
+
+
+@router.get("/contribution", response_model=GenericResponse)
 def contribution(invoice_id: str, http_request: Request) -> dict[str, Any]:
     scorer = _get_scorer(http_request)
     config = _get_config()

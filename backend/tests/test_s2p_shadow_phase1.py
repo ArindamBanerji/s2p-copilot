@@ -235,3 +235,4 @@ def test_shadow_disabled_env_does_not_change_default_s2p_score_route():
     assert app.state.graph_store.count_decisions("s2p") == before + 1
     assert "AGE" not in type(app.state.graph_store).__name__
     assert not hasattr(app.state, "s2p_shadow_age_store")
+

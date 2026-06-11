@@ -21,6 +21,10 @@ from pydantic import BaseModel
 from typing import Any, Optional
 
 from copilot_sdk.backend.conservation_utils import compute_conservation_metrics
+from copilot_sdk.scoring.dk_persistence import (
+    DKWelfordTracker,
+    persist_dk_after_reestimate,
+)
 
 from app.domains.s2p.auto_approve import (
     AUTO_APPROVE_THRESHOLDS,
@@ -48,6 +52,18 @@ _GRAPH_LINK_ADVISORY_LOCK = threading.RLock()
 _SCORE_CONSERVATION_STATUS_TTL_SECONDS = 2.0
 _SCORE_CONSERVATION_STATUS_LOCK = threading.RLock()
 _L5_CONSERVATION_STATE_LOCK = threading.RLock()
+_L5_DK_STATE_LOCK = threading.RLock()
+_L5_CENTROID_STATE_LOCK = threading.RLock()
+_S2P_DK_WELFORD_TRACKER = DKWelfordTracker()
+
+
+def set_l5_dk_welford_tracker(tracker: DKWelfordTracker | None) -> None:
+    """Replace the process-local S2P DK Welford tracker after startup restore."""
+    global _S2P_DK_WELFORD_TRACKER
+    if tracker is None:
+        return
+    with _L5_DK_STATE_LOCK:
+        _S2P_DK_WELFORD_TRACKER = tracker
 _SCORE_CONSERVATION_STATUS_CACHE: dict[str, tuple[float, str]] = {}
 _CONSERVATION_COUNTS_CACHE: dict[str, tuple[float, dict[str, float | int]]] = {}
 
@@ -340,6 +356,40 @@ def _learning_store_from_request(http_request: Request) -> Any | None:
     return None
 
 
+def _dk_learning_store_from_request(http_request: Request) -> Any | None:
+    state = getattr(http_request.app, "state", None)
+    scorer = getattr(state, "scorer", None)
+    for candidate in (
+        getattr(state, "learning_store", None),
+        getattr(state, "_learning_store", None),
+        getattr(scorer, "learning_store", None),
+        getattr(scorer, "_learning_store", None),
+        _graph_store_from_request(http_request),
+    ):
+        if candidate is None:
+            continue
+        if callable(getattr(candidate, "update_dk_weights", None)):
+            return candidate
+    return None
+
+
+def _centroid_learning_store_from_request(http_request: Request) -> Any | None:
+    state = getattr(http_request.app, "state", None)
+    scorer = getattr(state, "scorer", None)
+    for candidate in (
+        getattr(state, "learning_store", None),
+        getattr(state, "_learning_store", None),
+        getattr(scorer, "learning_store", None),
+        getattr(scorer, "_learning_store", None),
+        _graph_store_from_request(http_request),
+    ):
+        if candidate is None:
+            continue
+        if callable(getattr(candidate, "update_centroid", None)):
+            return candidate
+    return None
+
+
 def _persist_l5_conservation_state(http_request: Request, decision_id: str | None) -> None:
     store = _learning_store_from_request(http_request)
     if store is None:
@@ -383,6 +433,175 @@ def _persist_l5_conservation_state(http_request: Request, decision_id: str | Non
             )
         except Exception as exc:
             log.warning("S2P L5 conservation state write failed: %s", exc)
+    return None
+
+
+def _persist_l5_centroid_state(
+    http_request: Request,
+    *,
+    scorer: Any,
+    category: str | None,
+    actual_action: str,
+    decision_id: str,
+    pre_centroid: list[float] | None,
+) -> bool:
+    store = _centroid_learning_store_from_request(http_request)
+    if store is None or not category:
+        return False
+    get_phase = getattr(scorer, "get_category_phase", None)
+    get_centroid = getattr(scorer, "get_centroid", None)
+    if not callable(get_phase) or not callable(get_centroid):
+        return False
+    try:
+        phase = str(get_phase(category))
+    except Exception as exc:
+        log.debug("S2P L5 centroid persistence skipped: phase unavailable: %s", exc)
+        return False
+    if phase == "VARIANCE_LEARNING":
+        return False
+    if phase != "MEAN_CONVERGENCE":
+        log.debug("S2P L5 centroid persistence skipped: unknown phase %s", phase)
+        return False
+    try:
+        post_centroid = get_centroid(category, actual_action)
+    except Exception as exc:
+        log.debug("S2P L5 centroid persistence skipped: centroid unavailable: %s", exc)
+        return False
+    if post_centroid is None:
+        return False
+    try:
+        post_vector = [float(item) for item in post_centroid]
+    except (TypeError, ValueError):
+        return False
+    if not post_vector or not all(math.isfinite(item) for item in post_vector):
+        return False
+    delta_norm = _centroid_delta_norm(pre_centroid, post_vector)
+    domain = _graph_domain(_graph_store_from_request(http_request))
+    try:
+        with _L5_CENTROID_STATE_LOCK:
+            store.update_centroid(
+                domain=domain,
+                category=str(category),
+                action=str(actual_action),
+                centroid_vector=post_vector,
+                delta_norm=delta_norm,
+                caused_by_decision_id=decision_id,
+            )
+    except Exception as exc:
+        log.warning("S2P L5 centroid write failed: %s", exc)
+        return False
+    return True
+
+
+def _persist_l5_dk_state(
+    http_request: Request,
+    *,
+    decision: dict[str, Any] | None,
+    actual_action: str,
+    payload: dict[str, Any],
+) -> None:
+    if payload.get("status") == "paused" or payload.get("learning_applied") is False:
+        return None
+    state = getattr(http_request.app, "state", None)
+    scorer = getattr(state, "scorer", None)
+    if scorer is None:
+        return None
+    factor_vector = _decision_factor_vector(decision)
+    recommended_action = _decision_recommended_action(decision)
+    if factor_vector is None or recommended_action is None:
+        log.warning("S2P L5 DK persistence skipped: missing decision factor/action data")
+        return None
+    reestimate = getattr(scorer, "reestimate_dk_if_due", None)
+    get_dk_weights = getattr(scorer, "get_dk_weights", None)
+    if not callable(reestimate) or not callable(get_dk_weights):
+        log.warning("S2P L5 DK persistence skipped: scorer lacks DK runtime helpers")
+        return None
+    domain = _graph_domain(_graph_store_from_request(http_request))
+    is_correct = str(actual_action) == str(recommended_action)
+    try:
+        with _L5_DK_STATE_LOCK:
+            _S2P_DK_WELFORD_TRACKER.update(factor_vector, is_correct)
+            reestimate()
+            store = _dk_learning_store_from_request(http_request)
+            if store is None:
+                return None
+            if get_dk_weights() is None:
+                return None
+            persist_dk_after_reestimate(
+                domain=domain,
+                scorer=scorer,
+                learning_store=store,
+                welford_tracker=_S2P_DK_WELFORD_TRACKER,
+                entity_group=None,
+                logger=log,
+            )
+    except Exception as exc:
+        log.warning("S2P L5 DK persistence skipped: %s", exc)
+    return None
+
+
+def _decision_factor_vector(decision: dict[str, Any] | None) -> list[float] | None:
+    if not isinstance(decision, dict):
+        return None
+    value = _decision_lookup(decision, "factor_vector")
+    if value is None:
+        value = _decision_lookup(decision, "factors")
+    if isinstance(value, dict):
+        return [float(value[name]) for name in value]
+    if isinstance(value, (str, bytes, bytearray)) or value is None:
+        return None
+    try:
+        return [float(item) for item in value]
+    except (TypeError, ValueError):
+        return None
+
+
+def _read_centroid_for_l5(
+    scorer: Any,
+    *,
+    category: str | None,
+    action: str,
+) -> list[float] | None:
+    if not category:
+        return None
+    get_centroid = getattr(scorer, "get_centroid", None)
+    if not callable(get_centroid):
+        return None
+    try:
+        centroid = get_centroid(category, action)
+    except Exception as exc:
+        log.debug("S2P L5 centroid pre-read skipped: %s", exc)
+        return None
+    if centroid is None:
+        return None
+    try:
+        return [float(item) for item in centroid]
+    except (TypeError, ValueError):
+        return None
+
+
+def _centroid_delta_norm(
+    pre_centroid: list[float] | None,
+    post_centroid: list[float],
+) -> float:
+    if pre_centroid is None or len(pre_centroid) != len(post_centroid):
+        return float(math.sqrt(sum(value * value for value in post_centroid)))
+    return float(
+        math.sqrt(
+            sum(
+                (post - pre) * (post - pre)
+                for pre, post in zip(pre_centroid, post_centroid, strict=False)
+            )
+        )
+    )
+
+
+def _decision_lookup(decision: dict[str, Any], key: str) -> Any:
+    if key in decision:
+        return decision[key]
+    metadata = decision.get("metadata")
+    if isinstance(metadata, dict) and key in metadata:
+        return metadata[key]
     return None
 
 
@@ -1498,6 +1717,12 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         decision = scorer.graph_store.get_decision(request.decision_id)
     except Exception:
         decision = None
+    category = _decision_category(decision)
+    pre_centroid = _read_centroid_for_l5(
+        scorer,
+        category=category,
+        action=request.actual_action,
+    )
     conservation_before = _receipt_conservation_snapshot(http_request)
     _append_evidence_receipt_before_outcome(
         graph_store=scorer.graph_store,
@@ -1518,7 +1743,21 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         context,
     )
     _clear_score_conservation_status_cache()
+    _persist_l5_centroid_state(
+        http_request,
+        scorer=scorer,
+        category=category,
+        actual_action=request.actual_action,
+        decision_id=request.decision_id,
+        pre_centroid=pre_centroid,
+    )
     _persist_l5_conservation_state(http_request, request.decision_id)
+    _persist_l5_dk_state(
+        http_request,
+        decision=decision,
+        actual_action=request.actual_action,
+        payload=payload,
+    )
     conservation_after = _receipt_conservation_snapshot(http_request)
     if _outcome_recorded_for_receipt(
         payload,
@@ -1579,6 +1818,12 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
         decision = scorer.graph_store.get_decision(request.decision_id)
     except Exception:
         decision = None
+    category = _decision_category(decision) or request.category
+    pre_centroid = _read_centroid_for_l5(
+        scorer,
+        category=category,
+        action=request.analyst_action,
+    )
     invoice_id = _decision_invoice_id(decision)
     outcome_context = {
         "amount": request.amount,
@@ -1616,7 +1861,21 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
     )
     payload["outcome"] = request.outcome
     _clear_score_conservation_status_cache()
+    _persist_l5_centroid_state(
+        http_request,
+        scorer=scorer,
+        category=category,
+        actual_action=request.analyst_action,
+        decision_id=request.decision_id,
+        pre_centroid=pre_centroid,
+    )
     _persist_l5_conservation_state(http_request, request.decision_id)
+    _persist_l5_dk_state(
+        http_request,
+        decision=decision,
+        actual_action=request.analyst_action,
+        payload=payload,
+    )
     conservation_after = _receipt_conservation_snapshot(http_request)
     if _outcome_recorded_for_receipt(
         payload,

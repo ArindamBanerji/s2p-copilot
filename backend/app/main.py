@@ -8,13 +8,19 @@ from copilot_sdk.backend import create_conservation_router
 from copilot_sdk.backend.transfer_router import create_transfer_router
 from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
 from copilot_sdk.scoring import CompoundingScorer
+from copilot_sdk.scoring.startup_restore import restore_l5_runtime_state
 
 DATA_DIR = Path(os.environ.get("CI_DATA_DIR", Path(__file__).parent / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 from app.domains.s2p.evolution import S2PEvolutionService
 from app.domains.s2p.reward import S2PRewardFunction
-from app.routers.s2p import cached_conservation_state_provider, learn_router, router as s2p_router
+from app.routers.s2p import (
+    cached_conservation_state_provider,
+    learn_router,
+    router as s2p_router,
+    set_l5_dk_welford_tracker,
+)
 from app.routers.s2p_audit_export import router as s2p_audit_export_router
 from app.routers.s2p_clustering import router as s2p_clustering_router
 from app.routers.s2p_control_tower import router as s2p_control_tower_router
@@ -78,6 +84,13 @@ app.state.scorer = build_s2p_scorer(
     graph_store=create_s2p_active_graph_store(app.state.s2p_active_graph_config),
 )
 app.state.graph_store = app.state.scorer.graph_store
+l5_startup_status = restore_l5_runtime_state(
+    domain="s2p",
+    scorer=app.state.scorer,
+    learning_store=app.state.graph_store,
+)
+set_l5_dk_welford_tracker(l5_startup_status.pop("welford_tracker", None))
+app.state.l5_startup_status = l5_startup_status
 app.state.s2p_reward_function = app.state.scorer._reward_fn
 app.state.s2p_evolution = S2PEvolutionService(app.state.scorer)
 app.state.s2p_shadow = initialize_s2p_shadow_state()

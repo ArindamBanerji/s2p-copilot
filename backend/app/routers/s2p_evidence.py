@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,10 +13,15 @@ from app.domains.s2p.factors import compute_all_factors
 from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import load_invoices
 from app.services.receipt_store import get_receipt_store
+from app.services.s2p_evidence_templates import S2PEvidenceEngine, evidence_context_from_record
+from app.services.s2p_situation_pattern import S2PInvoiceTraversalPattern
+from app.services.s2p_trust_explanations import format_trust_explanation
+from copilot_sdk.situation import SituationAnalyzer
 
 router = APIRouter(prefix="/api/s2p/evidence", tags=["s2p-evidence"])
 
 _load_invoices = load_invoices
+_evidence_engine = S2PEvidenceEngine()
 
 
 def _invoice_by_id(invoice_id: str) -> dict[str, Any] | None:
@@ -38,8 +43,111 @@ def _graph_store(request: Request) -> Any | None:
     return getattr(scorer, "graph_store", None)
 
 
+def _scorer(request: Request) -> Any | None:
+    state = getattr(request.app, "state", None)
+    return getattr(state, "scorer", None)
+
+
 def _graph_domain(graph_store: Any | None = None) -> str:
     return str(getattr(graph_store, "domain", None) or "s2p")
+
+
+def _trust_explanation_payload(
+    request: Request,
+    *,
+    category: str,
+    action: str,
+    confidence: float,
+    variables: dict[str, Any],
+) -> dict[str, Any]:
+    scorer = _scorer(request)
+    category_index = _category_index(category)
+    weights = _call_or_none(getattr(scorer, "get_dk_weights", None))
+    phase = _call_or_none(getattr(scorer, "get_category_phase", None), category)
+    verified_count = _call_or_none(getattr(scorer, "get_verified_count", None))
+    centroid = _call_or_none(getattr(scorer, "get_centroid", None), category, action)
+    if centroid is None:
+        centroid = (
+            S2PDomainConfig.get_initial_centroids()
+            .get(category, {})
+            .get(action)
+        )
+    explanation = format_trust_explanation(
+        category=category,
+        recommended_action=action,
+        confidence=confidence,
+        factor_values=variables.get("factors") if isinstance(variables.get("factors"), dict) else {},
+        factor_names=list(S2PDomainConfig.factors),
+        dk_weights=weights,
+        centroid=centroid,
+        category_index=category_index,
+        phase=str(phase) if phase else None,
+        verified_count=verified_count if isinstance(verified_count, int) else None,
+        verified_target=200,
+    )
+    payload = explanation.to_dict()
+    factor_value_provenance = _provenance(
+        "context",
+        "factor value · scorer input context",
+    )
+    dk_weight_provenance = (
+        _provenance("scorer", "DK trust weight · learned from verified outcomes")
+        if payload.get("trust_available")
+        else _provenance("unavailable", "DK trust weight · learning")
+    )
+    for factor in payload.get("factors", []):
+        if isinstance(factor, dict):
+            factor.update(factor_value_provenance)
+            factor["factor_value_provenance"] = dict(factor_value_provenance)
+            factor["dk_weight_provenance"] = dict(dk_weight_provenance)
+    payload["provenance"] = factor_value_provenance
+    payload["dk_weight_provenance"] = dk_weight_provenance
+    return payload
+
+
+def _category_index(category: str) -> int | None:
+    try:
+        return S2PDomainConfig.get_category_index(category)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _call_or_none(fn: Any, *args: Any) -> Any | None:
+    if not callable(fn):
+        return None
+    try:
+        return fn(*args)
+    except Exception:
+        return None
+
+
+def _provenance(source: str, label: str) -> dict[str, Any]:
+    if source == "scorer":
+        return {
+            "source": "scorer",
+            "provenance_label": label,
+            "provenance_tier": "learned",
+            "integration_status": "configured",
+            "measured": True,
+            "display_prefix": "██ learned",
+        }
+    if source == "unavailable":
+        return {
+            "source": "unavailable",
+            "provenance_label": label,
+            "provenance_tier": "unavailable",
+            "integration_status": "pending",
+            "measured": False,
+            "display_prefix": "integration pending",
+        }
+    return {
+        "source": source,
+        "provenance_label": label,
+        "provenance_tier": "context",
+        "integration_status": "pending",
+        "measured": False,
+        "display_prefix": "░░ context",
+    }
 
 
 def _conservation_snapshot(request: Request) -> dict[str, Any]:
@@ -210,87 +318,81 @@ def audit_pack(request: Request, limit: int = 100) -> dict[str, Any]:
     }
 
 
-def _line_item_quantity(invoice: dict[str, Any]) -> float | str:
-    items = (invoice.get("metadata") or {}).get("line_items")
-    if not isinstance(items, list):
-        return "N/A"
-    total = 0.0
-    found = False
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        try:
-            total += float(item.get("quantity", 0.0) or 0.0)
-            found = True
-        except (TypeError, ValueError):
-            continue
-    return round(total, 2) if found else "N/A"
-
-
-def _template_variables(invoice: dict[str, Any]) -> dict[str, Any]:
-    metadata = invoice.get("metadata") if isinstance(invoice.get("metadata"), dict) else {}
-    factors = compute_all_factors(invoice)
-    amount_variance = float(factors.get("amount_variance_ratio", 0.0) or 0.0)
-    commodity_delta = float(factors.get("commodity_index_correlation", 0.0) or 0.0)
-    duplicate_score = float(factors.get("duplicate_score", 0.0) or 0.0)
-    match_score = float(factors.get("match_status", 0.0) or 0.0)
-    tax_score = float(factors.get("tax_regulatory_compliance", 0.0) or 0.0)
-    supplier = invoice.get("supplier_name") or invoice.get("supplier_id") or "N/A"
-    invoice_id = invoice.get("invoice_id") or invoice.get("event_id") or "N/A"
-    action = invoice.get("ground_truth_action") or "hold_for_review"
-    quantity = _line_item_quantity(invoice)
-    po_quantity = round(float(quantity) * 0.96, 2) if isinstance(quantity, (int, float)) else "N/A"
-    delta = round(float(quantity) - po_quantity, 2) if isinstance(quantity, (int, float)) else "N/A"
-    compliance_pct = round(max(0.0, min(1.0, 1.0 - tax_score)) * 100.0, 1)
-    return {
-        "invoice_id": invoice_id,
-        "supplier": supplier,
-        "variance_pct": round(amount_variance * 100.0, 1),
-        "commodity": metadata.get("commodity") or "N/A",
-        "commodity_delta": round(commodity_delta * 100.0, 1),
-        "lookback": 30,
-        "ref": metadata.get("contract_ref") or invoice.get("contract_id") or "N/A",
-        "allows_blocks": "allows" if amount_variance <= 0.2 else "blocks",
-        "threshold": 20,
-        "within_exceeds": "within" if amount_variance <= 0.2 else "exceeds",
-        "action": action,
-        "score": round(max(factors.values()) if factors else 0.0, 3),
-        "inv_qty": quantity,
-        "po_qty": po_quantity,
-        "delta": delta,
-        "gr_qty": po_quantity,
-        "match_status": "matched" if match_score >= 0.7 else "mismatch requires review",
-        "match_id": f"{invoice_id}-PRIOR",
-        "match_date": metadata.get("invoice_date") or "N/A",
-        "match_amt": invoice.get("amount", "N/A"),
-        "similarity": round(duplicate_score * 100.0, 1),
-        "verdict": "possible duplicate" if duplicate_score >= 0.5 else "no duplicate pattern",
-        "po_id": invoice.get("po_number") or "N/A",
-        "scope": metadata.get("commodity") or invoice.get("category") or "N/A",
-        "covered_pct": round(match_score * 100.0, 1),
-        "gap_items": "line-item coverage" if match_score < 0.8 else "none",
-        "n_rules": 1 if tax_score >= 0.3 else 0,
-        "issues": "tax/regulatory completeness" if tax_score >= 0.3 else "none",
-        "compliance_pct": compliance_pct,
-    }
-
-
 @router.get("/template", response_model=GenericResponse)
-def evidence_template(category: str, invoice_id: str) -> dict[str, Any]:
-    if category not in S2PDomainConfig.evidence_templates:
-        raise HTTPException(status_code=400, detail=f"Unknown category: {category}")
-    invoice = _invoice_by_id(invoice_id)
+def evidence_template(
+    request: Request,
+    category: str,
+    invoice_id: str | None = None,
+) -> dict[str, Any]:
+    invoice = _invoice_by_id(invoice_id) if invoice_id else None
+    invoice_found = invoice is not None
     if invoice is None:
-        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
-    variables = _template_variables(invoice)
-    template = S2PDomainConfig.evidence_templates[category]
-    rendered = template.format_map(defaultdict(lambda: "N/A", variables))
+        invoice = {
+            "category": category,
+            "factors": {},
+        }
+        if invoice_id:
+            invoice.update({"invoice_id": invoice_id, "event_id": invoice_id})
+    graph_store = _graph_store(request)
+    analyzer = SituationAnalyzer(
+        [S2PInvoiceTraversalPattern(scorer=_scorer(request))],
+        default_max_depth=3,
+        max_allowed_depth=5,
+    )
+    scope = {"category": category}
+    if invoice_id:
+        scope["invoice_id"] = invoice_id
+    intent = analyzer.normalize_signal(
+        {
+            "domain": "s2p",
+            "intent_type": "evidence_template",
+            "verb": "explain",
+            "subject": "invoice",
+            "source_event_id": invoice_id,
+            "scope": scope,
+            "payload": invoice,
+        }
+    )
+    situation_context = analyzer.analyze_intent(intent, graph_store=graph_store, max_depth=3)
+    variables = evidence_context_from_record(invoice)
+    context_used = situation_context.metadata.get("context_used")
+    if isinstance(context_used, dict):
+        variables.update({key: value for key, value in context_used.items() if value is not None})
+    action = (
+        str(variables.get("action") or invoice.get("ground_truth_action") or "unknown")
+    )
+    confidence = float(variables.get("score") or 0.0)
+    evidence = _evidence_engine.render(category, variables, action, confidence)
+    evidence_payload = evidence.to_dict()
+    trust_explanation = _trust_explanation_payload(
+        request,
+        category=category,
+        action=action,
+        confidence=confidence,
+        variables=variables,
+    )
+    evidence_payload["trust_explanation"] = trust_explanation
+    evidence_payload["trust_weighted_factors"] = trust_explanation["factors"]
+    evidence_payload["trust_available"] = trust_explanation["trust_available"]
+    evidence_payload["trust_learning_message"] = trust_explanation["learning_message"]
+    if not invoice_id and "invoice_id" not in evidence_payload["missing_fields"]:
+        evidence_payload["missing_fields"].append("invoice_id")
+        evidence_payload["missing_fields"].sort()
+    template = evidence.template or ""
+    rendered = evidence.text
     return {
-        "invoice_id": invoice.get("invoice_id") or invoice_id,
+        "invoice_id": invoice.get("invoice_id") or invoice_id or "unknown",
+        "invoice_found": invoice_found,
         "category": category,
         "template": template,
         "rendered": rendered,
         "variables": variables,
+        "evidence": evidence_payload,
+        "trust_explanation": trust_explanation,
+        "trust_weighted_factors": trust_explanation["factors"],
+        "trust_available": trust_explanation["trust_available"],
+        "trust_learning_message": trust_explanation["learning_message"],
+        "situation_context": situation_context.to_dict(),
     }
 
 

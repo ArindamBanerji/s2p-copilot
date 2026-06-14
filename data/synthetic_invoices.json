@@ -35,13 +35,18 @@
         }
       ],
       "commodity": "indexed metals",
-      "contract_ref": "CTR-001-CON"
+      "contract_ref": "CTR-001-CON",
+      "po_date": "2025-12-12",
+      "gr_date": "2026-01-06",
+      "contractual_lead_time_days": 20.0,
+      "season": "Q1",
+      "volume_band": "medium"
     },
     "intent": "contract_compliance_gap",
     "amount_at_risk": 22426.73,
+    "verified": true,
     "amount_recovered": 20856.86,
-    "cycle_time_hours": 24.0,
-    "verified": true
+    "cycle_time_hours": 24.0
   },
   {
     "invoice_id": "S2P-INV-0002",
@@ -62,8 +67,8 @@
       "tax_regulatory_compliance": 0.678
     },
     "metadata": {
-      "invoice_date": "2026-01-09",
-      "due_date": "2026-02-08",
+      "invoice_date": "2026-01-14",
+      "due_date": "2026-02-13",
       "line_items": [
         {
           "line": 1,
@@ -85,13 +90,18 @@
         }
       ],
       "commodity": "pallets",
-      "contract_ref": "CTR-002-QUA"
+      "contract_ref": "CTR-002-QUA",
+      "po_date": "2025-12-31",
+      "gr_date": "2026-01-12",
+      "contractual_lead_time_days": 10.0,
+      "season": "Q1",
+      "volume_band": "low"
     },
     "intent": "invoice_match_failure",
     "amount_at_risk": 9752.58,
+    "verified": true,
     "amount_recovered": 9069.9,
-    "cycle_time_hours": 9.13,
-    "verified": true
+    "cycle_time_hours": 1.24
   },
   {
     "invoice_id": "S2P-INV-0003",
@@ -112,8 +122,8 @@
       "tax_regulatory_compliance": 0.938
     },
     "metadata": {
-      "invoice_date": "2026-01-11",
-      "due_date": "2026-02-10",
+      "invoice_date": "2026-01-21",
+      "due_date": "2026-02-20",
       "line_items": [
         {
           "line": 1,
@@ -141,13 +151,18 @@
         }
       ],
       "commodity": "resin",
-      "contract_ref": "CTR-003-PRI"
+      "contract_ref": "CTR-003-PRI",
+      "po_date": "2026-01-02",
+      "gr_date": "2026-01-18",
+      "contractual_lead_time_days": 15.0,
+      "season": "Q1",
+      "volume_band": "low"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 3781.7,
+    "verified": true,
     "amount_recovered": 3516.98,
-    "cycle_time_hours": 1.56,
-    "verified": true
+    "cycle_time_hours": 1.61
   },
   {
     "invoice_id": "S2P-INV-0004",
@@ -168,8 +183,8 @@
       "tax_regulatory_compliance": 0.477
     },
     "metadata": {
-      "invoice_date": "2026-01-13",
-      "due_date": "2026-02-12",
+      "invoice_date": "2026-01-28",
+      "due_date": "2026-02-27",
       "line_items": [
         {
           "line": 1,
@@ -179,13 +194,18 @@
         }
       ],
       "commodity": "indexed metals",
-      "contract_ref": "CTR-004-CON"
+      "contract_ref": "CTR-004-CON",
+      "po_date": "2026-01-04",
+      "gr_date": "2026-01-24",
+      "contractual_lead_time_days": 20.0,
+      "season": "Q1",
+      "volume_band": "high"
     },
     "intent": "contract_compliance_gap",
     "amount_at_risk": 30171.46,
+    "verified": true,
     "amount_recovered": 28059.46,
-    "cycle_time_hours": 29.09,
-    "verified": true
+    "cycle_time_hours": 1.98
   },
   {
     "invoice_id": "S2P-INV-0005",
@@ -206,8 +226,8 @@
       "tax_regulatory_compliance": 0.939
     },
     "metadata": {
-      "invoice_date": "2026-01-15",
-      "due_date": "2026-02-14",
+      "invoice_date": "2026-02-04",
+      "due_date": "2026-03-06",
       "line_items": [
         {
           "line": 1,
@@ -223,13 +243,18 @@
         }
       ],
       "commodity": "resin",
-      "contract_ref": "CTR-005-PRI"
+      "contract_ref": "CTR-005-PRI",
+      "po_date": "2026-01-08",
+      "gr_date": "2026-01-30",
+      "contractual_lead_time_days": 14.0,
+      "season": "Q1",
+      "volume_band": "high"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 41289.58,
+    "verified": true,
     "amount_recovered": 38399.31,
-    "cycle_time_hours": 2.62,
-    "verified": true
+    "cycle_time_hours": 2.35
   },
   {
     "invoice_id": "S2P-INV-0006",
@@ -250,8 +275,8 @@
       "tax_regulatory_compliance": 0.793
     },
     "metadata": {
-      "invoice_date": "2026-01-17",
-      "due_date": "2026-02-16",
+      "invoice_date": "2026-02-11",
+      "due_date": "2026-03-13",
       "line_items": [
         {
           "line": 1,
@@ -273,13 +298,18 @@
         }
       ],
       "commodity": "steel coil",
-      "contract_ref": "CTR-006-PRI"
+      "contract_ref": "CTR-006-PRI",
+      "po_date": "2026-01-25",
+      "gr_date": "2026-02-10",
+      "contractual_lead_time_days": 15.0,
+      "season": "Q1",
+      "volume_band": "low"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 1402.74,
+    "verified": true,
     "amount_recovered": 1304.55,
-    "cycle_time_hours": 3.15,
-    "verified": true
+    "cycle_time_hours": 2.72
   },
   {
     "invoice_id": "S2P-INV-0007",
@@ -300,8 +330,8 @@
       "tax_regulatory_compliance": 0.964
     },
     "metadata": {
-      "invoice_date": "2026-01-19",
-      "due_date": "2026-02-18",
+      "invoice_date": "2026-02-18",
+      "due_date": "2026-03-20",
       "line_items": [
         {
           "line": 1,
@@ -329,13 +359,18 @@
         }
       ],
       "commodity": "maintenance kits",
-      "contract_ref": "CTR-007-QUA"
+      "contract_ref": "CTR-007-QUA",
+      "po_date": "2026-02-06",
+      "gr_date": "2026-02-16",
+      "contractual_lead_time_days": 9.0,
+      "season": "Q1",
+      "volume_band": "medium"
     },
     "intent": "invoice_match_failure",
     "amount_at_risk": 14965.97,
+    "verified": true,
     "amount_recovered": 13918.35,
-    "cycle_time_hours": 14.79,
-    "verified": true
+    "cycle_time_hours": 3.09
   },
   {
     "invoice_id": "S2P-INV-0008",
@@ -356,8 +391,8 @@
       "tax_regulatory_compliance": 0.776
     },
     "metadata": {
-      "invoice_date": "2026-01-21",
-      "due_date": "2026-01-21",
+      "invoice_date": "2026-02-25",
+      "due_date": "2026-02-25",
       "line_items": [
         {
           "line": 1,
@@ -367,13 +402,18 @@
         }
       ],
       "commodity": "chemicals",
-      "contract_ref": "CTR-008-QUA"
+      "contract_ref": "CTR-008-QUA",
+      "po_date": "2026-02-11",
+      "gr_date": "2026-02-22",
+      "contractual_lead_time_days": 10.0,
+      "season": "Q1",
+      "volume_band": "medium"
     },
     "intent": "invoice_match_failure",
     "amount_at_risk": 18887.12,
+    "verified": true,
     "amount_recovered": 17565.02,
-    "cycle_time_hours": 15.92,
-    "verified": true
+    "cycle_time_hours": 3.46
   },
   {
     "invoice_id": "S2P-INV-0009",
@@ -394,8 +434,8 @@
       "tax_regulatory_compliance": 0.76
     },
     "metadata": {
-      "invoice_date": "2026-01-23",
-      "due_date": "2026-02-22",
+      "invoice_date": "2026-03-04",
+      "due_date": "2026-04-03",
       "line_items": [
         {
           "line": 1,
@@ -411,13 +451,18 @@
         }
       ],
       "commodity": "freight surcharge",
-      "contract_ref": "CTR-009-DUP"
+      "contract_ref": "CTR-009-DUP",
+      "po_date": "2026-02-13",
+      "gr_date": "2026-02-28",
+      "contractual_lead_time_days": 8.0,
+      "season": "Q1",
+      "volume_band": "high"
     },
     "intent": "invoice_duplicate_risk",
     "amount_at_risk": 42303.0,
+    "verified": true,
     "amount_recovered": 39341.79,
-    "cycle_time_hours": 9.92,
-    "verified": true
+    "cycle_time_hours": 3.83
   },
   {
     "invoice_id": "S2P-INV-0010",
@@ -438,8 +483,8 @@
       "tax_regulatory_compliance": 0.952
     },
     "metadata": {
-      "invoice_date": "2026-01-25",
-      "due_date": "2026-02-24",
+      "invoice_date": "2026-03-11",
+      "due_date": "2026-04-10",
       "line_items": [
         {
           "line": 1,
@@ -461,13 +506,18 @@
         }
       ],
       "commodity": "maintenance kits",
-      "contract_ref": "CTR-010-QUA"
+      "contract_ref": "CTR-010-QUA",
+      "po_date": "2026-02-25",
+      "gr_date": "2026-03-06",
+      "contractual_lead_time_days": 9.0,
+      "season": "Q1",
+      "volume_band": "low"
     },
     "intent": "invoice_match_failure",
     "amount_at_risk": 8564.69,
+    "verified": true,
     "amount_recovered": 7965.16,
-    "cycle_time_hours": 18.18,
-    "verified": true
+    "cycle_time_hours": 4.2
   },
   {
     "invoice_id": "S2P-INV-0011",
@@ -488,8 +538,8 @@
       "tax_regulatory_compliance": 0.972
     },
     "metadata": {
-      "invoice_date": "2026-01-27",
-      "due_date": "2026-02-26",
+      "invoice_date": "2026-03-18",
+      "due_date": "2026-04-17",
       "line_items": [
         {
           "line": 1,
@@ -517,13 +567,18 @@
         }
       ],
       "commodity": "resin",
-      "contract_ref": "CTR-001-PRI"
+      "contract_ref": "CTR-001-PRI",
+      "po_date": "2026-02-25",
+      "gr_date": "2026-03-17",
+      "contractual_lead_time_days": 14.0,
+      "season": "Q1",
+      "volume_band": "medium"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 19775.3,
+    "verified": true,
     "amount_recovered": 18391.03,
-    "cycle_time_hours": 5.8,
-    "verified": true
+    "cycle_time_hours": 4.57
   },
   {
     "invoice_id": "S2P-INV-0012",
@@ -544,8 +599,8 @@
       "tax_regulatory_compliance": 0.793
     },
     "metadata": {
-      "invoice_date": "2026-01-29",
-      "due_date": "2026-02-28",
+      "invoice_date": "2026-03-25",
+      "due_date": "2026-04-24",
       "line_items": [
         {
           "line": 1,
@@ -555,13 +610,18 @@
         }
       ],
       "commodity": "freight surcharge",
-      "contract_ref": "CTR-002-DUP"
+      "contract_ref": "CTR-002-DUP",
+      "po_date": "2026-03-12",
+      "gr_date": "2026-03-23",
+      "contractual_lead_time_days": 8.0,
+      "season": "Q1",
+      "volume_band": "medium"
     },
     "intent": "invoice_duplicate_risk",
     "amount_at_risk": 10677.15,
+    "verified": true,
     "amount_recovered": 9929.75,
-    "cycle_time_hours": 12.89,
-    "verified": true
+    "cycle_time_hours": 4.94
   },
   {
     "invoice_id": "S2P-INV-0013",
@@ -582,8 +642,8 @@
       "tax_regulatory_compliance": 0.68
     },
     "metadata": {
-      "invoice_date": "2026-01-31",
-      "due_date": "2026-03-02",
+      "invoice_date": "2026-04-01",
+      "due_date": "2026-05-01",
       "line_items": [
         {
           "line": 1,
@@ -599,13 +659,18 @@
         }
       ],
       "commodity": "utility charges",
-      "contract_ref": "CTR-003-FOR"
+      "contract_ref": "CTR-003-FOR",
+      "po_date": "2026-03-26",
+      "gr_date": "2026-03-29",
+      "contractual_lead_time_days": 4.0,
+      "season": "Q1",
+      "volume_band": "low"
     },
     "intent": "format_compliance_issue",
     "amount_at_risk": 5057.38,
+    "verified": true,
     "amount_recovered": 4703.36,
-    "cycle_time_hours": 28.97,
-    "verified": true
+    "cycle_time_hours": 5.31
   },
   {
     "invoice_id": "S2P-INV-0014",
@@ -626,8 +691,8 @@
       "tax_regulatory_compliance": 0.931
     },
     "metadata": {
-      "invoice_date": "2026-02-02",
-      "due_date": "2026-03-04",
+      "invoice_date": "2026-04-08",
+      "due_date": "2026-05-08",
       "line_items": [
         {
           "line": 1,
@@ -649,13 +714,18 @@
         }
       ],
       "commodity": "steel coil",
-      "contract_ref": "CTR-004-PRI"
+      "contract_ref": "CTR-004-PRI",
+      "po_date": "2026-03-20",
+      "gr_date": "2026-04-04",
+      "contractual_lead_time_days": 14.0,
+      "season": "Q2",
+      "volume_band": "medium"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 17536.79,
+    "verified": true,
     "amount_recovered": 16309.21,
-    "cycle_time_hours": 7.39,
-    "verified": true
+    "cycle_time_hours": 5.68
   },
   {
     "invoice_id": "S2P-INV-0015",
@@ -676,8 +746,8 @@
       "tax_regulatory_compliance": 0.839
     },
     "metadata": {
-      "invoice_date": "2026-02-04",
-      "due_date": "2026-03-06",
+      "invoice_date": "2026-04-15",
+      "due_date": "2026-05-15",
       "line_items": [
         {
           "line": 1,
@@ -705,13 +775,18 @@
         }
       ],
       "commodity": "regulated reagents",
-      "contract_ref": "CTR-005-FOR"
+      "contract_ref": "CTR-005-FOR",
+      "po_date": "2026-03-26",
+      "gr_date": "2026-04-10",
+      "contractual_lead_time_days": 6.0,
+      "season": "Q2",
+      "volume_band": "high"
     },
     "intent": "format_compliance_issue",
     "amount_at_risk": 39332.42,
+    "verified": true,
     "amount_recovered": 36579.15,
-    "cycle_time_hours": 31.8,
-    "verified": true
+    "cycle_time_hours": 6.05
   },
   {
     "invoice_id": "S2P-INV-0016",
@@ -732,8 +807,8 @@
       "tax_regulatory_compliance": 0.6
     },
     "metadata": {
-      "invoice_date": "2026-02-06",
-      "due_date": "2026-03-08",
+      "invoice_date": "2026-04-22",
+      "due_date": "2026-05-22",
       "line_items": [
         {
           "line": 1,
@@ -743,13 +818,18 @@
         }
       ],
       "commodity": "spot logistics",
-      "contract_ref": "CTR-006-CON"
+      "contract_ref": "CTR-006-CON",
+      "po_date": "2026-04-02",
+      "gr_date": "2026-04-21",
+      "contractual_lead_time_days": 20.0,
+      "season": "Q2",
+      "volume_band": "low"
     },
     "intent": "contract_compliance_gap",
     "amount_at_risk": 1978.95,
+    "verified": true,
     "amount_recovered": 1840.42,
-    "cycle_time_hours": 25.21,
-    "verified": true
+    "cycle_time_hours": 6.42
   },
   {
     "invoice_id": "S2P-INV-0017",
@@ -770,8 +850,8 @@
       "tax_regulatory_compliance": 0.809
     },
     "metadata": {
-      "invoice_date": "2026-02-08",
-      "due_date": "2026-03-10",
+      "invoice_date": "2026-04-29",
+      "due_date": "2026-05-29",
       "line_items": [
         {
           "line": 1,
@@ -787,13 +867,18 @@
         }
       ],
       "commodity": "consulting hours",
-      "contract_ref": "CTR-007-DUP"
+      "contract_ref": "CTR-007-DUP",
+      "po_date": "2026-04-18",
+      "gr_date": "2026-04-27",
+      "contractual_lead_time_days": 7.0,
+      "season": "Q2",
+      "volume_band": "medium"
     },
     "intent": "invoice_duplicate_risk",
     "amount_at_risk": 16622.98,
+    "verified": true,
     "amount_recovered": 15459.37,
-    "cycle_time_hours": 3.7,
-    "verified": true
+    "cycle_time_hours": 6.79
   },
   {
     "invoice_id": "S2P-INV-0018",
@@ -814,8 +899,8 @@
       "tax_regulatory_compliance": 0.769
     },
     "metadata": {
-      "invoice_date": "2026-02-10",
-      "due_date": "2026-02-10",
+      "invoice_date": "2026-05-06",
+      "due_date": "2026-05-06",
       "line_items": [
         {
           "line": 1,
@@ -837,13 +922,18 @@
         }
       ],
       "commodity": "chemicals",
-      "contract_ref": "CTR-008-QUA"
+      "contract_ref": "CTR-008-QUA",
+      "po_date": "2026-04-20",
+      "gr_date": "2026-05-03",
+      "contractual_lead_time_days": 11.0,
+      "season": "Q2",
+      "volume_band": "medium"
     },
     "intent": "invoice_match_failure",
     "amount_at_risk": 20096.36,
+    "verified": true,
     "amount_recovered": 18689.61,
-    "cycle_time_hours": 11.07,
-    "verified": true
+    "cycle_time_hours": 7.16
   },
   {
     "invoice_id": "S2P-INV-0019",
@@ -864,8 +954,8 @@
       "tax_regulatory_compliance": 0.769
     },
     "metadata": {
-      "invoice_date": "2026-02-12",
-      "due_date": "2026-03-14",
+      "invoice_date": "2026-05-13",
+      "due_date": "2026-06-12",
       "line_items": [
         {
           "line": 1,
@@ -893,13 +983,18 @@
         }
       ],
       "commodity": "lab consumables",
-      "contract_ref": "CTR-009-DUP"
+      "contract_ref": "CTR-009-DUP",
+      "po_date": "2026-04-28",
+      "gr_date": "2026-05-09",
+      "contractual_lead_time_days": 6.0,
+      "season": "Q2",
+      "volume_band": "high"
     },
     "intent": "invoice_duplicate_risk",
     "amount_at_risk": 35644.26,
+    "verified": true,
     "amount_recovered": 33149.16,
-    "cycle_time_hours": 5.68,
-    "verified": true
+    "cycle_time_hours": 7.53
   },
   {
     "invoice_id": "S2P-INV-0020",
@@ -920,8 +1015,8 @@
       "tax_regulatory_compliance": 0.824
     },
     "metadata": {
-      "invoice_date": "2026-02-14",
-      "due_date": "2026-03-16",
+      "invoice_date": "2026-05-20",
+      "due_date": "2026-06-19",
       "line_items": [
         {
           "line": 1,
@@ -931,13 +1026,18 @@
         }
       ],
       "commodity": "freight surcharge",
-      "contract_ref": "CTR-010-DUP"
+      "contract_ref": "CTR-010-DUP",
+      "po_date": "2026-05-07",
+      "gr_date": "2026-05-15",
+      "contractual_lead_time_days": 7.0,
+      "season": "Q2",
+      "volume_band": "low"
     },
     "intent": "invoice_duplicate_risk",
     "amount_at_risk": 7241.13,
+    "verified": true,
     "amount_recovered": 6734.25,
-    "cycle_time_hours": 6.67,
-    "verified": true
+    "cycle_time_hours": 7.9
   },
   {
     "invoice_id": "S2P-INV-0021",
@@ -958,8 +1058,8 @@
       "tax_regulatory_compliance": 0.839
     },
     "metadata": {
-      "invoice_date": "2026-02-16",
-      "due_date": "2026-03-18",
+      "invoice_date": "2026-05-27",
+      "due_date": "2026-06-26",
       "line_items": [
         {
           "line": 1,
@@ -975,13 +1075,18 @@
         }
       ],
       "commodity": "utility charges",
-      "contract_ref": "CTR-001-FOR"
+      "contract_ref": "CTR-001-FOR",
+      "po_date": "2026-05-13",
+      "gr_date": "2026-05-26",
+      "contractual_lead_time_days": 6.0,
+      "season": "Q2",
+      "volume_band": "medium"
     },
     "intent": "format_compliance_issue",
     "amount_at_risk": 21477.17,
-    "amount_recovered": null,
-    "cycle_time_hours": 20.08,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 19973.77,
+    "cycle_time_hours": 8.27
   },
   {
     "invoice_id": "S2P-INV-0022",
@@ -1002,8 +1107,8 @@
       "tax_regulatory_compliance": 0.827
     },
     "metadata": {
-      "invoice_date": "2026-02-18",
-      "due_date": "2026-03-20",
+      "invoice_date": "2026-06-03",
+      "due_date": "2026-07-03",
       "line_items": [
         {
           "line": 1,
@@ -1025,13 +1130,18 @@
         }
       ],
       "commodity": "cloud seats",
-      "contract_ref": "CTR-002-PRI"
+      "contract_ref": "CTR-002-PRI",
+      "po_date": "2026-05-18",
+      "gr_date": "2026-06-01",
+      "contractual_lead_time_days": 13.0,
+      "season": "Q2",
+      "volume_band": "low"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 8110.87,
-    "amount_recovered": null,
-    "cycle_time_hours": 4.06,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 7543.11,
+    "cycle_time_hours": 8.64
   },
   {
     "invoice_id": "S2P-INV-0023",
@@ -1052,8 +1162,8 @@
       "tax_regulatory_compliance": 0.904
     },
     "metadata": {
-      "invoice_date": "2026-02-20",
-      "due_date": "2026-03-22",
+      "invoice_date": "2026-06-10",
+      "due_date": "2026-07-10",
       "line_items": [
         {
           "line": 1,
@@ -1081,13 +1191,18 @@
         }
       ],
       "commodity": "managed services",
-      "contract_ref": "CTR-003-CON"
+      "contract_ref": "CTR-003-CON",
+      "po_date": "2026-05-17",
+      "gr_date": "2026-06-07",
+      "contractual_lead_time_days": 21.0,
+      "season": "Q2",
+      "volume_band": "low"
     },
     "intent": "contract_compliance_gap",
     "amount_at_risk": 4340.5,
-    "amount_recovered": null,
-    "cycle_time_hours": 37.09,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 4036.67,
+    "cycle_time_hours": 9.01
   },
   {
     "invoice_id": "S2P-INV-0024",
@@ -1108,8 +1223,8 @@
       "tax_regulatory_compliance": 0.8
     },
     "metadata": {
-      "invoice_date": "2026-02-22",
-      "due_date": "2026-03-24",
+      "invoice_date": "2026-06-17",
+      "due_date": "2026-07-17",
       "line_items": [
         {
           "line": 1,
@@ -1119,13 +1234,18 @@
         }
       ],
       "commodity": "chemicals",
-      "contract_ref": "CTR-004-QUA"
+      "contract_ref": "CTR-004-QUA",
+      "po_date": "2026-05-31",
+      "gr_date": "2026-06-13",
+      "contractual_lead_time_days": 11.0,
+      "season": "Q2",
+      "volume_band": "medium"
     },
     "intent": "invoice_match_failure",
     "amount_at_risk": 27275.81,
-    "amount_recovered": null,
-    "cycle_time_hours": 17.86,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 25366.5,
+    "cycle_time_hours": 9.38
   },
   {
     "invoice_id": "S2P-INV-0025",
@@ -1146,8 +1266,8 @@
       "tax_regulatory_compliance": 0.838
     },
     "metadata": {
-      "invoice_date": "2026-02-24",
-      "due_date": "2026-03-26",
+      "invoice_date": "2026-06-24",
+      "due_date": "2026-07-24",
       "line_items": [
         {
           "line": 1,
@@ -1163,13 +1283,18 @@
         }
       ],
       "commodity": "utility charges",
-      "contract_ref": "CTR-005-FOR"
+      "contract_ref": "CTR-005-FOR",
+      "po_date": "2026-06-08",
+      "gr_date": "2026-06-19",
+      "contractual_lead_time_days": 4.0,
+      "season": "Q2",
+      "volume_band": "high"
     },
     "intent": "format_compliance_issue",
     "amount_at_risk": 43679.15,
-    "amount_recovered": null,
-    "cycle_time_hours": 25.74,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 40621.61,
+    "cycle_time_hours": 9.75
   },
   {
     "invoice_id": "S2P-INV-0026",
@@ -1190,8 +1315,8 @@
       "tax_regulatory_compliance": 0.967
     },
     "metadata": {
-      "invoice_date": "2026-02-26",
-      "due_date": "2026-03-28",
+      "invoice_date": "2026-07-01",
+      "due_date": "2026-07-31",
       "line_items": [
         {
           "line": 1,
@@ -1213,13 +1338,18 @@
         }
       ],
       "commodity": "cloud seats",
-      "contract_ref": "CTR-006-PRI"
+      "contract_ref": "CTR-006-PRI",
+      "po_date": "2026-06-16",
+      "gr_date": "2026-06-30",
+      "contractual_lead_time_days": 14.0,
+      "season": "Q2",
+      "volume_band": "low"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 1976.74,
-    "amount_recovered": null,
-    "cycle_time_hours": 6.18,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 1838.37,
+    "cycle_time_hours": 10.12
   },
   {
     "invoice_id": "S2P-INV-0027",
@@ -1240,8 +1370,8 @@
       "tax_regulatory_compliance": 0.938
     },
     "metadata": {
-      "invoice_date": "2026-02-28",
-      "due_date": "2026-03-30",
+      "invoice_date": "2026-07-08",
+      "due_date": "2026-08-07",
       "line_items": [
         {
           "line": 1,
@@ -1269,13 +1399,18 @@
         }
       ],
       "commodity": "pallets",
-      "contract_ref": "CTR-007-QUA"
+      "contract_ref": "CTR-007-QUA",
+      "po_date": "2026-06-22",
+      "gr_date": "2026-07-06",
+      "contractual_lead_time_days": 11.0,
+      "season": "Q3",
+      "volume_band": "medium"
     },
     "intent": "invoice_match_failure",
     "amount_at_risk": 18160.44,
-    "amount_recovered": null,
-    "cycle_time_hours": 21.25,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 16889.21,
+    "cycle_time_hours": 10.49
   },
   {
     "invoice_id": "S2P-INV-0028",
@@ -1296,8 +1431,8 @@
       "tax_regulatory_compliance": 0.93
     },
     "metadata": {
-      "invoice_date": "2026-03-02",
-      "due_date": "2026-03-02",
+      "invoice_date": "2026-07-15",
+      "due_date": "2026-07-15",
       "line_items": [
         {
           "line": 1,
@@ -1307,13 +1442,18 @@
         }
       ],
       "commodity": "consulting hours",
-      "contract_ref": "CTR-008-DUP"
+      "contract_ref": "CTR-008-DUP",
+      "po_date": "2026-07-06",
+      "gr_date": "2026-07-12",
+      "contractual_lead_time_days": 6.0,
+      "season": "Q3",
+      "volume_band": "medium"
     },
     "intent": "invoice_duplicate_risk",
     "amount_at_risk": 20463.91,
-    "amount_recovered": null,
-    "cycle_time_hours": 14.59,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 19031.44,
+    "cycle_time_hours": 10.86
   },
   {
     "invoice_id": "S2P-INV-0029",
@@ -1334,8 +1474,8 @@
       "tax_regulatory_compliance": 0.94
     },
     "metadata": {
-      "invoice_date": "2026-03-04",
-      "due_date": "2026-04-03",
+      "invoice_date": "2026-07-22",
+      "due_date": "2026-08-21",
       "line_items": [
         {
           "line": 1,
@@ -1351,13 +1491,18 @@
         }
       ],
       "commodity": "steel coil",
-      "contract_ref": "CTR-009-PRI"
+      "contract_ref": "CTR-009-PRI",
+      "po_date": "2026-06-28",
+      "gr_date": "2026-07-18",
+      "contractual_lead_time_days": 14.0,
+      "season": "Q3",
+      "volume_band": "high"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 57867.41,
-    "amount_recovered": null,
-    "cycle_time_hours": 7.77,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 53816.69,
+    "cycle_time_hours": 11.23
   },
   {
     "invoice_id": "S2P-INV-0030",
@@ -1378,8 +1523,8 @@
       "tax_regulatory_compliance": 0.933
     },
     "metadata": {
-      "invoice_date": "2026-03-06",
-      "due_date": "2026-04-05",
+      "invoice_date": "2026-07-29",
+      "due_date": "2026-08-28",
       "line_items": [
         {
           "line": 1,
@@ -1401,13 +1546,18 @@
         }
       ],
       "commodity": "maintenance kits",
-      "contract_ref": "CTR-010-QUA"
+      "contract_ref": "CTR-010-QUA",
+      "po_date": "2026-07-11",
+      "gr_date": "2026-07-24",
+      "contractual_lead_time_days": 11.0,
+      "season": "Q3",
+      "volume_band": "low"
     },
     "intent": "invoice_match_failure",
     "amount_at_risk": 8056.89,
-    "amount_recovered": null,
-    "cycle_time_hours": 8.48,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 7492.91,
+    "cycle_time_hours": 11.6
   },
   {
     "invoice_id": "S2P-INV-0031",
@@ -1428,8 +1578,8 @@
       "tax_regulatory_compliance": 0.859
     },
     "metadata": {
-      "invoice_date": "2026-03-08",
-      "due_date": "2026-04-07",
+      "invoice_date": "2026-08-05",
+      "due_date": "2026-09-04",
       "line_items": [
         {
           "line": 1,
@@ -1457,13 +1607,18 @@
         }
       ],
       "commodity": "regulated reagents",
-      "contract_ref": "CTR-001-FOR"
+      "contract_ref": "CTR-001-FOR",
+      "po_date": "2026-07-26",
+      "gr_date": "2026-08-04",
+      "contractual_lead_time_days": 4.0,
+      "season": "Q3",
+      "volume_band": "medium"
     },
     "intent": "format_compliance_issue",
     "amount_at_risk": 17710.8,
-    "amount_recovered": null,
-    "cycle_time_hours": 14.02,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 16471.04,
+    "cycle_time_hours": 11.97
   },
   {
     "invoice_id": "S2P-INV-0032",
@@ -1484,8 +1639,8 @@
       "tax_regulatory_compliance": 0.806
     },
     "metadata": {
-      "invoice_date": "2026-03-10",
-      "due_date": "2026-04-09",
+      "invoice_date": "2026-08-12",
+      "due_date": "2026-09-11",
       "line_items": [
         {
           "line": 1,
@@ -1495,13 +1650,18 @@
         }
       ],
       "commodity": "resin",
-      "contract_ref": "CTR-002-PRI"
+      "contract_ref": "CTR-002-PRI",
+      "po_date": "2026-07-25",
+      "gr_date": "2026-08-10",
+      "contractual_lead_time_days": 14.0,
+      "season": "Q3",
+      "volume_band": "low"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 8471.23,
-    "amount_recovered": null,
-    "cycle_time_hours": 1.79,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 7878.24,
+    "cycle_time_hours": 12.34
   },
   {
     "invoice_id": "S2P-INV-0033",
@@ -1522,8 +1682,8 @@
       "tax_regulatory_compliance": 0.804
     },
     "metadata": {
-      "invoice_date": "2026-03-12",
-      "due_date": "2026-04-11",
+      "invoice_date": "2026-08-19",
+      "due_date": "2026-09-18",
       "line_items": [
         {
           "line": 1,
@@ -1539,13 +1699,18 @@
         }
       ],
       "commodity": "cloud seats",
-      "contract_ref": "CTR-003-PRI"
+      "contract_ref": "CTR-003-PRI",
+      "po_date": "2026-07-31",
+      "gr_date": "2026-08-16",
+      "contractual_lead_time_days": 15.0,
+      "season": "Q3",
+      "volume_band": "low"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 3414.6,
-    "amount_recovered": null,
-    "cycle_time_hours": 2.32,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 3175.58,
+    "cycle_time_hours": 12.71
   },
   {
     "invoice_id": "S2P-INV-0034",
@@ -1566,8 +1731,8 @@
       "tax_regulatory_compliance": 0.81
     },
     "metadata": {
-      "invoice_date": "2026-03-14",
-      "due_date": "2026-04-13",
+      "invoice_date": "2026-08-26",
+      "due_date": "2026-09-25",
       "line_items": [
         {
           "line": 1,
@@ -1589,13 +1754,18 @@
         }
       ],
       "commodity": "consulting hours",
-      "contract_ref": "CTR-004-DUP"
+      "contract_ref": "CTR-004-DUP",
+      "po_date": "2026-08-16",
+      "gr_date": "2026-08-22",
+      "contractual_lead_time_days": 6.0,
+      "season": "Q3",
+      "volume_band": "high"
     },
     "intent": "invoice_duplicate_risk",
     "amount_at_risk": 33320.16,
-    "amount_recovered": null,
-    "cycle_time_hours": 6.38,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 30987.75,
+    "cycle_time_hours": 13.08
   },
   {
     "invoice_id": "S2P-INV-0035",
@@ -1616,8 +1786,8 @@
       "tax_regulatory_compliance": 0.917
     },
     "metadata": {
-      "invoice_date": "2026-03-16",
-      "due_date": "2026-04-15",
+      "invoice_date": "2026-09-02",
+      "due_date": "2026-10-02",
       "line_items": [
         {
           "line": 1,
@@ -1645,13 +1815,18 @@
         }
       ],
       "commodity": "indexed metals",
-      "contract_ref": "CTR-005-CON"
+      "contract_ref": "CTR-005-CON",
+      "po_date": "2026-07-30",
+      "gr_date": "2026-08-28",
+      "contractual_lead_time_days": 21.0,
+      "season": "Q3",
+      "volume_band": "high"
     },
     "intent": "contract_compliance_gap",
     "amount_at_risk": 39191.04,
-    "amount_recovered": null,
-    "cycle_time_hours": 33.21,
-    "verified": false
+    "verified": true,
+    "amount_recovered": 36447.67,
+    "cycle_time_hours": 13.45
   },
   {
     "invoice_id": "S2P-INV-0036",
@@ -1672,8 +1847,8 @@
       "tax_regulatory_compliance": 0.596
     },
     "metadata": {
-      "invoice_date": "2026-03-18",
-      "due_date": "2026-04-17",
+      "invoice_date": "2026-09-09",
+      "due_date": "2026-10-09",
       "line_items": [
         {
           "line": 1,
@@ -1683,13 +1858,18 @@
         }
       ],
       "commodity": "indexed metals",
-      "contract_ref": "CTR-006-CON"
+      "contract_ref": "CTR-006-CON",
+      "po_date": "2026-08-16",
+      "gr_date": "2026-09-08",
+      "contractual_lead_time_days": 22.0,
+      "season": "Q3",
+      "volume_band": "low"
     },
     "intent": "contract_compliance_gap",
     "amount_at_risk": 1145.34,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 34.91,
-    "verified": false
+    "cycle_time_hours": 13.82
   },
   {
     "invoice_id": "S2P-INV-0037",
@@ -1710,8 +1890,8 @@
       "tax_regulatory_compliance": 0.702
     },
     "metadata": {
-      "invoice_date": "2026-03-20",
-      "due_date": "2026-04-19",
+      "invoice_date": "2026-09-16",
+      "due_date": "2026-10-16",
       "line_items": [
         {
           "line": 1,
@@ -1727,13 +1907,18 @@
         }
       ],
       "commodity": "regulated reagents",
-      "contract_ref": "CTR-007-FOR"
+      "contract_ref": "CTR-007-FOR",
+      "po_date": "2026-09-09",
+      "gr_date": "2026-09-14",
+      "contractual_lead_time_days": 4.0,
+      "season": "Q3",
+      "volume_band": "medium"
     },
     "intent": "format_compliance_issue",
     "amount_at_risk": 13125.43,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 22.51,
-    "verified": false
+    "cycle_time_hours": 14.19
   },
   {
     "invoice_id": "S2P-INV-0038",
@@ -1754,8 +1939,8 @@
       "tax_regulatory_compliance": 0.94
     },
     "metadata": {
-      "invoice_date": "2026-03-22",
-      "due_date": "2026-03-22",
+      "invoice_date": "2026-09-23",
+      "due_date": "2026-09-23",
       "line_items": [
         {
           "line": 1,
@@ -1777,13 +1962,18 @@
         }
       ],
       "commodity": "steel coil",
-      "contract_ref": "CTR-008-PRI"
+      "contract_ref": "CTR-008-PRI",
+      "po_date": "2026-09-05",
+      "gr_date": "2026-09-20",
+      "contractual_lead_time_days": 14.0,
+      "season": "Q3",
+      "volume_band": "medium"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 18392.05,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 4.97,
-    "verified": false
+    "cycle_time_hours": 14.56
   },
   {
     "invoice_id": "S2P-INV-0039",
@@ -1804,8 +1994,8 @@
       "tax_regulatory_compliance": 0.959
     },
     "metadata": {
-      "invoice_date": "2026-03-24",
-      "due_date": "2026-04-23",
+      "invoice_date": "2026-09-30",
+      "due_date": "2026-10-30",
       "line_items": [
         {
           "line": 1,
@@ -1833,13 +2023,18 @@
         }
       ],
       "commodity": "resin",
-      "contract_ref": "CTR-009-PRI"
+      "contract_ref": "CTR-009-PRI",
+      "po_date": "2026-09-04",
+      "gr_date": "2026-09-26",
+      "contractual_lead_time_days": 15.0,
+      "season": "Q3",
+      "volume_band": "high"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 38567.61,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 5.5,
-    "verified": false
+    "cycle_time_hours": 14.93
   },
   {
     "invoice_id": "S2P-INV-0040",
@@ -1860,8 +2055,8 @@
       "tax_regulatory_compliance": 0.832
     },
     "metadata": {
-      "invoice_date": "2026-03-26",
-      "due_date": "2026-04-25",
+      "invoice_date": "2026-10-07",
+      "due_date": "2026-11-06",
       "line_items": [
         {
           "line": 1,
@@ -1871,13 +2066,18 @@
         }
       ],
       "commodity": "resin",
-      "contract_ref": "CTR-010-PRI"
+      "contract_ref": "CTR-010-PRI",
+      "po_date": "2026-09-19",
+      "gr_date": "2026-10-02",
+      "contractual_lead_time_days": 13.0,
+      "season": "Q4",
+      "volume_band": "low"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 7908.54,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 6.03,
-    "verified": false
+    "cycle_time_hours": 15.3
   },
   {
     "invoice_id": "S2P-INV-0041",
@@ -1898,8 +2098,8 @@
       "tax_regulatory_compliance": 0.448
     },
     "metadata": {
-      "invoice_date": "2026-03-28",
-      "due_date": "2026-04-27",
+      "invoice_date": "2026-10-14",
+      "due_date": "2026-11-13",
       "line_items": [
         {
           "line": 1,
@@ -1915,13 +2115,18 @@
         }
       ],
       "commodity": "spot logistics",
-      "contract_ref": "CTR-001-CON"
+      "contract_ref": "CTR-001-CON",
+      "po_date": "2026-09-10",
+      "gr_date": "2026-10-13",
+      "contractual_lead_time_days": 21.0,
+      "season": "Q4",
+      "volume_band": "medium"
     },
     "intent": "contract_compliance_gap",
     "amount_at_risk": 14826.79,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 43.39,
-    "verified": false
+    "cycle_time_hours": 15.67
   },
   {
     "invoice_id": "S2P-INV-0042",
@@ -1942,8 +2147,8 @@
       "tax_regulatory_compliance": 0.591
     },
     "metadata": {
-      "invoice_date": "2026-03-30",
-      "due_date": "2026-04-29",
+      "invoice_date": "2026-10-21",
+      "due_date": "2026-11-20",
       "line_items": [
         {
           "line": 1,
@@ -1965,13 +2170,18 @@
         }
       ],
       "commodity": "indexed metals",
-      "contract_ref": "CTR-002-CON"
+      "contract_ref": "CTR-002-CON",
+      "po_date": "2026-09-24",
+      "gr_date": "2026-10-19",
+      "contractual_lead_time_days": 22.0,
+      "season": "Q4",
+      "volume_band": "medium"
     },
     "intent": "contract_compliance_gap",
     "amount_at_risk": 12937.95,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 45.09,
-    "verified": false
+    "cycle_time_hours": 16.04
   },
   {
     "invoice_id": "S2P-INV-0043",
@@ -1992,8 +2202,8 @@
       "tax_regulatory_compliance": 0.682
     },
     "metadata": {
-      "invoice_date": "2026-04-01",
-      "due_date": "2026-05-01",
+      "invoice_date": "2026-10-28",
+      "due_date": "2026-11-27",
       "line_items": [
         {
           "line": 1,
@@ -2021,13 +2231,18 @@
         }
       ],
       "commodity": "maintenance kits",
-      "contract_ref": "CTR-003-QUA"
+      "contract_ref": "CTR-003-QUA",
+      "po_date": "2026-10-17",
+      "gr_date": "2026-10-25",
+      "contractual_lead_time_days": 9.0,
+      "season": "Q4",
+      "volume_band": "low"
     },
     "intent": "invoice_match_failure",
     "amount_at_risk": 4601.77,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 23.19,
-    "verified": false
+    "cycle_time_hours": 16.41
   },
   {
     "invoice_id": "S2P-INV-0044",
@@ -2048,8 +2263,8 @@
       "tax_regulatory_compliance": 0.91
     },
     "metadata": {
-      "invoice_date": "2026-04-03",
-      "due_date": "2026-05-03",
+      "invoice_date": "2026-11-04",
+      "due_date": "2026-12-04",
       "line_items": [
         {
           "line": 1,
@@ -2059,13 +2274,18 @@
         }
       ],
       "commodity": "consulting hours",
-      "contract_ref": "CTR-004-DUP"
+      "contract_ref": "CTR-004-DUP",
+      "po_date": "2026-10-23",
+      "gr_date": "2026-10-31",
+      "contractual_lead_time_days": 7.0,
+      "season": "Q4",
+      "volume_band": "high"
     },
     "intent": "invoice_duplicate_risk",
     "amount_at_risk": 35522.94,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 2.14,
-    "verified": false
+    "cycle_time_hours": 16.78
   },
   {
     "invoice_id": "S2P-INV-0045",
@@ -2086,8 +2306,8 @@
       "tax_regulatory_compliance": 0.966
     },
     "metadata": {
-      "invoice_date": "2026-04-05",
-      "due_date": "2026-05-05",
+      "invoice_date": "2026-11-11",
+      "due_date": "2026-12-11",
       "line_items": [
         {
           "line": 1,
@@ -2103,13 +2323,18 @@
         }
       ],
       "commodity": "steel coil",
-      "contract_ref": "CTR-005-PRI"
+      "contract_ref": "CTR-005-PRI",
+      "po_date": "2026-10-06",
+      "gr_date": "2026-11-06",
+      "contractual_lead_time_days": 15.0,
+      "season": "Q4",
+      "volume_band": "high"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 34267.78,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 1.11,
-    "verified": false
+    "cycle_time_hours": 17.15
   },
   {
     "invoice_id": "S2P-INV-0046",
@@ -2130,8 +2355,8 @@
       "tax_regulatory_compliance": 0.608
     },
     "metadata": {
-      "invoice_date": "2026-04-07",
-      "due_date": "2026-05-07",
+      "invoice_date": "2026-11-18",
+      "due_date": "2026-12-18",
       "line_items": [
         {
           "line": 1,
@@ -2153,13 +2378,18 @@
         }
       ],
       "commodity": "regulated reagents",
-      "contract_ref": "CTR-006-FOR"
+      "contract_ref": "CTR-006-FOR",
+      "po_date": "2026-11-14",
+      "gr_date": "2026-11-17",
+      "contractual_lead_time_days": 4.0,
+      "season": "Q4",
+      "volume_band": "low"
     },
     "intent": "format_compliance_issue",
     "amount_at_risk": 2367.22,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 15.03,
-    "verified": false
+    "cycle_time_hours": 17.52
   },
   {
     "invoice_id": "S2P-INV-0047",
@@ -2180,8 +2410,8 @@
       "tax_regulatory_compliance": 0.823
     },
     "metadata": {
-      "invoice_date": "2026-04-09",
-      "due_date": "2026-05-09",
+      "invoice_date": "2026-11-25",
+      "due_date": "2026-12-25",
       "line_items": [
         {
           "line": 1,
@@ -2209,13 +2439,18 @@
         }
       ],
       "commodity": "freight surcharge",
-      "contract_ref": "CTR-007-DUP"
+      "contract_ref": "CTR-007-DUP",
+      "po_date": "2026-11-14",
+      "gr_date": "2026-11-23",
+      "contractual_lead_time_days": 7.0,
+      "season": "Q4",
+      "volume_band": "medium"
     },
     "intent": "invoice_duplicate_risk",
     "amount_at_risk": 13179.46,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 5.11,
-    "verified": false
+    "cycle_time_hours": 17.89
   },
   {
     "invoice_id": "S2P-INV-0048",
@@ -2236,8 +2471,8 @@
       "tax_regulatory_compliance": 0.952
     },
     "metadata": {
-      "invoice_date": "2026-04-11",
-      "due_date": "2026-04-11",
+      "invoice_date": "2026-12-02",
+      "due_date": "2026-12-02",
       "line_items": [
         {
           "line": 1,
@@ -2247,13 +2482,18 @@
         }
       ],
       "commodity": "steel coil",
-      "contract_ref": "CTR-008-PRI"
+      "contract_ref": "CTR-008-PRI",
+      "po_date": "2026-11-12",
+      "gr_date": "2026-11-29",
+      "contractual_lead_time_days": 15.0,
+      "season": "Q4",
+      "volume_band": "medium"
     },
     "intent": "invoice_price_variance",
     "amount_at_risk": 22720.46,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 2.7,
-    "verified": false
+    "cycle_time_hours": 18.26
   },
   {
     "invoice_id": "S2P-INV-0049",
@@ -2274,8 +2514,8 @@
       "tax_regulatory_compliance": 0.926
     },
     "metadata": {
-      "invoice_date": "2026-04-13",
-      "due_date": "2026-05-13",
+      "invoice_date": "2026-12-09",
+      "due_date": "2027-01-08",
       "line_items": [
         {
           "line": 1,
@@ -2291,13 +2531,18 @@
         }
       ],
       "commodity": "maintenance kits",
-      "contract_ref": "CTR-009-QUA"
+      "contract_ref": "CTR-009-QUA",
+      "po_date": "2026-11-16",
+      "gr_date": "2026-12-05",
+      "contractual_lead_time_days": 9.0,
+      "season": "Q4",
+      "volume_band": "high"
     },
     "intent": "invoice_match_failure",
     "amount_at_risk": 41332.77,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 13.82,
-    "verified": false
+    "cycle_time_hours": 18.63
   },
   {
     "invoice_id": "S2P-INV-0050",
@@ -2318,8 +2563,8 @@
       "tax_regulatory_compliance": 0.777
     },
     "metadata": {
-      "invoice_date": "2026-04-15",
-      "due_date": "2026-05-15",
+      "invoice_date": "2026-12-16",
+      "due_date": "2027-01-15",
       "line_items": [
         {
           "line": 1,
@@ -2341,12 +2586,17 @@
         }
       ],
       "commodity": "freight surcharge",
-      "contract_ref": "CTR-010-DUP"
+      "contract_ref": "CTR-010-DUP",
+      "po_date": "2026-12-03",
+      "gr_date": "2026-12-11",
+      "contractual_lead_time_days": 7.0,
+      "season": "Q4",
+      "volume_band": "low"
     },
     "intent": "invoice_duplicate_risk",
     "amount_at_risk": 9217.58,
+    "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 8.08,
-    "verified": false
+    "cycle_time_hours": 19.0
   }
 ]

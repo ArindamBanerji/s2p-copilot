@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Query
 
 from app.domains.s2p.factors import compute_all_factors
-from app.models.responses import CollectionResponse, FinancialImpactResponse, GenericResponse
+from app.models.responses import CollectionResponse, GenericResponse
 from app.routers.s2p_data_helpers import load_invoices
 
 router = APIRouter(prefix="/api/s2p", tags=["s2p-pvg"])
@@ -124,11 +124,6 @@ def _financial_impact_from_fixtures() -> dict[str, Any]:
         "auto_approve_savings_hours": round(auto_approved_count * 0.25, 2),
         "source": "fixture",
     }
-
-
-@router.get("/financial-impact", response_model=FinancialImpactResponse)
-def financial_impact() -> dict[str, Any]:
-    return _financial_impact_from_fixtures()
 
 
 @router.get("/pvg/variants", response_model=CollectionResponse)

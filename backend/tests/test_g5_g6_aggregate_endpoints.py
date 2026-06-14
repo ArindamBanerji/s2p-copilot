@@ -20,19 +20,21 @@ def test_financial_impact_returns_computed_fixture_totals():
     assert response.status_code == 200
     data = response.json()
     assert {
+        "total_decisions",
+        "verified_decisions",
+        "total_amount",
         "total_recovered",
         "total_at_risk",
-        "total_leakage_prevented",
+        "net_savings",
+        "recovery_rate",
+        "missing_receipts",
+        "by_supplier",
         "by_category",
-        "auto_approve_savings_hours",
-        "source",
     }.issubset(data)
-    assert data["source"] == "fixture"
-    assert data["total_at_risk"] > 0
-    assert data["total_recovered"] > 0
-    assert set(data["by_category"]) == set(S2PDomainConfig.categories)
+    assert "source" not in data
+    assert isinstance(data["by_category"], dict)
     assert all(
-        {"recovered", "at_risk", "count"}.issubset(payload)
+        {"recovered", "at_risk", "amount", "count"}.issubset(payload)
         for payload in data["by_category"].values()
     )
 

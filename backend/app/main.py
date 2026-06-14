@@ -22,15 +22,20 @@ from app.routers.s2p import (
     set_l5_dk_welford_tracker,
 )
 from app.routers.s2p_audit_export import router as s2p_audit_export_router
+from app.routers.s2p_auto_approve import router as s2p_auto_approve_router
 from app.routers.s2p_clustering import router as s2p_clustering_router
+from app.routers.centroid_router import router as s2p_centroid_router
 from app.routers.s2p_control_tower import router as s2p_control_tower_router
 from app.routers.s2p_discovery import router as s2p_discovery_router
 from app.routers.s2p_early_warning import router as s2p_early_warning_router
 from app.routers.s2p_evolution import router as s2p_evolution_router
 from app.routers.s2p_explorer import router as s2p_explorer_router
 from app.routers.s2p_evidence import router as s2p_evidence_router
+from app.routers.s2p_enrichment import router as s2p_enrichment_router
+from app.routers.financial_router import router as s2p_financial_router
 from app.routers.s2p_governance import router as s2p_governance_router
 from app.routers.s2p_insight import router as s2p_insight_router
+from app.routers.lead_time_router import router as s2p_lead_time_router
 from app.routers.s2p_novelty import router as s2p_novelty_router
 from app.routers.s2p_payment import router as s2p_payment_router
 from app.routers.s2p_performance import router as s2p_performance_router
@@ -111,16 +116,21 @@ app.include_router(
 )
 app.include_router(create_transfer_router(app.state.scorer))
 app.include_router(s2p_router)
+app.include_router(s2p_auto_approve_router)
 app.include_router(s2p_audit_export_router)
 app.include_router(s2p_evolution_router)
 app.include_router(s2p_explorer_router)
+app.include_router(s2p_centroid_router)
 app.include_router(s2p_control_tower_router)
 app.include_router(s2p_discovery_router)
 app.include_router(s2p_simulation_router)
 app.include_router(s2p_insight_router)
 app.include_router(s2p_evidence_router)
+app.include_router(s2p_enrichment_router)
 app.include_router(s2p_governance_router)
 app.include_router(s2p_performance_router)
+app.include_router(s2p_financial_router)
+app.include_router(s2p_lead_time_router)
 app.include_router(s2p_pvg_router)
 app.include_router(s2p_novelty_router)
 app.include_router(s2p_clustering_router)

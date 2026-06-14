@@ -202,8 +202,10 @@ def test_initial_centroids_anchor_cells():
 
 def test_generator_is_deterministic_against_committed_fixtures():
     module = _load_generator_module()
+    generated_invoices = module.build_invoices()
+    assert all(ENRICHED_INVOICE_FIELDS.issubset(invoice) for invoice in generated_invoices)
     assert module.SUPPLIERS == _without_fields(_load_json(SUPPLIER_PATH), ENRICHED_SUPPLIER_FIELDS)
-    assert module.build_invoices() == _without_fields(_load_json(INVOICE_PATH), ENRICHED_INVOICE_FIELDS)
+    assert generated_invoices == _load_json(INVOICE_PATH)
     assert module.build_centroids() == _load_json(CENTROID_PATH)
 
 

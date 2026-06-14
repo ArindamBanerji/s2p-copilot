@@ -267,22 +267,122 @@ def _factor_dict(category: str, action: str, index: int, rng: random.Random) -> 
     return dict(zip(FACTORS, factors))
 
 
+CONTRACTUAL_LEAD_TIME_BY_CATEGORY = {
+    "price_variance": 14,
+    "quantity_mismatch": 10,
+    "duplicate_risk": 7,
+    "contract_gap": 21,
+    "format_compliance": 5,
+}
+
+INTENT_BY_CATEGORY = {
+    "price_variance": "invoice_price_variance",
+    "quantity_mismatch": "invoice_match_failure",
+    "duplicate_risk": "invoice_duplicate_risk",
+    "contract_gap": "contract_compliance_gap",
+    "format_compliance": "format_compliance_issue",
+}
+
+SUPPLIER_LEAD_TIME_DELTA = {
+    "SUP-001": 6,
+    "SUP-002": 2,
+    "SUP-003": 0,
+    "SUP-004": 1,
+    "SUP-005": 8,
+    "SUP-006": 0,
+    "SUP-007": 2,
+    "SUP-008": 1,
+    "SUP-009": 6,
+    "SUP-010": 1,
+}
+
+Q4_DEGRADING_SUPPLIERS = {"SUP-001", "SUP-005", "SUP-009"}
+
+
+def _quarter(day: date) -> str:
+    return f"Q{((day.month - 1) // 3) + 1}"
+
+
+def _volume_band(line_items: list[dict], amount: float) -> str:
+    quantity = sum(float(item.get("quantity") or 0.0) for item in line_items)
+    if quantity >= 500 or amount >= 30000:
+        return "high"
+    if quantity >= 150 or amount >= 10000:
+        return "medium"
+    return "low"
+
+
+def _lead_time_metadata(
+    *,
+    index: int,
+    supplier_id: str,
+    category: str,
+    invoice_date: date,
+    line_items: list[dict],
+    amount: float,
+) -> dict:
+    gr_date = invoice_date - timedelta(days=1 + ((index - 1) % 5))
+    contractual = CONTRACTUAL_LEAD_TIME_BY_CATEGORY.get(category, 14) + ((index - 1) % 3 - 1)
+    contractual = max(contractual, 1)
+    actual = contractual + SUPPLIER_LEAD_TIME_DELTA.get(supplier_id, 2)
+    if _quarter(gr_date) == "Q4" and supplier_id in Q4_DEGRADING_SUPPLIERS:
+        actual += 5 + ((index - 1) % 3)
+    actual += ((index - 1) % 3) - 1
+    actual = max(actual, 0)
+    po_date = gr_date - timedelta(days=actual)
+    return {
+        "po_date": po_date.isoformat(),
+        "gr_date": gr_date.isoformat(),
+        "contractual_lead_time_days": float(contractual),
+        "season": _quarter(gr_date),
+        "volume_band": _volume_band(line_items, amount),
+    }
+
+
+def _invoice_enrichment(index: int, category: str, amount: float) -> dict:
+    verified = index <= 35
+    return {
+        "intent": INTENT_BY_CATEGORY[category],
+        "amount_at_risk": round(amount, 2),
+        "verified": verified,
+        "amount_recovered": round(amount * 0.93, 2) if verified else None,
+        "cycle_time_hours": 24.0 if index == 1 else round(0.5 + ((index * 37) % 4750) / 100.0, 2),
+    }
+
+
 def build_invoices() -> list[dict]:
     rng = random.Random(SEED)
     plan = _invoice_plan()
     rng.shuffle(plan)
     suppliers = SUPPLIERS[:]
     invoices = []
-    start_date = date(2026, 1, 5)
+    first_invoice_date = date(2026, 1, 7)
 
     for index, (category, action) in enumerate(plan, start=1):
         supplier = suppliers[(index - 1) % len(suppliers)]
         amount = round(max(250.0, rng.gauss(supplier["avg_invoice_amount"], supplier["avg_invoice_amount"] * 0.18)), 2)
-        invoice_date = start_date + timedelta(days=index * 2)
+        invoice_date = first_invoice_date + timedelta(days=(index - 1) * 7)
         due_date = invoice_date + timedelta(days=30 if supplier["payment_terms"] != "Due on receipt" else 0)
         factors = _factor_dict(category, action, index, rng)
         commodity = rng.choice(COMMODITIES[category])
         line_count = 1 + (index % 4)
+        line_items = [
+            {
+                "line": line_number,
+                "description": f"{commodity} line {line_number}",
+                "quantity": 10 + line_number * ((index % 7) + 1),
+                "unit_price": round(amount / (line_count * (10 + line_number)), 2),
+            }
+            for line_number in range(1, line_count + 1)
+        ]
+        lead_time_metadata = _lead_time_metadata(
+            index=index,
+            supplier_id=supplier["supplier_id"],
+            category=category,
+            invoice_date=invoice_date,
+            line_items=line_items,
+            amount=amount,
+        )
 
         invoices.append(
             {
@@ -298,18 +398,12 @@ def build_invoices() -> list[dict]:
                 "metadata": {
                     "invoice_date": invoice_date.isoformat(),
                     "due_date": due_date.isoformat(),
-                    "line_items": [
-                        {
-                            "line": line_number,
-                            "description": f"{commodity} line {line_number}",
-                            "quantity": 10 + line_number * ((index % 7) + 1),
-                            "unit_price": round(amount / (line_count * (10 + line_number)), 2),
-                        }
-                        for line_number in range(1, line_count + 1)
-                    ],
+                    "line_items": line_items,
                     "commodity": commodity,
                     "contract_ref": f"CTR-{supplier['supplier_id'][-3:]}-{category[:3].upper()}",
+                    **lead_time_metadata,
                 },
+                **_invoice_enrichment(index, category, amount),
             }
         )
 

@@ -1953,31 +1953,8 @@ def get_learning_gate() -> dict:
     verified_decisions = 0
     override_precision = 0.0
 
-    # Read decision counts from Neo4j (fault-tolerant)
-    try:
-        from app.db.neo4j import neo4j_client
-        with cast(Any, neo4j_client).session() as session:
-            # Verified decisions: S2PDecision nodes with outcome set
-            r = session.run(
-                "MATCH (d:S2PDecision) WHERE d.outcome IS NOT NULL "
-                "RETURN count(d) AS verified"
-            )
-            verified_decisions = int(r.single()["verified"] or 0)
-
-            # Override precision: correct overrides / total overrides
-            r2 = session.run(
-                "MATCH (d:S2PDecision) WHERE d.outcome = 'override' "
-                "RETURN count(d) AS total_overrides, "
-                "sum(CASE WHEN d.action = d.analyst_action THEN 1 ELSE 0 END) "
-                "AS correct_overrides"
-            )
-            rec = r2.single()
-            total_ov = int(rec["total_overrides"] or 0)
-            correct_ov = int(rec["correct_overrides"] or 0)
-            if total_ov > 0:
-                override_precision = correct_ov / total_ov
-    except Exception:
-        pass  # Neo4j unavailable — fall back to cold-start defaults
+    # Neo4jClient.session() is async-only; this sync endpoint keeps the existing
+    # cold-start fallback instead of calling an async context manager from sync code.
 
     gate = evaluate_s2p_learning_gate(
         verified_decisions=verified_decisions,

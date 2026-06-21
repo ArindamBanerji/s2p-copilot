@@ -7,6 +7,9 @@ from app.framework import audit
 from ci_platform.audit.evidence_ledger import LedgerEntry, OutcomeEntry
 
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
 @pytest.fixture(autouse=True)
 def clean_audit_state():
     audit._LEDGER._entries.clear()
@@ -206,7 +209,7 @@ def test_async_concurrent_write_paths_preserve_chain():
 
 
 def test_no_soc_vocabulary_in_backported_framework_files():
-    framework_dir = Path("app/framework")
+    framework_dir = BACKEND_ROOT / "app" / "framework"
     checked_files = [
         framework_dir / "audit.py",
         framework_dir / "composite_gate.py",

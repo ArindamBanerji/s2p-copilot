@@ -10,9 +10,11 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 client = TestClient(app)
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = BACKEND_ROOT.parent / "data"
 KNOWN_INVOICES = {
     invoice["invoice_id"]
-    for invoice in json.loads(Path("../data/synthetic_invoices.json").read_text(encoding="utf-8"))
+    for invoice in json.loads((DATA_DIR / "synthetic_invoices.json").read_text(encoding="utf-8"))
 }
 
 
@@ -76,9 +78,9 @@ def test_ct_priority_and_pvg_leakage_agree_on_high_variance_invoices():
 def test_no_soft_or_true_assertions_in_new_tests():
     forbidden = "or " + "True"
     for path in (
-        Path("tests/test_s2p_control_tower.py"),
-        Path("tests/test_s2p_pvg.py"),
-        Path("tests/test_s2p_suppliers.py"),
-        Path("tests/test_s2p_ct_pvg_integration.py"),
+        BACKEND_ROOT / "tests" / "test_s2p_control_tower.py",
+        BACKEND_ROOT / "tests" / "test_s2p_pvg.py",
+        BACKEND_ROOT / "tests" / "test_s2p_suppliers.py",
+        BACKEND_ROOT / "tests" / "test_s2p_ct_pvg_integration.py",
     ):
         assert forbidden not in path.read_text(encoding="utf-8")

@@ -13,6 +13,7 @@ from app.main import app
 from app.services.supplier_profile_accumulator import accumulator
 
 client = TestClient(app)
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_SUPPLIERS = json.loads(
     (Path(__file__).parent.parent / "app" / "data" / "s2p_demo_suppliers.json")
     .read_text(encoding="utf-8")
@@ -210,7 +211,7 @@ def test_profile_cross_references_invoice_fixture():
 
 
 def test_no_soc_imports_or_vocabulary_in_suppliers_router():
-    text = Path("app/routers/s2p_suppliers.py").read_text(encoding="utf-8").lower()
+    text = (BACKEND_ROOT / "app" / "routers" / "s2p_suppliers.py").read_text(encoding="utf-8").lower()
 
     for forbidden in (
         "from app.domains.soc",

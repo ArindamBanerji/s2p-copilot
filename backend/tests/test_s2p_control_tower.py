@@ -10,6 +10,7 @@ from app.domains.s2p.config import S2PDomainConfig
 from app.main import app
 
 client = TestClient(app)
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_intents_returns_expanded_s2p_intents():
@@ -157,7 +158,7 @@ def test_control_tower_does_not_call_compounding_scorer(monkeypatch):
 
 
 def test_no_soc_imports_or_vocabulary_in_control_tower_router():
-    text = Path("app/routers/s2p_control_tower.py").read_text(encoding="utf-8").lower()
+    text = (BACKEND_ROOT / "app" / "routers" / "s2p_control_tower.py").read_text(encoding="utf-8").lower()
 
     for forbidden in (
         "from app.domains.soc",

@@ -1,5 +1,8 @@
-"""
-Synthetic S2P invoice generation for v2 preview and scoring experiments.
+"""K3 demo-population fixture (Rule 67).
+
+All generated output carries provenance="sample".
+
+NEVER use in a metric, score, par, or claim (F-26).
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ class SyntheticInvoice:
     amount: float
     po_reference: str
     variance_pct: float
+    provenance: str = "sample"
     confidence: Optional[float] = None
     recommended_action: Optional[str] = None
 
@@ -161,6 +165,7 @@ class SyntheticInvoiceGenerator:
             "financial_health_trend": supplier.financial_health_trend,
             "format_compliance_pct": supplier.format_compliance_pct,
             "total_invoices_ytd": supplier.total_invoices_ytd,
+            "provenance": "sample",
         }
 
     def export_as_scoring_input(self, invoices: List[SyntheticInvoice]) -> List[Dict]:
@@ -177,6 +182,7 @@ class SyntheticInvoiceGenerator:
                 "variance_pct": invoice.variance_pct,
                 "ground_truth_action": invoice.ground_truth_action,
                 "ground_truth_action_index": invoice.ground_truth_action_index,
+                "provenance": invoice.provenance,
             }
             for invoice in invoices
         ]

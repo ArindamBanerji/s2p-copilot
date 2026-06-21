@@ -11,6 +11,7 @@ from app.main import app
 from app.routers import s2p_pvg
 
 client = TestClient(app)
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_impact_annual_target_is_680000():
@@ -128,7 +129,7 @@ def test_all_pvg_endpoints_mounted():
 
 
 def test_no_soc_imports_or_vocabulary_in_pvg_router():
-    text = Path("app/routers/s2p_pvg.py").read_text(encoding="utf-8").lower()
+    text = (BACKEND_ROOT / "app" / "routers" / "s2p_pvg.py").read_text(encoding="utf-8").lower()
 
     for forbidden in (
         "from app.domains.soc",

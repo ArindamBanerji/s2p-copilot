@@ -13,6 +13,7 @@ from app.main import app
 from app.routers import s2p_performance
 
 client = TestClient(app)
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 class FakeGraphStore:
@@ -157,7 +158,7 @@ def test_what_if_uses_canonical_theta_min_formula():
 
 
 def test_performance_uses_compute_theta_min_not_penalty_denominator():
-    source = Path("app/routers/s2p_performance.py").read_text(encoding="utf-8")
+    source = (BACKEND_ROOT / "app" / "routers" / "s2p_performance.py").read_text(encoding="utf-8")
     assert "compute_theta_min" in source
     assert "PENALTY_RATIO * new_verified" not in source
 

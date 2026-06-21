@@ -160,5 +160,6 @@
     "headline": "Auto-approve threshold moved from 0.85 to 0.91",
     "panel": "S2P evolution",
     "source": "fixture"
-  }
+  },
+  "provenance": "sample"
 }

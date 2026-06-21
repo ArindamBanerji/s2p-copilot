@@ -8,6 +8,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.routers import s2p_data_helpers
 
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
 def test_load_invoices_returns_non_empty_list():
     invoices = s2p_data_helpers.load_invoices()
 
@@ -48,11 +51,11 @@ def test_missing_supplier_file_returns_empty_list(monkeypatch, tmp_path):
 
 def test_safe_routers_no_longer_define_duplicate_loaders():
     routers = [
-        Path("app/routers/s2p_control_tower.py"),
-        Path("app/routers/s2p_evidence.py"),
-        Path("app/routers/s2p_insight.py"),
-        Path("app/routers/s2p_pvg.py"),
-        Path("app/routers/s2p_suppliers.py"),
+        BACKEND_ROOT / "app" / "routers" / "s2p_control_tower.py",
+        BACKEND_ROOT / "app" / "routers" / "s2p_evidence.py",
+        BACKEND_ROOT / "app" / "routers" / "s2p_insight.py",
+        BACKEND_ROOT / "app" / "routers" / "s2p_pvg.py",
+        BACKEND_ROOT / "app" / "routers" / "s2p_suppliers.py",
     ]
     forbidden_names = {"_load_invoices", "_load_suppliers"}
 
@@ -69,7 +72,7 @@ def test_safe_routers_no_longer_define_duplicate_loaders():
 
 
 def test_helper_contains_no_soc_vocabulary():
-    source = Path("app/routers/s2p_data_helpers.py").read_text(encoding="utf-8").lower()
+    source = (BACKEND_ROOT / "app" / "routers" / "s2p_data_helpers.py").read_text(encoding="utf-8").lower()
 
     for forbidden in ("credential_access", "lateral_movement", "malware_execution"):
         assert forbidden not in source

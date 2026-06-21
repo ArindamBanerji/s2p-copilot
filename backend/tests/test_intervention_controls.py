@@ -6,6 +6,8 @@ from app.framework.intervention_controls import (
     InterventionControls,
 )
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
 
 class FakeDb:
     def __init__(self):
@@ -125,7 +127,7 @@ def test_intervention_controls_green_unfreezes_learning():
 
 
 def test_intervention_controls_no_soc_action_vocabulary():
-    source = Path("app/framework/intervention_controls.py").read_text(encoding="utf-8")
+    source = (BACKEND_ROOT / "app" / "framework" / "intervention_controls.py").read_text(encoding="utf-8")
     forbidden = [
         "credential_access",
         "malware_execution",

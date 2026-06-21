@@ -26,6 +26,21 @@ def load_suppliers() -> list[dict[str, Any]]:
     return [supplier for supplier in data if isinstance(supplier, dict)] if isinstance(data, list) else []
 
 
+def is_sample_data(record: dict[str, Any]) -> bool:
+    """Check if a record is K3 demo-fixture data (Rule 67)."""
+    return record.get("provenance") == "sample"
+
+
+def assert_no_sample_in_metric(records: list[dict[str, Any]], metric_name: str) -> None:
+    """F-26 gate: raise if sample data feeds a computed metric."""
+    sample_count = sum(1 for record in records if is_sample_data(record))
+    if sample_count > 0:
+        raise ValueError(
+            f"F-26 VIOLATION: {sample_count}/{len(records)} records "
+            f"feeding metric '{metric_name}' have provenance='sample'."
+        )
+
+
 def find_invoice(event_id_or_invoice_id: str) -> dict[str, Any] | None:
     for invoice in load_invoices():
         if invoice.get("invoice_id") == event_id_or_invoice_id:

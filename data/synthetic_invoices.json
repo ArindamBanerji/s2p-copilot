@@ -46,7 +46,8 @@
     "amount_at_risk": 22426.73,
     "verified": true,
     "amount_recovered": 20856.86,
-    "cycle_time_hours": 24.0
+    "cycle_time_hours": 24.0,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0002",
@@ -101,7 +102,8 @@
     "amount_at_risk": 9752.58,
     "verified": true,
     "amount_recovered": 9069.9,
-    "cycle_time_hours": 1.24
+    "cycle_time_hours": 1.24,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0003",
@@ -162,7 +164,8 @@
     "amount_at_risk": 3781.7,
     "verified": true,
     "amount_recovered": 3516.98,
-    "cycle_time_hours": 1.61
+    "cycle_time_hours": 1.61,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0004",
@@ -205,7 +208,8 @@
     "amount_at_risk": 30171.46,
     "verified": true,
     "amount_recovered": 28059.46,
-    "cycle_time_hours": 1.98
+    "cycle_time_hours": 1.98,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0005",
@@ -254,7 +258,8 @@
     "amount_at_risk": 41289.58,
     "verified": true,
     "amount_recovered": 38399.31,
-    "cycle_time_hours": 2.35
+    "cycle_time_hours": 2.35,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0006",
@@ -309,7 +314,8 @@
     "amount_at_risk": 1402.74,
     "verified": true,
     "amount_recovered": 1304.55,
-    "cycle_time_hours": 2.72
+    "cycle_time_hours": 2.72,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0007",
@@ -370,7 +376,8 @@
     "amount_at_risk": 14965.97,
     "verified": true,
     "amount_recovered": 13918.35,
-    "cycle_time_hours": 3.09
+    "cycle_time_hours": 3.09,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0008",
@@ -413,7 +420,8 @@
     "amount_at_risk": 18887.12,
     "verified": true,
     "amount_recovered": 17565.02,
-    "cycle_time_hours": 3.46
+    "cycle_time_hours": 3.46,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0009",
@@ -462,7 +470,8 @@
     "amount_at_risk": 42303.0,
     "verified": true,
     "amount_recovered": 39341.79,
-    "cycle_time_hours": 3.83
+    "cycle_time_hours": 3.83,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0010",
@@ -517,7 +526,8 @@
     "amount_at_risk": 8564.69,
     "verified": true,
     "amount_recovered": 7965.16,
-    "cycle_time_hours": 4.2
+    "cycle_time_hours": 4.2,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0011",
@@ -578,7 +588,8 @@
     "amount_at_risk": 19775.3,
     "verified": true,
     "amount_recovered": 18391.03,
-    "cycle_time_hours": 4.57
+    "cycle_time_hours": 4.57,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0012",
@@ -621,7 +632,8 @@
     "amount_at_risk": 10677.15,
     "verified": true,
     "amount_recovered": 9929.75,
-    "cycle_time_hours": 4.94
+    "cycle_time_hours": 4.94,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0013",
@@ -670,7 +682,8 @@
     "amount_at_risk": 5057.38,
     "verified": true,
     "amount_recovered": 4703.36,
-    "cycle_time_hours": 5.31
+    "cycle_time_hours": 5.31,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0014",
@@ -725,7 +738,8 @@
     "amount_at_risk": 17536.79,
     "verified": true,
     "amount_recovered": 16309.21,
-    "cycle_time_hours": 5.68
+    "cycle_time_hours": 5.68,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0015",
@@ -786,7 +800,8 @@
     "amount_at_risk": 39332.42,
     "verified": true,
     "amount_recovered": 36579.15,
-    "cycle_time_hours": 6.05
+    "cycle_time_hours": 6.05,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0016",
@@ -829,7 +844,8 @@
     "amount_at_risk": 1978.95,
     "verified": true,
     "amount_recovered": 1840.42,
-    "cycle_time_hours": 6.42
+    "cycle_time_hours": 6.42,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0017",
@@ -878,7 +894,8 @@
     "amount_at_risk": 16622.98,
     "verified": true,
     "amount_recovered": 15459.37,
-    "cycle_time_hours": 6.79
+    "cycle_time_hours": 6.79,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0018",
@@ -933,7 +950,8 @@
     "amount_at_risk": 20096.36,
     "verified": true,
     "amount_recovered": 18689.61,
-    "cycle_time_hours": 7.16
+    "cycle_time_hours": 7.16,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0019",
@@ -994,7 +1012,8 @@
     "amount_at_risk": 35644.26,
     "verified": true,
     "amount_recovered": 33149.16,
-    "cycle_time_hours": 7.53
+    "cycle_time_hours": 7.53,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0020",
@@ -1037,7 +1056,8 @@
     "amount_at_risk": 7241.13,
     "verified": true,
     "amount_recovered": 6734.25,
-    "cycle_time_hours": 7.9
+    "cycle_time_hours": 7.9,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0021",
@@ -1086,7 +1106,8 @@
     "amount_at_risk": 21477.17,
     "verified": true,
     "amount_recovered": 19973.77,
-    "cycle_time_hours": 8.27
+    "cycle_time_hours": 8.27,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0022",
@@ -1141,7 +1162,8 @@
     "amount_at_risk": 8110.87,
     "verified": true,
     "amount_recovered": 7543.11,
-    "cycle_time_hours": 8.64
+    "cycle_time_hours": 8.64,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0023",
@@ -1202,7 +1224,8 @@
     "amount_at_risk": 4340.5,
     "verified": true,
     "amount_recovered": 4036.67,
-    "cycle_time_hours": 9.01
+    "cycle_time_hours": 9.01,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0024",
@@ -1245,7 +1268,8 @@
     "amount_at_risk": 27275.81,
     "verified": true,
     "amount_recovered": 25366.5,
-    "cycle_time_hours": 9.38
+    "cycle_time_hours": 9.38,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0025",
@@ -1294,7 +1318,8 @@
     "amount_at_risk": 43679.15,
     "verified": true,
     "amount_recovered": 40621.61,
-    "cycle_time_hours": 9.75
+    "cycle_time_hours": 9.75,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0026",
@@ -1349,7 +1374,8 @@
     "amount_at_risk": 1976.74,
     "verified": true,
     "amount_recovered": 1838.37,
-    "cycle_time_hours": 10.12
+    "cycle_time_hours": 10.12,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0027",
@@ -1410,7 +1436,8 @@
     "amount_at_risk": 18160.44,
     "verified": true,
     "amount_recovered": 16889.21,
-    "cycle_time_hours": 10.49
+    "cycle_time_hours": 10.49,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0028",
@@ -1453,7 +1480,8 @@
     "amount_at_risk": 20463.91,
     "verified": true,
     "amount_recovered": 19031.44,
-    "cycle_time_hours": 10.86
+    "cycle_time_hours": 10.86,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0029",
@@ -1502,7 +1530,8 @@
     "amount_at_risk": 57867.41,
     "verified": true,
     "amount_recovered": 53816.69,
-    "cycle_time_hours": 11.23
+    "cycle_time_hours": 11.23,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0030",
@@ -1557,7 +1586,8 @@
     "amount_at_risk": 8056.89,
     "verified": true,
     "amount_recovered": 7492.91,
-    "cycle_time_hours": 11.6
+    "cycle_time_hours": 11.6,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0031",
@@ -1618,7 +1648,8 @@
     "amount_at_risk": 17710.8,
     "verified": true,
     "amount_recovered": 16471.04,
-    "cycle_time_hours": 11.97
+    "cycle_time_hours": 11.97,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0032",
@@ -1661,7 +1692,8 @@
     "amount_at_risk": 8471.23,
     "verified": true,
     "amount_recovered": 7878.24,
-    "cycle_time_hours": 12.34
+    "cycle_time_hours": 12.34,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0033",
@@ -1710,7 +1742,8 @@
     "amount_at_risk": 3414.6,
     "verified": true,
     "amount_recovered": 3175.58,
-    "cycle_time_hours": 12.71
+    "cycle_time_hours": 12.71,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0034",
@@ -1765,7 +1798,8 @@
     "amount_at_risk": 33320.16,
     "verified": true,
     "amount_recovered": 30987.75,
-    "cycle_time_hours": 13.08
+    "cycle_time_hours": 13.08,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0035",
@@ -1826,7 +1860,8 @@
     "amount_at_risk": 39191.04,
     "verified": true,
     "amount_recovered": 36447.67,
-    "cycle_time_hours": 13.45
+    "cycle_time_hours": 13.45,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0036",
@@ -1869,7 +1904,8 @@
     "amount_at_risk": 1145.34,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 13.82
+    "cycle_time_hours": 13.82,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0037",
@@ -1918,7 +1954,8 @@
     "amount_at_risk": 13125.43,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 14.19
+    "cycle_time_hours": 14.19,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0038",
@@ -1973,7 +2010,8 @@
     "amount_at_risk": 18392.05,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 14.56
+    "cycle_time_hours": 14.56,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0039",
@@ -2034,7 +2072,8 @@
     "amount_at_risk": 38567.61,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 14.93
+    "cycle_time_hours": 14.93,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0040",
@@ -2077,7 +2116,8 @@
     "amount_at_risk": 7908.54,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 15.3
+    "cycle_time_hours": 15.3,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0041",
@@ -2126,7 +2166,8 @@
     "amount_at_risk": 14826.79,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 15.67
+    "cycle_time_hours": 15.67,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0042",
@@ -2181,7 +2222,8 @@
     "amount_at_risk": 12937.95,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 16.04
+    "cycle_time_hours": 16.04,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0043",
@@ -2242,7 +2284,8 @@
     "amount_at_risk": 4601.77,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 16.41
+    "cycle_time_hours": 16.41,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0044",
@@ -2285,7 +2328,8 @@
     "amount_at_risk": 35522.94,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 16.78
+    "cycle_time_hours": 16.78,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0045",
@@ -2334,7 +2378,8 @@
     "amount_at_risk": 34267.78,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 17.15
+    "cycle_time_hours": 17.15,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0046",
@@ -2389,7 +2434,8 @@
     "amount_at_risk": 2367.22,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 17.52
+    "cycle_time_hours": 17.52,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0047",
@@ -2450,7 +2496,8 @@
     "amount_at_risk": 13179.46,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 17.89
+    "cycle_time_hours": 17.89,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0048",
@@ -2493,7 +2540,8 @@
     "amount_at_risk": 22720.46,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 18.26
+    "cycle_time_hours": 18.26,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0049",
@@ -2542,7 +2590,8 @@
     "amount_at_risk": 41332.77,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 18.63
+    "cycle_time_hours": 18.63,
+    "provenance": "sample"
   },
   {
     "invoice_id": "S2P-INV-0050",
@@ -2597,6 +2646,7 @@
     "amount_at_risk": 9217.58,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 19.0
+    "cycle_time_hours": 19.0,
+    "provenance": "sample"
   }
 ]

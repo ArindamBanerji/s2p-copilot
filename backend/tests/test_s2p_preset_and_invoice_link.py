@@ -12,6 +12,7 @@ from app.main import app, build_s2p_scorer
 
 client = TestClient(app)
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 def reset_sdk_scorer():
@@ -127,8 +128,8 @@ def test_evidence_accepts_decision_id_and_enriches_invoice_metadata():
 
 def test_bridge_and_memory_index_removed_from_app_sources():
     source_paths = [
-        Path("app/routers/s2p.py"),
-        Path("app/routers/s2p_evidence.py"),
+        BACKEND_ROOT / "app" / "routers" / "s2p.py",
+        BACKEND_ROOT / "app" / "routers" / "s2p_evidence.py",
     ]
     forbidden = (
         "s2p_decision_invoice_index",

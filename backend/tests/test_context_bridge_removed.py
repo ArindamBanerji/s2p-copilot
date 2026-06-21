@@ -9,7 +9,8 @@ from app.domains.s2p.config import S2PDomainConfig
 from app.main import app, build_s2p_scorer
 
 
-ROUTER_PATH = Path("app/routers/s2p.py")
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+ROUTER_PATH = BACKEND_ROOT / "app" / "routers" / "s2p.py"
 
 
 @pytest.fixture()

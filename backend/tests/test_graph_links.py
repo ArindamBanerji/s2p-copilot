@@ -10,6 +10,9 @@ from app.main import app, build_s2p_scorer
 from app.routers import s2p
 
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
 def _reset_scorer() -> None:
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
@@ -65,7 +68,7 @@ def test_no_invoice_map_in_source():
     )
     router_sources = "".join(
         path.read_text(encoding="utf-8")
-        for path in Path("app/routers").glob("*.py")
+        for path in (BACKEND_ROOT / "app" / "routers").glob("*.py")
     )
 
     for token in forbidden:
@@ -281,7 +284,7 @@ def test_non_link_learn_errors_still_propagate():
 
 
 def test_s2p_router_links_are_advisory_source_check():
-    source = Path("app/routers/s2p.py").read_text(encoding="utf-8")
+    source = (BACKEND_ROOT / "app" / "routers" / "s2p.py").read_text(encoding="utf-8")
 
     assert "link_decision_to_entity" in source
     assert "try:" in source

@@ -3,6 +3,7 @@ tests/test_s2p_preview.py - S2P v2 preview endpoint tests.
 """
 
 import os
+import pathlib
 import sys
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ from app.main import app, build_s2p_scorer
 from app.s2p_shadow import S2PShadowConfig, S2PShadowDiagnostics, S2PShadowState
 
 client = TestClient(app)
+BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def _queue(limit: int | None = None):
@@ -270,9 +272,7 @@ def test_reset_clears_cache():
 
 
 def test_preview_module_has_no_profile_scorer_reference():
-    import pathlib
-
-    source = pathlib.Path("app/routers/s2p_preview.py").read_text(encoding="utf-8")
+    source = (BACKEND_ROOT / "app" / "routers" / "s2p_preview.py").read_text(encoding="utf-8")
     assert "ProfileScorer" not in source
 
 

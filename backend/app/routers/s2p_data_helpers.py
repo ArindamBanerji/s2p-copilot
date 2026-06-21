@@ -28,6 +28,12 @@ def load_suppliers() -> list[dict[str, Any]]:
 
 def is_sample_data(record: dict[str, Any]) -> bool:
     """Check if a record is K3 demo-fixture data (Rule 67)."""
+    if getattr(record, "provenance_tier", None) == "sample":
+        return True
+    if getattr(record, "source", None) == "sample":
+        return True
+    if not hasattr(record, "get"):
+        return False
     return record.get("provenance") == "sample"
 
 

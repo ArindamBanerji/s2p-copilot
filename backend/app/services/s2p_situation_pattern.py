@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from copilot_sdk.situation import (
     SituationContext,
@@ -134,7 +134,7 @@ def _find_decision(graph_store: Any, decision_id: Any, invoice_id: Any) -> dict[
         except Exception:
             return None
     for decision in _linked_decisions(graph_store, invoice_id):
-        return decision
+        return cast(dict[str, Any], decision)
     get_all = getattr(graph_store, "get_all_decisions", None)
     if not callable(get_all):
         return None
@@ -147,7 +147,7 @@ def _find_decision(graph_store: Any, decision_id: Any, invoice_id: Any) -> dict[
             return None
         for row in rows:
             if isinstance(row, dict) and invoice_id and _matches_invoice(row, str(invoice_id)):
-                return row
+                return cast(dict[str, Any], row)
         break
     return None
 
@@ -202,7 +202,10 @@ def _receipt_context(invoice_id: Any, decision_id: Any) -> list[dict[str, Any]]:
 
 
 def _flatten_decision(decision: dict[str, Any]) -> dict[str, Any]:
-    metadata = decision.get("metadata") if isinstance(decision.get("metadata"), dict) else {}
+    raw_metadata = decision.get("metadata")
+    metadata: dict[str, Any] = (
+        cast(dict[str, Any], raw_metadata) if isinstance(raw_metadata, dict) else {}
+    )
     return {**metadata, **decision}
 
 
@@ -272,4 +275,3 @@ def _first(source: dict[str, Any], *keys: str) -> Any:
         if value not in (None, ""):
             return value
     return None
-

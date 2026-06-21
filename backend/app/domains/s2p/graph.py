@@ -59,7 +59,7 @@ def write_s2p_decision(
             timestamp     = ts,
         )
         record = result.single()
-        return record["decision_id"]
+        return str(record["decision_id"])
 
 
 def write_s2p_outcome(

@@ -18,7 +18,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from copilot_sdk.backend.conservation_utils import compute_conservation_metrics
 from copilot_sdk.scoring.dk_persistence import (
@@ -506,7 +506,7 @@ def _persist_l5_dk_state(
     scorer = getattr(state, "scorer", None)
     if scorer is None:
         return None
-    factor_vector = _decision_factor_vector(decision)
+    factor_vector = _decision_factor_vector_for_dk(decision)
     recommended_action = _decision_recommended_action(decision)
     if factor_vector is None or recommended_action is None:
         log.warning("S2P L5 DK persistence skipped: missing decision factor/action data")
@@ -540,7 +540,7 @@ def _persist_l5_dk_state(
     return None
 
 
-def _decision_factor_vector(decision: dict[str, Any] | None) -> list[float] | None:
+def _decision_factor_vector_for_dk(decision: dict[str, Any] | None) -> list[float] | None:
     if not isinstance(decision, dict):
         return None
     value = _decision_lookup(decision, "factor_vector")
@@ -805,7 +805,12 @@ def _record_evolver_outcome_if_allowed(
 
 def _invoice_decision_metadata(invoice: dict[str, Any]) -> dict[str, Any]:
     invoice_id = str(invoice.get("invoice_id") or invoice.get("event_id") or "")
-    invoice_metadata = invoice.get("metadata") if isinstance(invoice.get("metadata"), dict) else {}
+    raw_invoice_metadata = invoice.get("metadata")
+    invoice_metadata: dict[str, Any] = (
+        cast(dict[str, Any], raw_invoice_metadata)
+        if isinstance(raw_invoice_metadata, dict)
+        else {}
+    )
     metadata = {
         "invoice_id": invoice_id,
         "source_invoice_id": invoice_id,
@@ -870,6 +875,8 @@ def _decision_confidence(decision: dict[str, Any] | None) -> float:
     value = decision.get("confidence")
     if value is None:
         value = _decision_metadata(decision).get("confidence")
+    if value is None:
+        return 0.0
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -1416,7 +1423,7 @@ def _learn_with_scorer(
             payload.setdefault("invoice_id", invoice_id)
             if not had_invoice_link:
                 _link_decision_to_invoice(scorer.graph_store, decision_id, invoice_id)
-    return payload
+    return cast(dict[str, Any], payload)
 
 
 def _ensure_outcome_decision(scorer: Any, request: "OutcomeRequest") -> None:
@@ -1778,7 +1785,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         payload,
         request.variant_id,
         reward=payload.get("reward"),
-        category=_decision_category(decision),
+        category=_decision_category(decision) or "",
         http_request=http_request,
     )
     _record_outcome_shadow(
@@ -1926,7 +1933,7 @@ def get_iks(http_request: Request) -> dict[str, Any]:
     """
     scorer = _sdk_scorer(http_request)
     trajectory = scorer.trajectory()
-    return _json_safe(_iks_from_trajectory(trajectory))
+    return cast(dict[str, Any], _json_safe(_iks_from_trajectory(trajectory)))
 
 
 @router.get("/learning-gate", response_model=LearningGateResponse)
@@ -1949,7 +1956,7 @@ def get_learning_gate() -> dict:
     # Read decision counts from Neo4j (fault-tolerant)
     try:
         from app.db.neo4j import neo4j_client
-        with neo4j_client.session() as session:
+        with cast(Any, neo4j_client).session() as session:
             # Verified decisions: S2PDecision nodes with outcome set
             r = session.run(
                 "MATCH (d:S2PDecision) WHERE d.outcome IS NOT NULL "

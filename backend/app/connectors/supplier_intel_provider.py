@@ -179,7 +179,7 @@ class SupplierIntelProvider:
 
     @staticmethod
     def _is_empty(value: Any) -> bool:
-        return value == [] or value == {}
+        return bool(value == [] or value == {})
 
     @staticmethod
     def _default_cache_dir() -> Path:

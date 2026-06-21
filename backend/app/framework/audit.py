@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
 from uuid import uuid4
 
 from ci_platform.audit.evidence_ledger import EvidenceLedger, LedgerEntry, OutcomeEntry
@@ -158,7 +158,7 @@ def record_decision(
     conservation_status: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Synchronous compatibility wrapper for async_record_decision."""
-    return _run_sync(async_record_decision(
+    return cast(Dict[str, Any], _run_sync(async_record_decision(
         alert_id=alert_id,
         situation_type=situation_type,
         action_taken=action_taken,
@@ -167,7 +167,7 @@ def record_decision(
         kernel_type=kernel_type,
         noise_zone=noise_zone,
         conservation_status=conservation_status,
-    ))
+    )))
 
 
 async def async_record_outcome(
@@ -197,11 +197,11 @@ def record_outcome(
     analyst_notes: Optional[str] = None,  # noqa: ARG001 - legacy parameter
 ) -> Optional[Dict[str, Any]]:
     """Synchronous compatibility wrapper for async_record_outcome."""
-    return _run_sync(async_record_outcome(
+    return cast(Optional[Dict[str, Any]], _run_sync(async_record_outcome(
         decision_id=decision_id,
         outcome=outcome,
         analyst_override=True,
-    ))
+    )))
 
 
 def get_decision_rows() -> List[Dict[str, Any]]:
@@ -296,7 +296,7 @@ async def async_reconstruct_from_memory() -> int:
 
 def reconstruct_from_memory() -> int:
     """Synchronous compatibility wrapper for async_reconstruct_from_memory."""
-    return _run_sync(async_reconstruct_from_memory())
+    return cast(int, _run_sync(async_reconstruct_from_memory()))
 
 
 async def async_create_epoch_archive(reason: str = "manual_snapshot") -> Dict[str, Any]:
@@ -315,7 +315,7 @@ async def async_create_epoch_archive(reason: str = "manual_snapshot") -> Dict[st
 
 def create_epoch_archive(reason: str = "manual_snapshot") -> Dict[str, Any]:
     """Synchronous compatibility wrapper for async_create_epoch_archive."""
-    return _run_sync(async_create_epoch_archive(reason))
+    return cast(Dict[str, Any], _run_sync(async_create_epoch_archive(reason)))
 
 
 def get_epoch_archives() -> List[Dict[str, Any]]:
@@ -371,7 +371,7 @@ def record_reset_marker(mode: str) -> None:
 
 def compute_hash(entry: AuditEntry) -> str:
     """Return the expected hash for an audit entry using the entry's sealed fields."""
-    return entry.compute_hash()
+    return str(entry.compute_hash())
 
 
 def _tamper_evidence(

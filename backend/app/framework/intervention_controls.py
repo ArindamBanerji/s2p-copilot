@@ -23,7 +23,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 log = logging.getLogger(__name__)
 
@@ -73,9 +73,9 @@ class ConservationStateMachine:
             raise ValueError(f"unknown protected action: {protected_action}")
         self.protected_action = protected_action
         self.penalty_ratio = float(penalty_ratio)
-        self.state = self._normalize_state(initial_state)
-        self.previous_state = None
-        self.transition_reason = "initial_state"
+        self.state: str = self._normalize_state(initial_state)
+        self.previous_state: str | None = None
+        self.transition_reason: str = "initial_state"
         self.transition_history: List[Dict[str, Any]] = []
 
     def set_state(
@@ -89,7 +89,10 @@ class ConservationStateMachine:
         previous_state = self.state
         self.previous_state = previous_state
         self.state = normalized
-        self.transition_reason = reason or self._LEARNING_DECISIONS[normalized]["reason"]
+        self.transition_reason = reason or cast(
+            str,
+            self._LEARNING_DECISIONS[normalized]["reason"],
+        )
 
         transition = {
             "previous_state": previous_state,

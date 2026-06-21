@@ -6,7 +6,7 @@ import json
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 class FDAClient:
@@ -43,7 +43,7 @@ class FDAClient:
         request = urllib.request.Request(f"{self.BASE_URL}?{query}")
         request.add_header("Accept", "application/json")
         with urllib.request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
+            return cast(dict[Any, Any], json.loads(response.read().decode("utf-8")))
 
     @classmethod
     def parse_response(cls, payload: dict[str, Any], *, limit: int = 25) -> list[dict]:

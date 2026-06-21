@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -144,7 +144,7 @@ def _classify_invoice(invoice: dict[str, Any], category_override: str | None = N
 
 
 def _classified_intent_payload(classified_intent) -> dict[str, Any]:
-    payload = classified_intent.model_dump()
+    payload = cast(dict[str, Any], classified_intent.model_dump())
     payload["intent"] = classified_intent.intent.value
     payload["category"] = classified_intent.category.value
     return payload
@@ -178,9 +178,10 @@ def _classify_from_inputs(
             **payload,
         }
     else:
-        invoice = find_invoice(invoice_id)
-        if invoice is None:
+        found_invoice = find_invoice(invoice_id)
+        if found_invoice is None:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+        invoice = found_invoice
     return _classify_invoice(invoice, category_override=category)
 
 

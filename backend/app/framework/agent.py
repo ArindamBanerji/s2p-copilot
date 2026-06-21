@@ -263,7 +263,7 @@ class SOCAgent:
         Returns dict with checks and overall pass/fail
         """
 
-        checks = []
+        checks: list[dict[str, Any]] = []
 
         # ================================================================
         # Gate 1: Faithfulness (Does reasoning match decision?)

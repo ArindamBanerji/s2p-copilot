@@ -25,7 +25,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, cast
 
 import numpy as np
 from gae.learning import LearningState, WeightUpdate, CalibrationProfile
@@ -106,7 +106,7 @@ def read_checkpoint_metadata(state_path: Path) -> dict:
     """Read the metadata field from the checkpoint. Returns {} if absent."""
     with open(state_path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
-    return data.get("metadata", {})
+    return cast(dict[Any, Any], data.get("metadata", {}))
 
 
 def save_state(

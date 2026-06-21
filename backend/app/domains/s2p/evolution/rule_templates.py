@@ -168,7 +168,11 @@ class RoutingPriorityRule:
 class EscalationTriggerAmountRule:
     name = "escalation_trigger_amount"
     success_metric_name = "high_value_capture_rate"
-    applicable_categories = ("price_variance", "contract_gap", "quantity_mismatch")
+    applicable_categories: tuple[str, ...] = (
+        "price_variance",
+        "contract_gap",
+        "quantity_mismatch",
+    )
 
     def generate_variants(self) -> list[dict[str, Any]]:
         return [
@@ -200,7 +204,11 @@ class EscalationTriggerAmountRule:
 class SupplierFlagSensitivityRule:
     name = "supplier_flag_sensitivity"
     success_metric_name = "supplier_exception_precision"
-    applicable_categories = ("duplicate_risk", "contract_gap", "price_variance")
+    applicable_categories: tuple[str, ...] = (
+        "duplicate_risk",
+        "contract_gap",
+        "price_variance",
+    )
 
     def generate_variants(self) -> list[dict[str, Any]]:
         levels = [("low", 2), ("medium", 3), ("high", 5)]

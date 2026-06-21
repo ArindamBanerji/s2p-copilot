@@ -46,11 +46,13 @@ def _is_verified(decision: Any) -> bool:
 
 
 def _receipt_key(receipt: Any) -> str | None:
-    return _get_value(receipt, "decision_id") or _get_value(receipt, "invoice_id")
+    value = _get_value(receipt, "decision_id") or _get_value(receipt, "invoice_id")
+    return str(value) if value is not None else None
 
 
 def _decision_key(decision: Any) -> str | None:
-    return _get_value(decision, "decision_id") or _get_value(decision, "invoice_id")
+    value = _get_value(decision, "decision_id") or _get_value(decision, "invoice_id")
+    return str(value) if value is not None else None
 
 
 def _bucket_add(

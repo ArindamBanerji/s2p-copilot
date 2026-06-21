@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException
 
@@ -151,7 +151,12 @@ def supplier_trends() -> dict[str, Any]:
     trends = []
     supplier_rows = []
     for profile in profiles:
-        quarterly = profile.get("quarterly_otif") if isinstance(profile.get("quarterly_otif"), dict) else {}
+        raw_quarterly = profile.get("quarterly_otif")
+        quarterly: dict[str, Any] = (
+            cast(dict[str, Any], raw_quarterly)
+            if isinstance(raw_quarterly, dict)
+            else {}
+        )
         values = [float(value) for value in quarterly.values()]
         delta = round(values[-1] - values[0], 4) if len(values) >= 2 else 0.0
         direction = "declining" if delta < -0.10 else "improving" if delta > 0.05 else "stable"

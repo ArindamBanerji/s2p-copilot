@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from copilot_sdk.situation import TraversalEdge, TraversalNode
 
@@ -96,7 +96,10 @@ class S2PContextBuilder:
             merged = dict(context)
             if invoice_id and "invoice_id" not in merged:
                 merged["invoice_id"] = invoice_id
-        metadata = merged.get("metadata") if isinstance(merged.get("metadata"), dict) else {}
+        raw_metadata = merged.get("metadata")
+        metadata: dict[str, Any] = (
+            cast(dict[str, Any], raw_metadata) if isinstance(raw_metadata, dict) else {}
+        )
         merged = {**metadata, **merged}
         if category and "category" not in merged:
             merged["category"] = category
@@ -638,7 +641,10 @@ class S2PContextBuilder:
 
 
 def _metadata_value(context: dict[str, Any], key: str) -> Any:
-    metadata = context.get("metadata") if isinstance(context.get("metadata"), dict) else {}
+    raw_metadata = context.get("metadata")
+    metadata: dict[str, Any] = (
+        cast(dict[str, Any], raw_metadata) if isinstance(raw_metadata, dict) else {}
+    )
     return context.get(key) if context.get(key) is not None else metadata.get(key)
 
 
@@ -732,7 +738,10 @@ def _decision_timestamp(decision: dict[str, Any]) -> str:
 
 
 def _flatten(decision: dict[str, Any]) -> dict[str, Any]:
-    metadata = decision.get("metadata") if isinstance(decision.get("metadata"), dict) else {}
+    raw_metadata = decision.get("metadata")
+    metadata: dict[str, Any] = (
+        cast(dict[str, Any], raw_metadata) if isinstance(raw_metadata, dict) else {}
+    )
     return {**metadata, **decision}
 
 

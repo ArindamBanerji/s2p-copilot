@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, Dict, List, Optional, Protocol, cast, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ def create_narrative_provider(provider_type: str = "template") -> NarrativeProvi
         cls = fallback
 
     logger.info("[NARRATIVE] Creating %s", cls.__name__)
-    return cls()
+    return cast(NarrativeProvider, cls())
 
 
 # ============================================================================

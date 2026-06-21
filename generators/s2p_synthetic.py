@@ -1,5 +1,9 @@
 r"""Generate deterministic S2P Phase 0 synthetic fixtures.
 
+K3 demo-population fixture (Rule 67). Generated output carries
+provenance="sample" and must not feed metric, score, par, or claim
+surfaces as substantiation (F-26).
+
 Run from the repository root:
     python generators\s2p_synthetic.py
 """
@@ -213,6 +217,8 @@ SUPPLIERS = [
         "recent_trend": "improving",
     },
 ]
+for supplier in SUPPLIERS:
+    supplier["provenance"] = "sample"
 
 COMMODITIES = {
     "price_variance": ["resin", "steel coil", "cloud seats"],
@@ -394,6 +400,7 @@ def build_invoices() -> list[dict]:
                 "currency": "USD",
                 "category": category,
                 "ground_truth_action": action,
+                "provenance": "sample",
                 "factors": factors,
                 "metadata": {
                     "invoice_date": invoice_date.isoformat(),

@@ -5,14 +5,15 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import asdict
 import hashlib
-from typing import Any
+from typing import Any, cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
 from app.models.responses import CollectionResponse, GenericResponse
 from app.routers.s2p_data_helpers import load_invoices, load_suppliers
+from app.services.supplier_intelligence import SupplierIntelligenceComposer
 from app.services.supplier_profile_accumulator import SupplierProfile, accumulator
 
 router = APIRouter(prefix="/api/s2p/suppliers", tags=["s2p-suppliers"])
@@ -125,6 +126,14 @@ def _profile_detail(profile: SupplierProfile) -> dict[str, Any]:
     }
 
 
+def _graph_store_from_request(request: Request) -> Any | None:
+    graph_store = getattr(request.app.state, "graph_store", None)
+    if graph_store is not None:
+        return graph_store
+    scorer = getattr(request.app.state, "scorer", None)
+    return getattr(scorer, "graph_store", None)
+
+
 def _cluster_name(summary: dict[str, Any]) -> str:
     if summary["otif_score"] >= 0.94 and summary["exception_rate"] <= 0.05:
         return "high_reliability"
@@ -174,7 +183,7 @@ def _pearson(xs: list[float], ys: list[float]) -> float:
     denom_y = sum((y - mean_y) ** 2 for y in ys) ** 0.5
     if denom_x == 0 or denom_y == 0:
         return 0.0
-    return max(-1.0, min(1.0, numerator / (denom_x * denom_y)))
+    return float(max(-1.0, min(1.0, numerator / (denom_x * denom_y))))
 
 
 @router.get("", response_model=CollectionResponse)
@@ -311,7 +320,12 @@ def supplier_correlations() -> dict[str, Any]:
     for supplier in suppliers:
         exception_rate = _to_float(supplier.get("exception_rate"))
         otif = _to_float(supplier.get("otif_score"))
-        quarterly = supplier.get("quarterly_otif") if isinstance(supplier.get("quarterly_otif"), dict) else {}
+        raw_quarterly = supplier.get("quarterly_otif")
+        quarterly: dict[str, Any] = (
+            cast(dict[str, Any], raw_quarterly)
+            if isinstance(raw_quarterly, dict)
+            else {}
+        )
         quarterly_values = [_to_float(value) for value in quarterly.values()]
         trend_delta = quarterly_values[-1] - quarterly_values[0] if len(quarterly_values) >= 2 else 0.0
         declining_penalty = 0.2 if trend_delta < -0.10 else 0.0
@@ -334,11 +348,16 @@ def supplier_correlations() -> dict[str, Any]:
 
 
 @router.get("/{supplier_id}/profile", response_model=GenericResponse)
-def profile(supplier_id: str) -> dict[str, Any]:
+def profile(supplier_id: str, request: Request) -> dict[str, Any]:
     supplier_profile = accumulator.get_profile(supplier_id)
     if supplier_profile is None:
         raise HTTPException(status_code=404, detail=f"Supplier {supplier_id} not found")
-    return _profile_detail(supplier_profile)
+    response = _profile_detail(supplier_profile)
+    response["intelligence"] = SupplierIntelligenceComposer(
+        graph_store=_graph_store_from_request(request),
+        accumulator=accumulator,
+    ).compose_profile(supplier_id)
+    return response
 
 
 @router.get("/{supplier_id}/history", response_model=GenericResponse)
@@ -379,13 +398,13 @@ def heatmap(supplier_id: str) -> dict[str, Any]:
         for factor in S2PDomainConfig.factors:
             factor_totals[factor] += float(factors.get(factor, 0.0))
     factor_count = max(len(invoices), 1)
-    factors = [
+    factor_rows = [
         {"factor": factor, "value": round(total / factor_count, 4)}
         for factor, total in factor_totals.items()
     ]
     return {
         "supplier_id": supplier_id,
         "categories": categories,
-        "factors": factors,
+        "factors": factor_rows,
         "invoice_count": len(invoices),
     }

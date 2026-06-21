@@ -231,7 +231,7 @@ def cycle_time() -> dict[str, Any]:
             "activities": [],
         }
 
-    shaped = [
+    shaped: list[dict[str, Any]] = [
         {
             "id": activity.get("id") or activity.get("activity_id"),
             "name": activity.get("name") or activity.get("activity"),

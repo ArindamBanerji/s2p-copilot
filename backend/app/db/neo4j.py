@@ -4,7 +4,7 @@ Handles all graph queries for the SOC Copilot Demo
 """
 import logging
 import os
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, cast
 from neo4j import AsyncGraphDatabase, AsyncDriver
 from contextlib import asynccontextmanager
 
@@ -48,13 +48,13 @@ class Neo4jClient:
         async with self.session() as session:
             result = await session.run(query, parameters or {})
             records = await result.data()
-            return records
+            return cast(List[Dict[str, Any]], records)
 
     # ========================================================================
     # Security Context Queries
     # ========================================================================
 
-    async def get_security_context(self, alert_id: str) -> Dict[str, Any]:
+    async def get_security_context(self, alert_id: str) -> Optional[Dict[str, Any]]:
         """
         Get full security context for an alert by traversing the graph.
         This is the "47 nodes consulted" query.
@@ -207,7 +207,7 @@ class Neo4jClient:
             "patterns_matched": [pattern_id] if pattern_id else [],
         })
 
-        return result[0]["decision_id"] if result else decision_id
+        return str(result[0]["decision_id"]) if result else decision_id
 
     # ========================================================================
     # Evolution Queries (THE KEY DIFFERENTIATOR)
@@ -261,7 +261,7 @@ class Neo4jClient:
             "magnitude": magnitude,
         })
 
-        return result[0]["event_id"] if result else event_id
+        return str(result[0]["event_id"]) if result else event_id
 
     async def get_recent_evolution_events(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent evolution events for display"""
@@ -283,7 +283,7 @@ class Neo4jClient:
         """Get total learned pattern count"""
         query = "MATCH (p:AttackPattern) RETURN count(p) as count"
         result = await self.run_query(query)
-        return result[0]["count"] if result else 0
+        return int(result[0]["count"]) if result else 0
 
     async def get_alert(self, alert_id: str) -> Optional[Dict[str, Any]]:
         """Get alert by ID"""

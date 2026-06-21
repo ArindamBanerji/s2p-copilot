@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from copilot_sdk.situation.templates import SafeTemplateRenderer
 
@@ -203,8 +203,14 @@ class S2PEvidenceEngine:
 
 
 def evidence_context_from_record(record: dict[str, Any]) -> dict[str, Any]:
-    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-    factors = record.get("factors") if isinstance(record.get("factors"), dict) else {}
+    raw_metadata = record.get("metadata")
+    metadata: dict[str, Any] = (
+        cast(dict[str, Any], raw_metadata) if isinstance(raw_metadata, dict) else {}
+    )
+    raw_factors = record.get("factors")
+    factors: dict[str, Any] = (
+        cast(dict[str, Any], raw_factors) if isinstance(raw_factors, dict) else {}
+    )
     context = {**metadata, **{key: value for key, value in record.items() if value is not None}}
     context["factors"] = dict(factors)
     invoice_id = context.get("invoice_id") or context.get("event_id") or context.get("entity_id") or "unknown"

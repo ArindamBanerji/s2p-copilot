@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 TRAILING_WINDOW = 200
@@ -106,7 +106,7 @@ class SupplierProfileAccumulator:
         if not events:
             return _copy_profile(fixture) if fixture is not None else None
         if len(events) < COMPUTED_THRESHOLD and fixture is not None:
-            profile = _copy_profile(fixture)
+            profile = cast(SupplierProfile, _copy_profile(fixture))
             profile.invoice_count = fixture.invoice_count + len(events)
             profile.last_invoice_date = _latest_invoice_date(events)
             profile.last_updated = _latest_timestamp(events)
@@ -346,7 +346,11 @@ def _parse_date(value: str | None) -> date | None:
 
 
 def _latest_invoice_date(events: list[SupplierEvent]) -> str | None:
-    dates = [event.invoice_date for event in events if _parse_date(event.invoice_date) is not None]
+    dates = [
+        event.invoice_date
+        for event in events
+        if event.invoice_date is not None and _parse_date(event.invoice_date) is not None
+    ]
     return max(dates) if dates else None
 
 

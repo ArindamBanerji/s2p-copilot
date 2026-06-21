@@ -110,7 +110,11 @@ def _process_activities(total_hours: float) -> list[dict[str, Any]]:
 
 
 def _process_bottleneck(invoice: dict[str, Any], activities: list[dict[str, Any]]) -> dict[str, Any]:
-    bottleneck = max(activities, key=lambda item: float(item.get("duration_hours") or 0.0), default={})
+    bottleneck: dict[str, Any] = max(
+        activities,
+        key=lambda item: float(item.get("duration_hours") or 0.0),
+        default={},
+    )
     category = str(invoice.get("category") or "")
     return {
         "activity": bottleneck.get("activity"),

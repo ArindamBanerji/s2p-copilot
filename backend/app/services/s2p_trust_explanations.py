@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, overload
 
 from app.domains.s2p.config import S2PDomainConfig
 
@@ -222,6 +222,16 @@ def _summary(
     if trust_available:
         return f"Top trust-weighted contributors: {names}."
     return f"{learning_message} Largest neutral-distance factors: {names}."
+
+
+@overload
+def _safe_float(value: Any) -> float | None:
+    ...
+
+
+@overload
+def _safe_float(value: Any, default: float) -> float:
+    ...
 
 
 def _safe_float(value: Any, default: float | None = None) -> float | None:

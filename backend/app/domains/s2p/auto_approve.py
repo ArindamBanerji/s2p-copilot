@@ -95,7 +95,7 @@ def _initial_category_stats() -> dict[str, dict[str, int | float]]:
     }
 
 
-_stats = {
+_stats: dict[str, Any] = {
     "total_auto_approved": 0,
     "total_spot_checked": 0,
     "spot_check_correct": 0,

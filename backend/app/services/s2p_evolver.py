@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 from copilot_sdk.evolution import PromptVariantEvolver, VariantSpec
 
@@ -63,7 +63,7 @@ def record_triage_outcome(
 
 def check_promotion() -> dict | None:
     """Promote a qualifying S2P shadow variant, if one exists."""
-    return _s2p_evolver.check_for_promotion()
+    return cast(dict[Any, Any] | None, _s2p_evolver.check_for_promotion())
 
 
 def get_evolution_summary() -> dict[str, Any]:

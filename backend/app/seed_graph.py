@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from app.domains.s2p.config import S2P_CATEGORIES, S2P_FACTORS
 
@@ -165,7 +165,14 @@ def seed_s2p_graph(seed: int = 42) -> tuple[list[dict[str, Any]], list[dict[str,
         supplier_id = str(invoice.get("supplier_id") or "")
         po_number = str(invoice.get("po_number") or f"po-{invoice_id}")
         category = str(invoice.get("category") or S2P_CATEGORIES[index % len(S2P_CATEGORIES)])
-        factors = invoice.get("factors") if isinstance(invoice.get("factors"), dict) else {}
+        raw_factors = invoice.get("factors")
+        factors: dict[str, Any] = (
+            cast(dict[str, Any], raw_factors) if isinstance(raw_factors, dict) else {}
+        )
+        raw_metadata = invoice.get("metadata")
+        metadata: dict[str, Any] = (
+            cast(dict[str, Any], raw_metadata) if isinstance(raw_metadata, dict) else {}
+        )
 
         decision_id = _add_node(
             nodes,
@@ -178,7 +185,7 @@ def seed_s2p_graph(seed: int = 42) -> tuple[list[dict[str, Any]], list[dict[str,
                 "category": category,
                 "recommended_action": invoice.get("ground_truth_action"),
                 "confidence": max((float(value) for value in factors.values() if isinstance(value, (int, float))), default=0.0),
-                "created_at": (invoice.get("metadata") or {}).get("invoice_date"),
+                "created_at": metadata.get("invoice_date"),
             },
         )
         invoice_node_id = _add_node(

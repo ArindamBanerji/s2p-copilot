@@ -7,7 +7,7 @@ import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 class SECClient:
@@ -45,7 +45,7 @@ class SECClient:
         request.add_header("User-Agent", self._user_agent)
         request.add_header("Accept", "application/json")
         with urllib.request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
+            return cast(dict[Any, Any], json.loads(response.read().decode("utf-8")))
 
     def _respect_rate_limit(self) -> None:
         elapsed = time.time() - self._last_request_at

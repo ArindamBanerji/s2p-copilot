@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, cast
 
 from fastapi import APIRouter, Body, HTTPException, Request
 
@@ -27,7 +27,7 @@ def create_s2p_evolution_router(
         current = getattr(state, "s2p_evolution", None)
         if current is None:
             raise HTTPException(status_code=500, detail="S2P evolution service is not configured")
-        return current
+        return cast(S2PEvolutionService, current)
 
     @router.get("/rules", response_model=GenericResponse)
     def rules(request: Request) -> dict:

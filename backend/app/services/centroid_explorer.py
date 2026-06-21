@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import math
-from typing import Any
+from typing import Any, cast
 
 from app.domains.s2p.config import S2PDomainConfig
 
@@ -496,7 +496,10 @@ def _summary(
 
 def _supplier_id(decision: dict[str, Any]) -> str:
     metadata = _metadata(decision)
-    factors = decision.get("factors") if isinstance(decision.get("factors"), dict) else {}
+    raw_factors = decision.get("factors")
+    factors: dict[str, Any] = (
+        cast(dict[str, Any], raw_factors) if isinstance(raw_factors, dict) else {}
+    )
     for key in ("supplier_id", "supplierId", "vendor_id"):
         value = metadata.get(key) or factors.get(key) or decision.get(key)
         if value:
@@ -506,7 +509,7 @@ def _supplier_id(decision: dict[str, Any]) -> str:
 
 def _metadata(decision: dict[str, Any]) -> dict[str, Any]:
     metadata = decision.get("metadata")
-    return metadata if isinstance(metadata, dict) else {}
+    return cast(dict[str, Any], metadata) if isinstance(metadata, dict) else {}
 
 
 def _serialize_provenanced(value: Any) -> dict[str, Any]:
@@ -552,4 +555,3 @@ def _direction(factor_value: float, centroid_value: float) -> str:
 
 def _rounded(value: float | None) -> float:
     return round(float(value or 0.0), 6)
-

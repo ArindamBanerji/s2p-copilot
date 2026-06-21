@@ -138,7 +138,7 @@ def compliance_gaps() -> dict[str, Any]:
 def conservation_proof(request: Request) -> dict[str, Any]:
     snapshot = _safe_conservation_snapshot(request)
     receipts = get_receipt_store().get_chain(limit=10000)
-    transitions = Counter()
+    transitions: Counter[str] = Counter()
     for receipt in receipts:
         before = _receipt_conservation_field(receipt, "before") or "UNKNOWN"
         after = _receipt_conservation_field(receipt, "after") or "UNKNOWN"
@@ -215,6 +215,8 @@ def _extract_nested_float(supplier: dict[str, Any], field: str) -> float:
                     return 0.0
         return 0.0
     try:
+        if value is None:
+            return 0.0
         return float(value)
     except (TypeError, ValueError):
         return 0.0
@@ -354,7 +356,7 @@ def rationalization_overlap() -> dict[str, Any]:
         region = _supplier_region(supplier)
         by_region[region].append(by_id.get(supplier.get("supplier_id"), _classify_supplier(supplier)))
 
-    groups = [
+    groups: list[dict[str, Any]] = [
         {
             "overlap_key": region,
             "basis": "region",

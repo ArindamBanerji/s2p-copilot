@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 import logging
 import re
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 
 from app.domains.s2p.config import S2PDomainConfig
 
@@ -36,6 +36,17 @@ class S2PEvent:
     payment_terms_impact: Optional[float] = None
     commodity_index_correlation: Optional[float] = None
     tax_regulatory_compliance: Optional[float] = None
+
+
+class S2PFactorComputer(Protocol):
+    name: str
+
+    def compute(
+        self,
+        invoice: dict[str, Any] | S2PEvent,
+        context: dict[str, Any] | list[dict[str, Any]] | None = None,
+    ) -> float:
+        ...
 
 
 def _as_invoice(invoice: dict[str, Any] | S2PEvent) -> dict[str, Any]:
@@ -290,7 +301,7 @@ class TaxRegulatoryCompliance:
         return _fallback(invoice, self.name, 0.9)
 
 
-ALL_FACTORS = [
+ALL_FACTORS: list[S2PFactorComputer] = [
     MatchStatus(),
     AmountVarianceRatio(),
     DuplicateScore(),

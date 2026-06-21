@@ -229,7 +229,7 @@ class S2PSupplierEnrichmentService:
         by_supplier: dict[str, dict[str, ProvenancedValue]] = defaultdict(dict)
         for record in self.list_suppliers():
             by_supplier[str(record.entity_id)][str(record.metric_name)] = record.value
-        rows = [
+        rows: list[dict[str, Any]] = [
             {"supplier_id": supplier_id, "metrics": self.serialize_values(metrics)}
             for supplier_id, metrics in by_supplier.items()
         ]

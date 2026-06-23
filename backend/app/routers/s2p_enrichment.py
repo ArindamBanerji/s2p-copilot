@@ -22,6 +22,7 @@ class EnrichedSupplierResponse(BaseModel):
     supplier_id: str
     namespace: str
     metrics: dict[str, dict[str, Any]]
+    enrichment_shown: bool = True
 
 
 class EnrichmentSummaryResponse(BaseModel):
@@ -81,6 +82,7 @@ def enrichment_supplier(request: Request, supplier_id: str) -> EnrichedSupplierR
         supplier_id=supplier_id,
         namespace=NAMESPACE,
         metrics=service.serialize_values(metrics),
+        enrichment_shown=True,
     )
 
 

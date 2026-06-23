@@ -7,11 +7,11 @@ class FrozenROICalculator:
 
     Three value drivers, all from consistency alone:
     1. Time saved: analyst doesn't build context from scratch
-    2. Consistency: same alert → same recommendation → no duplicated effort
+    2. Consistency: same alert -> same recommendation -> no duplicated effort
     3. Coverage: 24/7 triage without 24/7 staffing
 
     Does NOT use $127/alert (that includes compounding value).
-    Uses: 44 min baseline triage time × volume × analyst cost.
+    Uses: 44 min baseline triage time x volume x analyst cost.
 
     Source: Three-judge consensus (Opus caught the $127 error).
     """

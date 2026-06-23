@@ -1,8 +1,8 @@
 """
-ols_status.py — OLS (Override Lift Score) Dashboard service (L-09).
+ols_status.py -- OLS (Override Lift Score) Dashboard service (L-09).
 
 Uses GAE 0.7.18 OLSMonitor (CUSUM, plateau-snapshot baseline).
-V-MV-CONSERVATION v2: OLS naturally declines during learning — this is
+V-MV-CONSERVATION v2: OLS naturally declines during learning -- this is
 expected, not degradation. OLSMonitor excludes pre-plateau drift.
 
 ACM (Analyst Competency Metric) activates only after analyst reaches
@@ -25,7 +25,7 @@ def get_ols_status(
     Parameters
     ----------
     ols_history          : list of float OLS values (one per decision)
-    warm_start_active    : True → system is in warm-start; monitoring blocked
+    warm_start_active    : True -> system is in warm-start; monitoring blocked
     analyst_overrides    : {analyst_id: override_count}
     qualification_threshold : minimum overrides before ACM activates
 
@@ -40,7 +40,7 @@ def get_ols_status(
         alarm            : bool
         baseline_frozen  : bool
         qualified_analysts : int (analysts with >= qualification_threshold overrides)
-        acm_active       : bool (True when ≥1 qualified analyst present)
+        acm_active       : bool (True when >=1 qualified analyst present)
         message          : str (human-readable summary)
     """
     # ── Warm-start block ────────────────────────────────────────────────────
@@ -56,10 +56,10 @@ def get_ols_status(
             "qualified_analysts": 0,
             "acm_active": False,
             "message": (
-                "Warm-start active — OLS monitoring blocked until "
+                "Warm-start active -- OLS monitoring blocked until "
                 "sufficient decisions accumulate."
                 if warm_start_active
-                else "Insufficient history — need ≥2 OLS observations."
+                else "Insufficient history -- need >=2 OLS observations."
             ),
         }
 

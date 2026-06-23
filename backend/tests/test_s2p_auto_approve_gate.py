@@ -284,7 +284,15 @@ def test_conservation_amber_blocks(monkeypatch):
 def test_conservation_green_required(monkeypatch):
     monkeypatch.setattr(p40_router, "_current_conservation_status", lambda _request: "GREEN")
     app.state.graph_store = FakeGraphStore(_verified_rows())
-    client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 1})
+    client.post(
+        "/api/s2p/auto-approve/enable",
+        json={
+            "mode": "shadow",
+            "initial_threshold": 0.95,
+            "min_verified_decisions": 1,
+            "spot_check_rate": 0.0,
+        },
+    )
 
     response = client.post(
         "/api/s2p/auto-approve/evaluate",

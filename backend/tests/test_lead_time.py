@@ -296,6 +296,15 @@ def test_summary_endpoint():
     assert data["total_samples"] > 0
 
 
+def test_lead_time_response_has_provenance():
+    response = client.get("/api/s2p/lead-time/summary")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provenance"] == "sample"
+    assert data["source"] == "synthetic_invoices.json"
+
+
 def test_summary_endpoint_supplier_filter():
     response = client.get("/api/s2p/lead-time/summary", params={"supplier_id": "SUP-001"})
 
@@ -310,6 +319,9 @@ def test_suppliers_endpoint():
     data = response.json()
     assert isinstance(data["suppliers"], list)
     assert data["total_suppliers"] == len(data["suppliers"])
+    assert data["provenance"] == "sample"
+    assert data["source"] == "synthetic_invoices.json"
+    assert all(row["provenance"] == "sample" for row in data["suppliers"])
 
 
 def test_supplier_endpoint():
@@ -319,6 +331,8 @@ def test_supplier_endpoint():
     data = response.json()
     assert data["supplier_id"] == "SUP-001"
     assert isinstance(data["stats"], list)
+    assert data["provenance"] == "sample"
+    assert data["source"] == "synthetic_invoices.json"
 
 
 def test_supplier_endpoint_unknown_supplier_404():
@@ -345,6 +359,8 @@ def test_alerts_endpoint():
     data = response.json()
     assert isinstance(data["alerts"], list)
     assert data["total_alerts"] == len(data["alerts"])
+    assert data["provenance"] == "sample"
+    assert data["source"] == "synthetic_invoices.json"
 
 
 def test_alerts_tolerance_param():

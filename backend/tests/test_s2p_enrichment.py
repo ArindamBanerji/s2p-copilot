@@ -4,6 +4,7 @@ from copy import deepcopy
 
 from fastapi.testclient import TestClient
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
+from copilot_sdk.graph.enrichment import ProvenancedValue
 
 from app.main import app
 from app.services.s2p_context_builder import S2PContextBuilder
@@ -12,6 +13,7 @@ from app.services.s2p_enrichment import (
     ENTITY_TYPE,
     NAMESPACE,
     S2PSupplierEnrichmentService,
+    serialize_provenanced_value,
 )
 
 
@@ -209,11 +211,43 @@ def test_fixture_supplier_fields_are_context_integration_pending():
     assert metrics["otif_score"].measured is False
 
 
+def test_otif_response_has_provenance():
+    metrics, _source_set = _service().compute_supplier_metrics("SUP-001")
+    payload = S2PSupplierEnrichmentService.serialize_values(metrics)
+
+    assert payload["otif_score"]["provenance"] == "sample"
+    assert payload["otif_score"]["source"] == "fixture"
+
+
+def test_live_connector_provenance_is_scraped():
+    payload = serialize_provenanced_value(
+        ProvenancedValue(
+            value=0.97,
+            source="supplier_connector",
+            provenance_tier="scraped_external",
+            provenance_label="live supplier connector",
+            measured=True,
+            verified=False,
+        )
+    )
+
+    assert payload["provenance"] == "scraped_external"
+    assert payload["source"] == "supplier_connector"
+
+
 def test_lead_time_fixture_data_has_context_provenance():
     metrics, _source_set = _service().compute_supplier_metrics("SUP-001")
 
     assert metrics["avg_lead_time_days"].source == "fixture"
     assert metrics["avg_lead_time_days"].measured is False
+
+
+def test_enrichment_lead_time_response_has_provenance():
+    metrics, _source_set = _service().compute_supplier_metrics("SUP-001")
+    payload = S2PSupplierEnrichmentService.serialize_values(metrics)
+
+    assert payload["avg_lead_time_days"]["provenance"] == "sample"
+    assert payload["avg_lead_time_days"]["source"] == "fixture"
 
 
 def test_unavailable_metrics_are_honest():

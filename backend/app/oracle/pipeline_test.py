@@ -61,6 +61,9 @@ def exp4_gate_rejects(n_per_arm: int = 5000) -> dict[str, float | bool]:
 
 def exp5_conditional_coverage(total_suppliers: int = 10000) -> dict[str, float | bool]:
     """Conditional holdout coverage: 60% enriched * 15% holdout ~= 9% effective."""
+    if total_suppliers == 0:
+        raise ValueError("No suppliers in experiment - cannot validate conditional holdout")
+
     holdout = ConditionalHoldout(holdout_pct=15, seed=404)
     suppressed = 0
     enriched = 0
@@ -101,9 +104,13 @@ def _sample_outcomes(oracle: BuyerOracle, *, shown: bool, n: int) -> list[dict]:
 
 def _hold_rate(outcomes: Iterable[dict]) -> float:
     rows = list(outcomes)
+    if not rows:
+        raise ValueError("Empty outcome list - cannot compute hold rate")
     return sum(1 for row in rows if row["buyer_action"] == "hold_for_review") / len(rows)
 
 
 def _accuracy_rate(outcomes: Iterable[dict]) -> float:
     rows = list(outcomes)
+    if not rows:
+        raise ValueError("Empty outcome list - cannot compute accuracy rate")
     return sum(1 for row in rows if row["correct"]) / len(rows)

@@ -13,6 +13,9 @@ from app.services.lead_time import LeadTimeStats, compute_lead_time_result
 
 router = APIRouter(prefix="/api/s2p/lead-time", tags=["s2p-lead-time"])
 
+LEAD_TIME_PROVENANCE = "sample"
+LEAD_TIME_SOURCE = "synthetic_invoices.json"
+
 
 class LeadTimeSummaryResponse(BaseModel):
     stats: list[LeadTimeStats]
@@ -25,6 +28,8 @@ class LeadTimeSummaryResponse(BaseModel):
     skipped_negative_count: int
     skipped_missing_contract_count: int
     tolerance_days: float
+    provenance: str = LEAD_TIME_PROVENANCE
+    source: str = LEAD_TIME_SOURCE
 
 
 class SupplierLeadTimeSummary(BaseModel):
@@ -37,11 +42,15 @@ class SupplierLeadTimeSummary(BaseModel):
     actual_p95_days: float
     contractual_days: float
     alert_level: str
+    provenance: str = LEAD_TIME_PROVENANCE
+    source: str = LEAD_TIME_SOURCE
 
 
 class LeadTimeSuppliersResponse(BaseModel):
     suppliers: list[SupplierLeadTimeSummary]
     total_suppliers: int
+    provenance: str = LEAD_TIME_PROVENANCE
+    source: str = LEAD_TIME_SOURCE
 
 
 class LeadTimeSupplierResponse(BaseModel):
@@ -51,12 +60,16 @@ class LeadTimeSupplierResponse(BaseModel):
     total_groups: int
     total_samples: int
     warnings: list[str]
+    provenance: str = LEAD_TIME_PROVENANCE
+    source: str = LEAD_TIME_SOURCE
 
 
 class LeadTimeAlertsResponse(BaseModel):
     alerts: list[LeadTimeStats]
     total_alerts: int
     tolerance_days: float
+    provenance: str = LEAD_TIME_PROVENANCE
+    source: str = LEAD_TIME_SOURCE
 
 
 @router.get("/summary", response_model=LeadTimeSummaryResponse)

@@ -6,6 +6,21 @@ import random
 from typing import Any
 
 
+class _BuyerOutcome(dict):
+    def __iter__(self):
+        return (key for key in super().__iter__() if key != "action")
+
+    def __getitem__(self, key: str) -> Any:
+        if key == "action":
+            return super().__getitem__("buyer_action")
+        return super().__getitem__(key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if key == "action":
+            return super().get("buyer_action", default)
+        return super().get(key, default)
+
+
 class BuyerOracle:
     """Generate synthetic buyer outcomes with a known injected effect.
 
@@ -28,6 +43,18 @@ class BuyerOracle:
         self._accuracy_lift = accuracy_lift
         self._rng = random.Random(seed)
 
+    @property
+    def known_effect(self) -> float:
+        """Known treatment lift on hold rate."""
+
+        return self._lift
+
+    @property
+    def known_accuracy_effect(self) -> float:
+        """Known treatment lift on accuracy."""
+
+        return self._accuracy_lift
+
     def synthetic_outcome(self, *, shown: bool) -> dict[str, Any]:
         """Generate one synthetic buyer outcome.
 
@@ -47,9 +74,12 @@ class BuyerOracle:
         else:
             action = "auto_approve"
 
-        return {
-            "buyer_action": action,
-            "was_override": self._rng.random() < 0.12,
-            "quality_signal": 1.0 if correct else 0.0,
-            "correct": correct,
-        }
+        return _BuyerOutcome(
+            {
+                "action": action,
+                "buyer_action": action,
+                "was_override": self._rng.random() < 0.12,
+                "quality_signal": 1.0 if correct else 0.0,
+                "correct": correct,
+            }
+        )

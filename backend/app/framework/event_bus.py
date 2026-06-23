@@ -1,10 +1,10 @@
 """
-Lightweight event bus for SOC Copilot (v4.1 — replaced by ci-platform at v4.5).
+Lightweight event bus for SOC Copilot (v4.1 -- replaced by ci-platform at v4.5).
 
 Event types are frozen dataclasses so they are immutable and hashable.
 Handlers registered with subscribe() are called in registration order.
 
-Reference: docs/soc_copilot_design_v1.md §6.3.
+Reference: docs/soc_copilot_design_v1.md Sec.6.3.
 """
 
 from __future__ import annotations
@@ -26,12 +26,12 @@ class DecisionMade:
     Emitted after a Decision node is written to the graph.
     Channel A: Decision nodes accumulate in the graph.
 
-    Reference: docs/soc_copilot_design_v1.md §6.3 (event emission pattern).
+    Reference: docs/soc_copilot_design_v1.md Sec.6.3 (event emission pattern).
     """
     alert_id: str
     action: str
     confidence: float
-    factor_vector: tuple  # immutable — use tuple, not list
+    factor_vector: tuple  # immutable -- use tuple, not list
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,7 @@ class OutcomeVerified:
     Emitted after a Decision node is marked correct/incorrect.
     Channel B: Outcome markings accumulate in the graph.
 
-    Reference: docs/soc_copilot_design_v1.md §6.3.
+    Reference: docs/soc_copilot_design_v1.md Sec.6.3.
     """
     alert_id: str
     decision_id: str
@@ -54,10 +54,10 @@ class GraphMutated:
     Emitted for every graph write (decision or outcome).
     Provides a single audit channel for all graph state changes.
 
-    Reference: docs/soc_copilot_design_v1.md §6.3.
+    Reference: docs/soc_copilot_design_v1.md Sec.6.3.
     """
     mutation_type: str          # "decision" | "outcome"
-    affected_entities: tuple    # immutable — use tuple, not list
+    affected_entities: tuple    # immutable -- use tuple, not list
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ class EventBus:
         if event_type not in self._handlers:
             self._handlers[event_type] = []
         self._handlers[event_type].append(handler)
-        log.debug("EventBus.subscribe: %s → %s", event_type.__name__, handler.__name__)
+        log.debug("EventBus.subscribe: %s -> %s", event_type.__name__, handler.__name__)
 
     async def emit(self, event: Any) -> None:
         """
@@ -104,7 +104,7 @@ class EventBus:
         """
         event_type = type(event)
         handlers = self._handlers.get(event_type, [])
-        log.debug("EventBus.emit: %s → %d handler(s)", event_type.__name__, len(handlers))
+        log.debug("EventBus.emit: %s -> %d handler(s)", event_type.__name__, len(handlers))
         for handler in handlers:
             try:
                 await handler(event)

@@ -26,6 +26,7 @@ from app.routers.s2p_auto_approve import router as s2p_auto_approve_router
 from app.routers.s2p_clustering import router as s2p_clustering_router
 from app.routers.centroid_router import router as s2p_centroid_router
 from app.routers.s2p_control_tower import router as s2p_control_tower_router
+from app.routers.cohort_status_router import create_cohort_status_router
 from app.routers.s2p_discovery import router as s2p_discovery_router
 from app.routers.s2p_early_warning import router as s2p_early_warning_router
 from app.routers.s2p_evolution import router as s2p_evolution_router
@@ -138,6 +139,7 @@ app.include_router(s2p_early_warning_router)
 app.include_router(s2p_payment_router)
 app.include_router(s2p_suppliers_router)
 app.include_router(s2p_preview_router)
+app.include_router(create_cohort_status_router(lambda: app.state.graph_store))
 app.include_router(s2p_graph_status_router)
 
 

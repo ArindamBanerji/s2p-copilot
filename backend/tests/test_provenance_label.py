@@ -71,6 +71,18 @@ def test_load_invoices_preserves_provenance():
     assert all(invoice.get("provenance") == "sample" for invoice in invoices)
 
 
+def test_fixture_provenance_is_sample():
+    fixture_paths = [
+        INVOICE_PATH,
+        SUPPLIER_PATH,
+        APP_SUPPLIER_PATH,
+    ]
+    for path in fixture_paths:
+        rows = _read_json(path)
+        assert rows, f"{path.name} must not be empty"
+        assert all(row.get("provenance") == "sample" for row in rows), path.name
+
+
 def test_is_sample_data():
     assert is_sample_data({"provenance": "sample"}) is True
     assert is_sample_data({"provenance": "scraped_external"}) is False

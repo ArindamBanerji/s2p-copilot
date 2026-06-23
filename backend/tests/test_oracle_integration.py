@@ -16,12 +16,8 @@ from app.oracle.pipeline_test import _sample_outcomes, run_all_experiments
 
 def test_buyer_oracle_satisfies_sdk_protocol():
     oracle = BuyerOracle()
-    if not isinstance(oracle, Oracle):
-        pytest.xfail(
-            "DRIFT: BuyerOracle has synthetic_outcome but does not expose "
-            "known_effect/known_accuracy_effect required by the SDK Oracle protocol."
-        )
 
+    assert isinstance(oracle, Oracle), "BuyerOracle must satisfy SDK Oracle protocol"
     assert oracle.known_effect == pytest.approx(0.08)
     assert oracle.known_accuracy_effect == pytest.approx(0.05)
 

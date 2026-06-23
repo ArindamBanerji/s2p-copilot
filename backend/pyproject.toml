@@ -1,0 +1,6 @@
+[tool.mypy]
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+exclude = ["tests/", "build/", "dist/"]
+disable_error_code = ["annotation-unchecked"]

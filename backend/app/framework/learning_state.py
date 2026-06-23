@@ -12,10 +12,10 @@ provides the state_path and profile at every call site.
 
 Functions
 ---------
-make_state()             — create a LearningState from raw params
-load_from_file()         — deserialize W + history from JSON checkpoint
-read_checkpoint_metadata() — read checkpoint metadata block
-save_state()             — atomically persist W + history to JSON
+make_state()             -- create a LearningState from raw params
+load_from_file()         -- deserialize W + history from JSON checkpoint
+read_checkpoint_metadata() -- read checkpoint metadata block
+save_state()             -- atomically persist W + history to JSON
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from typing import Any, Optional, cast
 
 import numpy as np
 from gae.learning import LearningState, WeightUpdate, CalibrationProfile
-from gae import BootstrapResult  # noqa: F401 — re-exported for callers
+from gae import BootstrapResult  # noqa: F401 -- re-exported for callers
 
 log = logging.getLogger(__name__)
 

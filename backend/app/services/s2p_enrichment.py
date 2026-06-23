@@ -425,6 +425,7 @@ def serialize_provenanced_value(value: ProvenancedValue) -> dict[str, Any]:
     return {
         "value": value.value,
         "source": value.source,
+        "provenance": _api_provenance(value),
         "provenance_tier": value.provenance_tier,
         "source_count": value.source_count,
         "factor_eligible": value.factor_eligible,
@@ -434,6 +435,17 @@ def serialize_provenanced_value(value: ProvenancedValue) -> dict[str, Any]:
         "computed_at": value.computed_at,
         "warnings": list(value.warnings),
     }
+
+
+def _api_provenance(value: ProvenancedValue) -> str:
+    """API provenance contract for fixture/live metric consumers."""
+    if value.source == "fixture":
+        return "sample"
+    if value.provenance_tier == "scraped_external":
+        return "scraped_external"
+    if value.source == "verified_outcomes":
+        return "real"
+    return value.provenance_tier
 
 
 def _verified_metric(value: Any, source_count: int, min_decisions: int, label: str) -> ProvenancedValue:

@@ -45,7 +45,7 @@ class NarrativeProvider(Protocol):
 # Provider registry
 # ============================================================================
 
-_PROVIDER_REGISTRY: Dict[str, Any] = {}  # name → class
+_PROVIDER_REGISTRY: Dict[str, Any] = {}  # name -> class
 
 
 def register_narrative_provider(name: str, cls: Any) -> None:

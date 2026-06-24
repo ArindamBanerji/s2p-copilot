@@ -5,6 +5,7 @@ import pytest
 
 from app.main import app, build_s2p_scorer
 from app.routers import s2p_auto_approve as p40_router
+from app.services.novelty_tracker import reset_novelty_tracker
 from app.services.s2p_auto_approve_gate import AutoApproveConfig, AutoApproveGate
 
 
@@ -60,11 +61,13 @@ class SpyScorer:
 @pytest.fixture(autouse=True)
 def reset_gate(monkeypatch):
     monkeypatch.setattr(p40_router, "gate", AutoApproveGate())
+    reset_novelty_tracker()
     scorer = build_s2p_scorer()
     app.state.scorer = scorer
     app.state.graph_store = scorer.graph_store
     monkeypatch.setattr(p40_router, "_current_conservation_status", lambda _request: "GREEN")
     yield
+    reset_novelty_tracker()
 
 
 def test_auto_approve_shadow_disabled_by_default():
@@ -534,6 +537,24 @@ def test_p39_verified_metrics_reported_as_evidence_only():
 
     assert result["would_auto_approve"] is True
     assert result["p39_evidence"] == evidence
+
+
+def test_auto_approve_blocked_when_novelty_active():
+    tracker = reset_novelty_tracker()
+    for index in range(10):
+        tracker.record([float(index)] * 7, "price_variance", 0.8 if index < 3 else 0.1)
+    gate = AutoApproveGate(AutoApproveConfig(enabled=True, mode="shadow", min_verified_decisions=1))
+
+    result = gate.evaluate(
+        category="price_variance",
+        confidence=0.99,
+        recommended_action="auto_approve",
+        graph_store=FakeGraphStore(_verified_rows(count=10)),
+        conservation_status="GREEN",
+    )
+
+    assert result["would_auto_approve"] is False
+    assert result["blocked_reason"] == "novelty_spike"
 
 
 def test_existing_score_auto_approve_response_preserved():

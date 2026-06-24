@@ -122,6 +122,13 @@ class NoveltyTracker:
             return None
         return self._history[-1].nearest_distance
 
+    def get_triggered_decisions(self, limit: int = 50) -> list[dict[str, Any]]:
+        limit_value = max(int(limit), 0)
+        if limit_value == 0:
+            return []
+        novel = [entry for entry in reversed(self._history) if entry.is_novel]
+        return [entry.to_dict() for entry in novel[:limit_value]]
+
     def get_status(self) -> dict[str, Any]:
         novelty_count = sum(1 for entry in self._history if entry.is_novel)
         return {

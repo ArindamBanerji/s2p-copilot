@@ -13,6 +13,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.services.novelty_tracker import get_novelty_tracker
 
 
 AUTO_APPROVE_ACTION = "auto_approve"
@@ -237,6 +238,8 @@ class AutoApproveGate:
             blocked_reason = "disabled"
         elif conservation_status != "GREEN":
             blocked_reason = "conservation_not_green"
+        elif _novelty_active_for_category(category):
+            blocked_reason = "novelty_spike"
         elif state.verified_count < self.config.min_verified_decisions:
             blocked_reason = "insufficient_category_verified_count"
         elif confidence < threshold:
@@ -436,3 +439,14 @@ class AutoApproveGate:
 
 
 gate = AutoApproveGate()
+
+
+def _novelty_active_for_category(category: str) -> bool:
+    status = get_novelty_tracker().get_status()
+    per_category = status.get("per_category", {})
+    if not isinstance(per_category, dict):
+        return False
+    row = per_category.get(category, {})
+    if not isinstance(row, dict):
+        return False
+    return float(row.get("novelty_rate", 0.0) or 0.0) > 0.20

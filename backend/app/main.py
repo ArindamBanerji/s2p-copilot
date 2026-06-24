@@ -31,6 +31,7 @@ from app.routers.s2p_discovery import router as s2p_discovery_router
 from app.routers.s2p_early_warning import router as s2p_early_warning_router
 from app.routers.s2p_evolution import router as s2p_evolution_router
 from app.routers.s2p_explorer import router as s2p_explorer_router
+from app.routers.factor_proposer_router import router as s2p_factor_proposer_router
 from app.routers.s2p_evidence import router as s2p_evidence_router
 from app.routers.s2p_enrichment import router as s2p_enrichment_router
 from app.routers.financial_router import router as s2p_financial_router
@@ -121,6 +122,7 @@ app.include_router(s2p_auto_approve_router)
 app.include_router(s2p_audit_export_router)
 app.include_router(s2p_evolution_router)
 app.include_router(s2p_explorer_router)
+app.include_router(s2p_factor_proposer_router)
 app.include_router(s2p_centroid_router)
 app.include_router(s2p_control_tower_router)
 app.include_router(s2p_discovery_router)

@@ -35,6 +35,8 @@ def _category_rate_rows() -> list[dict]:
                 "name": name,
                 "novelty_rate": rate,
                 "status": _novelty_status_for_rate(rate),
+                "conservation_review": rate >= NOVELTY_THRESHOLD,
+                "recommendation": _review_recommendation(name, rate),
             }
         )
     return rows
@@ -42,7 +44,23 @@ def _category_rate_rows() -> list[dict]:
 
 @router.get("/status", response_model=GenericResponse)
 def novelty_status() -> dict:
-    return get_novelty_tracker().get_status()
+    status = get_novelty_tracker().get_status()
+    rate = float(status.get("novelty_rate", 0.0) or 0.0)
+    categories = _category_rate_rows()
+    review_categories = [row for row in categories if row["conservation_review"]]
+    top_status = _top_level_status(rate, categories)
+    return {
+        **status,
+        "status": top_status,
+        "conservation_review": bool(review_categories),
+        "review_categories": review_categories,
+        "recommendation": (
+            "Review category conservation. Novelty rate "
+            f"{round(rate * 100)}%."
+            if review_categories
+            else ""
+        ),
+    }
 
 
 @router.get("/history", response_model=GenericResponse)
@@ -84,3 +102,27 @@ def novelty_auto_pause() -> dict:
         "paused_categories": paused_categories,
         "advisory_only": True,
     }
+
+
+@router.get("/triggered-decisions", response_model=GenericResponse)
+def novelty_triggered_decisions(limit: int = 50) -> dict:
+    tracker = get_novelty_tracker()
+    return {
+        "decisions": tracker.get_triggered_decisions(limit=limit),
+        "total": len(tracker.get_triggered_decisions(limit=limit)),
+    }
+
+
+def _review_recommendation(category: str, rate: float) -> str:
+    if rate < NOVELTY_THRESHOLD:
+        return ""
+    return f"Review {category} conservation. Novelty rate {round(rate * 100)}%."
+
+
+def _top_level_status(overall_rate: float, categories: list[dict]) -> str:
+    statuses = {str(row.get("status") or "") for row in categories}
+    if "RED" in statuses:
+        return "RED"
+    if "AMBER" in statuses:
+        return "AMBER"
+    return _novelty_status_for_rate(overall_rate)

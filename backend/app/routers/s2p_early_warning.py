@@ -13,6 +13,31 @@ from app.services.supplier_profile_accumulator import accumulator
 
 router = APIRouter(prefix="/api/s2p/suppliers", tags=["s2p-early-warning"])
 
+DISTRESS_PATTERNS = {
+    "financial_stress": {
+        "signals": {
+            "otif": "declining",
+            "pricing": "increasing",
+            "exception_rate": "increasing",
+        },
+        "description": "Pattern consistent with financial stress leading to delivery failure",
+        "typical_days_to_impact": 45,
+        "example_supplier": "Yangtze Raw Materials",
+    },
+    "operational_degradation": {
+        "signals": {"otif": "declining", "exception_rate": "increasing"},
+        "description": "Operational capacity deterioration",
+        "typical_days_to_impact": 30,
+        "example_supplier": "Rhine-Stahl Metals",
+    },
+    "market_pressure": {
+        "signals": {"pricing": "increasing"},
+        "description": "Market-driven cost pressure",
+        "typical_days_to_impact": 60,
+        "example_supplier": "Aster Industrial Chemicals",
+    },
+}
+
 
 def _load_supplier_profiles() -> list[dict[str, Any]]:
     fixture_by_id = {str(row.get("supplier_id")): row for row in load_suppliers()}
@@ -86,6 +111,41 @@ def _build_trend_signals(profile: dict[str, Any]) -> list[dict[str, Any]]:
     return signals
 
 
+def compute_combined_severity(trends: list[dict[str, Any]]) -> float:
+    """Combined severity from simultaneous supplier deterioration signals."""
+    if not trends:
+        return 0.0
+    max_signals = 3
+    declining = [trend for trend in trends if _is_declining_signal(trend)]
+    if not declining:
+        return 0.0
+    total_decline = sum(abs(float(trend.get("delta_pct") or 0.0)) / 100.0 for trend in declining)
+    return _clamp01(round(total_decline * (len(declining) / max_signals), 3))
+
+
+def match_pattern(trends: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Match declining supplier signals against known distress patterns."""
+    signal_state = {_canonical_signal_name(trend): trend for trend in trends if _is_declining_signal(trend)}
+    names = set(signal_state)
+    if {"otif", "exception_rate", "pricing"} <= names or {"otif", "exception_rate", "financial_health"} <= names:
+        pattern_name = "financial_stress"
+    elif {"otif", "exception_rate"} <= names:
+        pattern_name = "operational_degradation"
+    elif "pricing" in names:
+        pattern_name = "market_pressure"
+    else:
+        return None
+
+    pattern = DISTRESS_PATTERNS[pattern_name]
+    severity = compute_combined_severity(trends)
+    return {
+        "pattern": pattern_name,
+        "description": pattern["description"],
+        "days_to_impact": pattern["typical_days_to_impact"],
+        "confidence": _confidence_from_severity(severity, len(names)),
+    }
+
+
 def _risk_score(signals: list[dict[str, Any]]) -> float:
     weights = {"normal": 0.0, "watch": 0.35, "warning": 0.65, "critical": 0.9}
     if not signals:
@@ -129,6 +189,22 @@ def _lead_time_weeks(risk_score: float, pattern: str) -> int:
     if risk_score >= 0.6:
         return 8
     return 16
+
+
+@router.get("/early-warnings/patterns", response_model=GenericResponse)
+def early_warning_patterns() -> dict[str, Any]:
+    return {
+        "patterns": [
+            {
+                "name": name,
+                "signals": definition["signals"],
+                "description": definition["description"],
+                "typical_days_to_impact": definition["typical_days_to_impact"],
+                "example_supplier": definition["example_supplier"],
+            }
+            for name, definition in DISTRESS_PATTERNS.items()
+        ]
+    }
 
 
 @router.get("/early-warnings", response_model=GenericResponse)
@@ -212,16 +288,31 @@ def _warning_payload(profile: dict[str, Any]) -> dict[str, Any]:
     signals = _build_trend_signals(profile)
     score = _demo_risk_override(profile, _risk_score(signals))
     pattern = _demo_pattern_override(profile, _pattern(signals))
-    confidence = _demo_confidence_override(profile, _confidence(signals))
+    pattern_match = match_pattern(signals)
+    combined_severity = compute_combined_severity(signals)
+    confidence = _demo_confidence_override(
+        profile,
+        pattern_match["confidence"] if pattern_match else _confidence(signals),
+    )
+    days_to_impact = (
+        int(pattern_match["days_to_impact"])
+        if pattern_match
+        else _lead_time_weeks(score, pattern) * 7
+    )
     return {
         "supplier_id": str(profile.get("supplier_id")),
         "supplier_name": _supplier_name(profile),
         "risk_score": score,
         "confidence": confidence,
         "signals": signals,
+        "declining_signals": [_canonical_signal_name(signal) for signal in signals if _is_declining_signal(signal)],
         "pattern": pattern,
+        "pattern_match": pattern_match["pattern"] if pattern_match else None,
+        "combined_severity": combined_severity,
+        "days_to_impact": days_to_impact,
         "recommendation": _recommendation(score, pattern),
         "lead_time_weeks": _lead_time_weeks(score, pattern),
+        "narrative": _warning_narrative(profile, signals, pattern_match, days_to_impact),
     }
 
 
@@ -274,6 +365,61 @@ def _demo_pattern_override(profile: dict[str, Any], computed: str) -> str:
 
 def _supplier_name(profile: dict[str, Any]) -> str:
     return str(profile.get("supplier_name") or profile.get("name") or profile.get("supplier_id") or "")
+
+
+def _warning_narrative(
+    profile: dict[str, Any],
+    signals: list[dict[str, Any]],
+    pattern_match: dict[str, Any] | None,
+    days_to_impact: int | None,
+) -> str:
+    name = _supplier_name(profile)
+    declining = [signal for signal in signals if _is_declining_signal(signal)]
+    if pattern_match:
+        description = str(pattern_match["description"])
+        action = "Qualify backup supplier now." if pattern_match["pattern"] == "financial_stress" else "Review mitigation plan."
+        return (
+            f"Supplier {name}: {len(declining)} signals declining simultaneously. "
+            f"{_signal_summary(declining)} {description}. "
+            f"Estimated impact window: {days_to_impact} days. {action}"
+        )
+    return f"Supplier {name}: signals remain below combined deterioration threshold. Continue weekly monitoring."
+
+
+def _signal_summary(signals: list[dict[str, Any]]) -> str:
+    parts = []
+    for signal in signals[:3]:
+        name = str(signal.get("signal_name"))
+        current = signal.get("current_value")
+        baseline = signal.get("baseline_value")
+        parts.append(f"{name} moved from {baseline} to {current}.")
+    return " ".join(parts)
+
+
+def _is_declining_signal(signal: dict[str, Any]) -> bool:
+    name = _canonical_signal_name(signal)
+    direction = str(signal.get("direction") or "").lower()
+    delta = float(signal.get("delta_pct") or 0.0)
+    if name in {"exception_rate", "pricing"}:
+        return direction in {"declining", "increasing"} and delta > 0
+    return direction == "declining" or delta < 0
+
+
+def _canonical_signal_name(signal: dict[str, Any]) -> str:
+    name = str(signal.get("signal_name") or "").lower()
+    mapping = {
+        "otif": "otif",
+        "exception_rate": "exception_rate",
+        "exception_volume": "exception_rate",
+        "financial_health": "financial_health",
+        "pricing": "pricing",
+        "price": "pricing",
+    }
+    return mapping.get(name, name)
+
+
+def _confidence_from_severity(severity: float, signal_count: int) -> float:
+    return _clamp01(round(0.55 + severity * 0.5 + min(signal_count, 3) * 0.06, 2))
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:

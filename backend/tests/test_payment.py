@@ -7,6 +7,12 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.main import app
+from app.routers.s2p_payment import (
+    compute_cash_flow_benefit,
+    compute_dpo_portfolio,
+    compute_early_pay_value,
+    compute_payment_otif_correlation,
+)
 from app.services.supplier_profile_accumulator import accumulator
 
 
@@ -194,3 +200,85 @@ def test_strategy_sort_order():
 
     assert sort_keys == sorted(sort_keys)
     assert [row["discount_opportunity"] for row in rows[:3]] == [180_000.0, 120_000.0, 40_000.0]
+
+
+def test_otif_correlation_negative():
+    history = [
+        {"supplier_id": "SUP-W", "payment_days": 10, "otif": 0.96},
+        {"supplier_id": "SUP-W", "payment_days": 20, "otif": 0.90},
+        {"supplier_id": "SUP-W", "payment_days": 30, "otif": 0.84},
+    ]
+
+    assert compute_payment_otif_correlation("SUP-W", history) < 0
+
+
+def test_otif_correlation_zero():
+    history = [
+        {"supplier_id": "SUP-Y", "payment_days": 10, "otif": 0.9},
+        {"supplier_id": "SUP-Y", "payment_days": 20, "otif": 0.9},
+    ]
+
+    assert compute_payment_otif_correlation("SUP-Y", history) == 0.0
+
+
+def test_otif_correlation_positive():
+    history = [
+        {"supplier_id": "SUP-P", "payment_days": 10, "otif": 0.84},
+        {"supplier_id": "SUP-P", "payment_days": 20, "otif": 0.90},
+        {"supplier_id": "SUP-P", "payment_days": 30, "otif": 0.96},
+    ]
+
+    assert compute_payment_otif_correlation("SUP-P", history) > 0
+
+
+def test_otif_correlation_small_sample():
+    history = [{"supplier_id": "SUP-S", "payment_days": 10, "otif": 0.96}]
+
+    assert compute_payment_otif_correlation("SUP-S", history) == 0.0
+
+
+def test_dpo_portfolio():
+    strategies = [
+        {"annual_spend": 1_000_000.0, "dpo_impact_days": 8.0, "cash_flow_benefit": 1000.0},
+        {"annual_spend": 3_000_000.0, "dpo_impact_days": 4.0, "cash_flow_benefit": 2000.0},
+    ]
+
+    result = compute_dpo_portfolio(strategies)
+
+    assert result["portfolio_dpo_improvement"] == 5.0
+    assert result["cash_flow_benefit"] == 3000.0
+
+
+def test_early_pay_annualized_return():
+    result = compute_early_pay_value({"capture_rate": 1.0}, 17_000_000.0)
+
+    assert result["discount_captured"] == 340_000.0
+    assert result["annualized_return_pct"] == 36.7
+
+
+def test_cash_flow_benefit():
+    result = compute_cash_flow_benefit(10_000_000.0, 8.0)
+
+    assert result == 10958.9
+
+
+def test_portfolio_endpoint():
+    response = client.get("/api/s2p/suppliers/payment-portfolio")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "portfolio_dpo_improvement" in data
+    assert "total_annual_benefit" in data
+
+
+def test_narrative_field_present():
+    strategies = _strategies()
+
+    assert strategies
+    assert all(isinstance(row["narrative"], str) and row["narrative"] for row in strategies)
+
+
+def test_total_annual_benefit():
+    data = client.get("/api/s2p/suppliers/payment-strategy").json()
+
+    assert data["total_annual_benefit"] == data["total_discount_opportunity"] + data["cash_flow_benefit"]

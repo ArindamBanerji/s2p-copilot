@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from app.main import app
+from app.routers.s2p_early_warning import compute_combined_severity, match_pattern
 from app.services.supplier_profile_accumulator import accumulator
 
 
@@ -134,3 +135,91 @@ def test_static_early_warning_routes_not_shadowed_by_supplier_id_route():
     assert "warnings" in early.json()
     assert trend.status_code == 200
     assert "signals" in trend.json()
+
+
+def test_pattern_match_financial_stress():
+    trends = [
+        {"signal_name": "OTIF", "delta_pct": -10.0, "direction": "declining"},
+        {"signal_name": "exception_rate", "delta_pct": 10.0, "direction": "declining"},
+        {"signal_name": "pricing", "delta_pct": 10.0, "direction": "increasing"},
+    ]
+
+    match = match_pattern(trends)
+
+    assert match is not None
+    assert match["pattern"] == "financial_stress"
+
+
+def test_pattern_match_operational():
+    trends = [
+        {"signal_name": "OTIF", "delta_pct": -10.0, "direction": "declining"},
+        {"signal_name": "exception_rate", "delta_pct": 10.0, "direction": "declining"},
+    ]
+
+    match = match_pattern(trends)
+
+    assert match is not None
+    assert match["pattern"] == "operational_degradation"
+
+
+def test_no_pattern_match():
+    trends = [{"signal_name": "OTIF", "delta_pct": -5.0, "direction": "declining"}]
+
+    assert match_pattern(trends) is None
+
+
+def test_combined_severity_computation():
+    trends = [
+        {"signal_name": "OTIF", "delta_pct": -10.0, "direction": "declining"},
+        {"signal_name": "exception_rate", "delta_pct": 10.0, "direction": "declining"},
+        {"signal_name": "pricing", "delta_pct": 10.0, "direction": "increasing"},
+    ]
+
+    assert compute_combined_severity(trends) == 0.3
+
+
+def test_days_to_impact_from_pattern():
+    trends = [
+        {"signal_name": "OTIF", "delta_pct": -10.0, "direction": "declining"},
+        {"signal_name": "exception_rate", "delta_pct": 10.0, "direction": "declining"},
+        {"signal_name": "pricing", "delta_pct": 10.0, "direction": "increasing"},
+    ]
+
+    assert match_pattern(trends)["days_to_impact"] == 45
+
+
+def test_narrative_field_present():
+    warnings = client.get("/api/s2p/suppliers/early-warnings").json()["warnings"]
+
+    assert warnings
+    assert all(isinstance(warning["narrative"], str) and warning["narrative"] for warning in warnings)
+
+
+def test_confidence_from_signal_strength():
+    weak = [
+        {"signal_name": "OTIF", "delta_pct": -2.0, "direction": "declining"},
+        {"signal_name": "exception_rate", "delta_pct": 2.0, "direction": "declining"},
+    ]
+    strong = [
+        {"signal_name": "OTIF", "delta_pct": -20.0, "direction": "declining"},
+        {"signal_name": "exception_rate", "delta_pct": 20.0, "direction": "declining"},
+    ]
+
+    assert match_pattern(strong)["confidence"] > match_pattern(weak)["confidence"]
+
+
+def test_patterns_endpoint():
+    response = client.get("/api/s2p/suppliers/early-warnings/patterns")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {pattern["name"] for pattern in data["patterns"]} >= {"financial_stress", "operational_degradation"}
+
+
+def test_pattern_match_market_pressure():
+    trends = [{"signal_name": "pricing", "delta_pct": 12.0, "direction": "increasing"}]
+
+    match = match_pattern(trends)
+
+    assert match is not None
+    assert match["pattern"] == "market_pressure"

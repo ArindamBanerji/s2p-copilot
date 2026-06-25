@@ -38,6 +38,7 @@ from app.routers.financial_router import router as s2p_financial_router
 from app.routers.s2p_governance import router as s2p_governance_router
 from app.routers.s2p_insight import router as s2p_insight_router
 from app.routers.lead_time_router import router as s2p_lead_time_router
+from app.routers.optimizer_router import router as s2p_optimizer_router
 from app.routers.s2p_novelty import router as s2p_novelty_router
 from app.routers.s2p_payment import router as s2p_payment_router
 from app.routers.s2p_performance import router as s2p_performance_router
@@ -139,6 +140,7 @@ app.include_router(s2p_novelty_router)
 app.include_router(s2p_clustering_router)
 app.include_router(s2p_early_warning_router)
 app.include_router(s2p_payment_router)
+app.include_router(s2p_optimizer_router)
 app.include_router(s2p_suppliers_router)
 app.include_router(s2p_preview_router)
 app.include_router(create_cohort_status_router(lambda: app.state.graph_store))

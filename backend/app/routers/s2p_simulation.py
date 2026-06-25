@@ -8,6 +8,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from app.models.responses import GenericResponse
+from app.services.disruption_sim import DisruptionSimulator
+from app.services.supplier_profile_accumulator import accumulator
 
 router = APIRouter(prefix="/api/s2p/simulation", tags=["s2p-simulation"])
 
@@ -168,6 +170,11 @@ def _scenario_summary(scenario: dict[str, Any]) -> dict[str, Any]:
         "conservation_impact": scenario["impact"]["conservation_impact"],
         "estimated_quarterly_cost": scenario["impact"]["estimated_quarterly_cost"],
         "recovery_time_days": scenario["impact"]["recovery_time_days"],
+        "narrative": (
+            f"{scenario['name']}: estimated quarterly exposure "
+            f"${float(scenario['impact']['estimated_quarterly_cost']):,.0f}; "
+            f"recovery window {int(scenario['impact']['recovery_time_days'])} days."
+        ),
     }
 
 
@@ -196,7 +203,11 @@ def _find_mitigation(actions: list[dict[str, Any]], mitigation: str | None) -> d
 @router.get("/scenarios", response_model=GenericResponse)
 def list_scenarios() -> dict[str, Any]:
     scenarios = [_scenario_summary(scenario) for scenario in SCENARIOS]
-    return {"scenarios": scenarios, "total": len(scenarios)}
+    return {
+        "scenarios": scenarios,
+        "total": len(scenarios),
+        "narrative": f"{len(scenarios)} disruption scenarios available for advisory stress testing.",
+    }
 
 
 @router.get("/scenarios/{scenario_id}", response_model=GenericResponse)
@@ -204,7 +215,9 @@ def scenario_detail(scenario_id: str) -> dict[str, Any]:
     scenario = _find_scenario(scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail=f"Unknown scenario: {scenario_id}")
-    return deepcopy(scenario)
+    detail = deepcopy(scenario)
+    detail["narrative"] = _scenario_summary(scenario)["narrative"]
+    return detail
 
 
 @router.get("/what-if/{scenario_id}", response_model=GenericResponse)
@@ -223,17 +236,27 @@ def scenario_what_if(scenario_id: str, mitigation: str | None = None) -> dict[st
             "base_impact": base_impact,
             "mitigated_impact": base_impact,
             "available_mitigations": actions,
+            "narrative": (
+                f"{scenario['name']} what-if: no mitigation applied. "
+                f"Base exposure remains ${float(base_impact['estimated_quarterly_cost']):,.0f}."
+            ),
         }
 
     impact_reduction = float(mitigation_detail["impact_reduction"])
+    mitigated = _apply_mitigation(base_impact, impact_reduction)
     return {
         "scenario_id": scenario_id,
         "mitigation_applied": mitigation_detail["action"],
         "impact_reduction": impact_reduction,
         "mitigation_detail": mitigation_detail,
         "base_impact": base_impact,
-        "mitigated_impact": _apply_mitigation(base_impact, impact_reduction),
+        "mitigated_impact": mitigated,
         "available_mitigations": actions,
+        "narrative": (
+            f"{scenario['name']} what-if: {mitigation_detail['action']} reduces exposure "
+            f"from ${float(base_impact['estimated_quarterly_cost']):,.0f} to "
+            f"${float(mitigated['estimated_quarterly_cost']):,.0f}."
+        ),
     }
 
 
@@ -247,4 +270,31 @@ def impact_summary() -> dict[str, Any]:
         "scenarios_causing_red": sum(1 for impact in impacts if impact["conservation_impact"] == "RED"),
         "scenarios_causing_amber": sum(1 for impact in impacts if impact["conservation_impact"] == "AMBER"),
         "scenarios_green_safe": sum(1 for impact in impacts if impact["conservation_impact"] == "GREEN"),
+        "narrative": (
+            f"{len(SCENARIOS)} disruption scenarios cover "
+            f"${sum(float(impact['estimated_quarterly_cost']) for impact in impacts):,.0f} quarterly exposure. "
+            f"Worst recovery window: {max(int(impact['recovery_time_days']) for impact in impacts)} days."
+        ),
+    }
+
+
+@router.post("/simulate", response_model=GenericResponse)
+def simulate_disruption(scenario: dict[str, Any]) -> dict[str, Any]:
+    profiles = accumulator.get_all_profiles()
+    return DisruptionSimulator(profiles=profiles if profiles else None).simulate(scenario)
+
+
+@router.post("/batch-simulate", response_model=GenericResponse)
+def batch_simulate_disruptions(payload: dict[str, Any]) -> dict[str, Any]:
+    scenarios = payload.get("scenarios", [])
+    if not isinstance(scenarios, list):
+        raise HTTPException(status_code=400, detail="scenarios must be a list")
+    profiles = accumulator.get_all_profiles()
+    results = DisruptionSimulator(profiles=profiles if profiles else None).batch_simulate(scenarios)
+    provenance = results[0]["provenance"] if results else ("live" if profiles else "demo")
+    return {
+        "results": results,
+        "total": len(results),
+        "provenance": provenance,
+        "narrative": f"Batch simulation processed {len(results)} advisory disruption scenarios.",
     }

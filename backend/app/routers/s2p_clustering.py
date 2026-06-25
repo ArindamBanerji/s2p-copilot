@@ -14,6 +14,9 @@ from app.services.supplier_profile_accumulator import accumulator
 
 router = APIRouter(prefix="/api/s2p/suppliers", tags=["s2p-clustering"])
 
+# TODO: Move behavioral clustering helpers into app/services when the existing
+# router-bound clustering module is refactored.
+
 CLUSTER_DEFINITIONS = (
     ("Reliable Premium", ("Northstar", "Novatek", "Meridian")),
     ("Budget Volatile", ("Aster", "Yangtze", "Rhine-Stahl")),
@@ -71,6 +74,50 @@ def _cosine_distance(a: list[float], b: list[float]) -> float:
     return round(max(0.0, min(1.0, 1.0 - (dot / (left_norm * right_norm)))), 6)
 
 
+def silhouette_score(vectors: list[list[float]], assignments: list[int]) -> float:
+    """Pure Python silhouette coefficient for behavioral clusters."""
+    if len(vectors) != len(assignments):
+        raise ValueError("vectors and assignments must have the same length")
+    if len(vectors) < 2 or len(set(assignments)) < 2:
+        return 0.0
+
+    scores = []
+    for index, vector in enumerate(vectors):
+        own = assignments[index]
+        same = [
+            _euclidean_distance(vector, other)
+            for other_index, other in enumerate(vectors)
+            if other_index != index and assignments[other_index] == own
+        ]
+        a = sum(same) / len(same) if same else 0.0
+        other_clusters = sorted(set(assignments) - {own})
+        b_values = []
+        for cluster in other_clusters:
+            distances = [
+                _euclidean_distance(vector, other)
+                for other_index, other in enumerate(vectors)
+                if assignments[other_index] == cluster
+            ]
+            if distances:
+                b_values.append(sum(distances) / len(distances))
+        b = min(b_values) if b_values else 0.0
+        denominator = max(a, b)
+        scores.append(0.0 if denominator == 0.0 else (b - a) / denominator)
+    return round(sum(scores) / len(scores), 4)
+
+
+def consolidation_savings_estimate(from_count: int, to_count: int) -> dict[str, Any]:
+    """Scale the PD 47-to-16 consolidation savings story linearly."""
+    reduced = max(0, from_count - to_count)
+    base_reduced = 47 - 16
+    savings = 0.0 if base_reduced <= 0 else 2_400_000.0 * (reduced / base_reduced)
+    return {
+        "from_count": from_count,
+        "to_count": to_count,
+        "estimated_annual_savings": round(savings, 2),
+    }
+
+
 def _build_demo_clusters(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
     assigned: set[str] = set()
     clusters: list[dict[str, Any]] = []
@@ -92,7 +139,7 @@ def _build_demo_clusters(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]
     ]
     if remaining:
         clusters[-1]["members"].extend(str(profile.get("supplier_id")) for profile in remaining)
-        clusters[-1]["centroid"] = _centroid(remaining)
+        clusters[-1]["cluster_center"] = _cluster_center(remaining)
         clusters[-1]["consolidation_potential"] = _cluster_potential(clusters[-1])
         clusters[-1]["estimated_savings"] = _estimate_savings(clusters[-1])
     return clusters
@@ -118,6 +165,17 @@ def _cluster_potential(cluster: dict[str, Any]) -> str:
 def clusters() -> dict[str, Any]:
     profiles = _load_supplier_profiles()
     grouped = _build_demo_clusters(profiles)
+    vectors: list[list[float]] = []
+    assignments: list[int] = []
+    profile_by_id = {str(profile.get("supplier_id")): profile for profile in profiles}
+    for cluster in grouped:
+        for supplier_id in cluster["members"]:
+            profile = profile_by_id.get(str(supplier_id))
+            if profile:
+                vectors.append(_supplier_behavior_vector(profile))
+                assignments.append(int(cluster["cluster_id"]))
+    quality = silhouette_score(vectors, assignments) if vectors else 0.0
+    consolidation_estimate = consolidation_savings_estimate(len(profiles), len(grouped))
     estimated_savings = sum(float(cluster["estimated_savings"]) for cluster in grouped)
     consolidation_candidates = sum(
         1
@@ -129,7 +187,18 @@ def clusters() -> dict[str, Any]:
         "total_suppliers": len(profiles),
         "consolidation_candidates": consolidation_candidates,
         "estimated_annual_savings": estimated_savings,
-        "method": "behavioral_centroid",
+        "method": "behavioral_profile_summary",
+        "n_suppliers": len(profiles),
+        "n_clusters": len(grouped),
+        "silhouette_score": quality,
+        "consolidation_estimate": consolidation_estimate,
+        "pd_reference": {
+            "scenario": "S7: 47 MRO suppliers -> 16",
+            "at_scale_savings": "$2.4M/year",
+            "note": f"Current demo has {len(profiles)} suppliers. PD scenario models 47.",
+        },
+        "provenance": "demo",
+        "narrative": _cluster_narrative(len(profiles), len(grouped), quality, consolidation_estimate),
     }
 
 
@@ -138,7 +207,12 @@ def similarity(supplier_id: str) -> dict[str, Any]:
     profiles = _load_supplier_profiles()
     target = next((profile for profile in profiles if profile.get("supplier_id") == supplier_id), None)
     if target is None:
-        return {"supplier_id": supplier_id, "similar_suppliers": [], "method": "cosine_distance"}
+        return {
+            "supplier_id": supplier_id,
+            "similar_suppliers": [],
+            "method": "cosine_distance",
+            "narrative": f"No supplier profile found for {supplier_id}; similarity review could not be completed.",
+        }
 
     target_vector = _supplier_behavior_vector(target)
     rows = []
@@ -155,7 +229,15 @@ def similarity(supplier_id: str) -> dict[str, Any]:
             }
         )
     rows.sort(key=lambda row: (row["distance"], str(row["supplier_id"])))
-    return {"supplier_id": supplier_id, "similar_suppliers": rows[:5], "method": "cosine_distance"}
+    return {
+        "supplier_id": supplier_id,
+        "similar_suppliers": rows[:5],
+        "method": "cosine_distance",
+        "narrative": (
+            f"{supplier_id}: nearest behavioral peers identified from delivery, pricing, "
+            "exceptions, quality, and payment response."
+        ),
+    }
 
 
 def _cluster_payload(index: int, label: str, members: list[dict[str, Any]]) -> dict[str, Any]:
@@ -163,7 +245,7 @@ def _cluster_payload(index: int, label: str, members: list[dict[str, Any]]) -> d
         "cluster_id": index,
         "label": label,
         "members": [str(profile.get("supplier_id")) for profile in members],
-        "centroid": _centroid(members),
+        "cluster_center": _cluster_center(members),
         "consolidation_potential": "low",
         "estimated_savings": 0.0,
     }
@@ -172,7 +254,7 @@ def _cluster_payload(index: int, label: str, members: list[dict[str, Any]]) -> d
     return cluster
 
 
-def _centroid(profiles: list[dict[str, Any]]) -> list[float]:
+def _cluster_center(profiles: list[dict[str, Any]]) -> list[float]:
     if not profiles:
         return [0.0, 0.0, 0.0, 0.0, 0.0]
     vectors = [_supplier_behavior_vector(profile) for profile in profiles]
@@ -180,6 +262,28 @@ def _centroid(profiles: list[dict[str, Any]]) -> list[float]:
         round(sum(vector[index] for vector in vectors) / len(vectors), 4)
         for index in range(5)
     ]
+
+
+def _euclidean_distance(a: list[float], b: list[float]) -> float:
+    if len(a) != len(b):
+        raise ValueError("vectors must have the same length")
+    return math.sqrt(sum((left - right) ** 2 for left, right in zip(a, b)))
+
+
+def _cluster_narrative(
+    from_count: int,
+    to_count: int,
+    quality: float,
+    consolidation_estimate: dict[str, Any],
+) -> str:
+    reduced = max(0, from_count - to_count)
+    quality_label = "strong" if quality > 0.5 else "moderate" if quality > 0.25 else "weak - more data needed"
+    savings = float(consolidation_estimate["estimated_annual_savings"])
+    return (
+        f"{from_count} suppliers analyzed. {reduced} behavioral duplicates identified across {to_count} clusters. "
+        f"Cluster quality: {quality:.2f} ({quality_label}). Consolidate to {to_count} suppliers. "
+        f"Estimated annual savings: ${savings / 1_000_000:.1f}M from reduced transaction costs and volume leverage."
+    )
 
 
 def _pricing_stability(profile: dict[str, Any]) -> float:

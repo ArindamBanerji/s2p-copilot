@@ -157,6 +157,13 @@ class OptimizerExportService:
         if not flat:
             return None
         flat = [round(float(value), 6) for value in flat]
+        legacy_count = S2PDomainConfig.n_categories * (S2PDomainConfig.n_factors - 1)
+        if S2PDomainConfig.n_factors == 8 and len(flat) == legacy_count:
+            migrated: list[float] = []
+            row_width = S2PDomainConfig.n_factors - 1
+            for index in range(0, len(flat), row_width):
+                migrated.extend([*flat[index : index + row_width], 1.0])
+            flat = migrated
         if len(flat) == S2PDomainConfig.n_categories * S2PDomainConfig.n_factors:
             return [
                 flat[index : index + S2PDomainConfig.n_factors]
@@ -236,5 +243,7 @@ class OptimizerExportService:
             parameter_text = f"{centroid_count} centroid values. DK weights not yet available (pre-transition)"
         return (
             f"Export: {parameter_text} + {supplier_count} supplier profiles. "
+            "8 risk dimensions including environmental_risk for climate disruption, "
+            "resource scarcity, and sustainability compliance. "
             f"Schema v{SCHEMA_VERSION}. Compatible with Gurobi, OR-Tools, AIMMS, Celonis."
         )

@@ -12,13 +12,14 @@ from app.routers import s2p_insight
 client = TestClient(app)
 
 
-def test_fingerprint_returns_seven_factors():
+def test_fingerprint_returns_eight_factors():
     response = client.get("/api/s2p/insight/fingerprint", params={"invoice_id": "S2P-INV-0001"})
 
     assert response.status_code == 200
     data = response.json()
     assert data["invoice_id"] == "S2P-INV-0001"
     assert set(data["factors"]) == set(S2PDomainConfig.factors)
+    assert len(data["factors"]) == 8
     assert data["dominant_factor"] in S2PDomainConfig.factors
 
 
@@ -65,6 +66,7 @@ def test_process_context_returns_fixture_timeline():
     assert data["category"] == "contract_gap"
     assert data["source"] == "fixture"
     assert data["engine"] == "ci-platform-s2p"
+    assert "narrative" in data
     assert data["total_cycle_time_hours"] == 24.0
     assert len(data["activities"]) == 6
     assert data["activity_timeline"] == data["activities"]
@@ -107,6 +109,7 @@ def test_cross_graph_returns_correlations():
     assert data["count"] > 0
     assert data["bottleneck_duration"] >= 0
     assert {"supplier", "supplier_id", "exception_rate", "impact_score"}.issubset(data["insights"][0])
+    assert "narrative" in data
 
 
 def test_cross_graph_empty_when_no_data(monkeypatch):
@@ -126,6 +129,7 @@ def test_process_signals_returns_bottleneck_process_data():
     data = response.json()
     assert data["available"] is True
     assert data["process_model"] == "Purchase-to-Pay"
+    assert "narrative" in data
     assert any(activity.get("bottleneck") is True for activity in data["activities"])
 
 
@@ -155,3 +159,124 @@ def test_process_fusion_narrative_data_available():
 
     assert data["bottleneck_activity"]
     assert process["recommendations"]
+
+
+def test_cycle_all_5_stages():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    assert set(data["cycle_state"]) == {"WHERE", "WHY", "WHAT", "LEARN", "TRANSFER"}
+
+
+def test_where_from_celonis():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    assert data["cycle_state"]["WHERE"]["source"] == "celonis"
+    assert "3x slower" in data["cycle_state"]["WHERE"]["metric"]
+
+
+def test_why_root_cause():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    assert data["cycle_state"]["WHY"]["root_cause"]
+    assert isinstance(data["cycle_state"]["WHY"]["evidence"], list)
+
+
+def test_what_recommendation():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    assert data["cycle_state"]["WHAT"]["recommendation"]
+    assert data["cycle_state"]["WHAT"]["applied"] is True
+
+
+def test_learn_resolution_days():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    assert data["cycle_state"]["LEARN"]["resolution_days"] == 2
+    assert data["resolution_improvement"] == "12 days -> 2 days"
+    assert data["provenance"] == "demo"
+
+
+def test_transfer_promoted():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    assert data["cycle_state"]["TRANSFER"]["promoted"] is True
+    assert data["cycle_state"]["TRANSFER"]["target_plants"]
+
+
+def test_narrative_carries_s16():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    assert "12 days" in data["narrative"]
+    assert "2 days" in data["narrative"]
+    assert data["provenance"] == "demo"
+
+
+def test_narrative_carries_all_stages():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    for label in ["WHERE", "WHY", "WHAT", "LEARN", "TRANSFER"]:
+        assert label in data["narrative"]
+
+
+def test_narrative_supplier_names():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    assert any(row["supplier"] in data["narrative"] for row in data["insights"][:3])
+
+
+def test_narrative_professional_language():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    forbidden = ["centroid", "sigma", "DK weight", "factor vector", "N="]
+    assert not any(term.lower() in data["narrative"].lower() for term in forbidden)
+
+
+def test_no_context_graceful():
+    from app.services.process_fusion import ProcessFusionCycle
+
+    result = ProcessFusionCycle().track_cycle("b1", "Manual Match", {})
+
+    assert result["cycle"]["WHERE"]["metric"]
+    assert result["narrative"]
+
+
+def test_cycle_demo_labeled():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    assert data["provenance"] == "demo"
+
+
+def test_cycle_provenance_note():
+    data = client.get("/api/s2p/insight/cross-graph").json()
+
+    assert "Sample data" in data["provenance_note"]
+    assert "live process outcomes" in data["provenance_note"]
+
+
+def test_cycle_live_when_real():
+    from app.services.process_fusion import ProcessFusionCycle
+
+    result = ProcessFusionCycle().track_cycle(
+        "b1",
+        "Manual Match",
+        {"resolution_days": 2, "promoted": True},
+        provenance="live",
+    )
+
+    assert result["provenance"] == "live"
+    assert "provenance_note" not in result
+
+
+def test_partial_cycle():
+    from app.services.process_fusion import ProcessFusionCycle
+
+    result = ProcessFusionCycle().track_cycle(
+        "b2",
+        "Manual Match",
+        {"root_cause": "supplier format changed", "evidence": ["Supplier X"]},
+    )
+
+    assert result["cycle"]["WHY"]["root_cause"] == "supplier format changed"
+    assert result["cycle"]["WHAT"]["recommendation"] is None
+    assert result["cycle"]["LEARN"]["resolution_days"] is None
+    assert result["cycle"]["TRANSFER"]["promoted"] is False

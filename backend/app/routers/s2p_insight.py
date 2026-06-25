@@ -14,6 +14,7 @@ from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
 from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import find_invoice, load_invoices, load_suppliers
+from app.services.process_fusion import ProcessFusionCycle
 
 router = APIRouter(prefix="/api/s2p/insight", tags=["s2p-insight"])
 
@@ -129,7 +130,7 @@ def _process_bottleneck(invoice: dict[str, Any], activities: list[dict[str, Any]
 def fingerprint(invoice_id: str) -> dict[str, Any]:
     invoice = find_invoice(invoice_id)
     if invoice is None:
-        return {"error": f"Invoice {invoice_id} not found"}
+        return {"error": f"Invoice {invoice_id} not found", "narrative": f"Invoice {invoice_id} was not found."}
     factors = compute_all_factors(invoice)
     dominant_factor = max(factors, key=lambda name: factors[name]) if factors else None
     return {
@@ -137,6 +138,10 @@ def fingerprint(invoice_id: str) -> dict[str, Any]:
         "category": invoice.get("category"),
         "factors": factors,
         "dominant_factor": dominant_factor,
+        "narrative": (
+            f"Invoice {invoice.get('invoice_id', invoice_id)} fingerprinted for process and exception review. "
+            f"Dominant signal: {dominant_factor}."
+        ),
     }
 
 
@@ -144,7 +149,13 @@ def fingerprint(invoice_id: str) -> dict[str, Any]:
 def similar(invoice_id: str, limit: int = Query(5, ge=1, le=50)) -> dict[str, Any]:
     invoice = find_invoice(invoice_id)
     if invoice is None:
-        return {"invoice_id": invoice_id, "similar": [], "count": 0, "error": f"Invoice {invoice_id} not found"}
+        return {
+            "invoice_id": invoice_id,
+            "similar": [],
+            "count": 0,
+            "error": f"Invoice {invoice_id} not found",
+            "narrative": f"No similar invoice review available because invoice {invoice_id} was not found.",
+        }
     base_factors = compute_all_factors(invoice)
     suppliers = {str(supplier.get("supplier_id")): supplier for supplier in _load_suppliers()}
     matches: list[dict[str, Any]] = []
@@ -169,7 +180,15 @@ def similar(invoice_id: str, limit: int = Query(5, ge=1, le=50)) -> dict[str, An
             }
         )
     matches.sort(key=lambda item: item["distance"])
-    return {"invoice_id": invoice.get("invoice_id", invoice_id), "similar": matches[:limit], "count": len(matches)}
+    return {
+        "invoice_id": invoice.get("invoice_id", invoice_id),
+        "similar": matches[:limit],
+        "count": len(matches),
+        "narrative": (
+            f"Found {min(limit, len(matches))} similar invoices for "
+            f"{invoice.get('invoice_id', invoice_id)} to support exception triage."
+        ),
+    }
 
 
 @router.get("/process-context/{invoice_id}", response_model=GenericResponse)
@@ -190,6 +209,10 @@ def process_context(invoice_id: str) -> dict[str, Any]:
         "bottleneck": bottleneck,
         "source": "fixture",
         "engine": "ci-platform-s2p",
+        "narrative": (
+            f"Process context for {invoice.get('invoice_id', invoice_id)}: "
+            f"{bottleneck.get('activity')} is the current bottleneck because {bottleneck.get('reason')}"
+        ),
     }
 
 
@@ -217,11 +240,38 @@ def cross_graph() -> dict[str, Any]:
             }
         )
     insights.sort(key=lambda item: item["impact_score"], reverse=True)
+    top_suppliers = [item["supplier"] for item in insights[:3] if item.get("supplier")]
+    activity = (bottleneck or {}).get("name") or (bottleneck or {}).get("id") or "Chicago AP"
+    root_cause = (
+        "Chicago AP is slow because high-exception suppliers use non-standard invoice formats."
+    )
+    fusion = ProcessFusionCycle().track_cycle(
+        bottleneck_id=str((bottleneck or {}).get("id") or "chicago-ap-bottleneck"),
+        activity=str(activity),
+        context={
+            "root_cause": root_cause,
+            "evidence": top_suppliers,
+            "suppliers": top_suppliers,
+            "recommendation": "standardize supplier invoice format and pre-check goods receipt before routing",
+            "applied": True,
+            "verified": True,
+            "resolution_days": 2,
+            "promoted": True,
+            "targets": ["Houston", "Miami", "Dallas"],
+            "where_metric": "Chicago AP is 3x slower than Houston",
+        },
+        provenance="demo",
+    )
     return {
         "insights": insights,
         "count": len(insights),
         "bottleneck_duration": round(float(bottleneck_duration), 4),
         "bottleneck_activity": (bottleneck or {}).get("name") or (bottleneck or {}).get("id"),
+        "cycle_state": fusion["cycle"],
+        "resolution_improvement": fusion["resolution_improvement"],
+        "provenance": fusion["provenance"],
+        "provenance_note": fusion.get("provenance_note"),
+        "narrative": fusion["narrative"],
     }
 
 
@@ -238,4 +288,9 @@ def process_signals(supplier_id: str | None = None) -> dict[str, Any]:
         "activities": activities,
         "recommendations": recommendations,
         "source": celonis.get("source") or ("celonis_cache" if celonis else None),
+        "narrative": (
+            "Process signals show Celonis where-data and S2P recommendations for invoice exception routing."
+            if celonis
+            else "Process signals are unavailable because Celonis data is not configured."
+        ),
     }

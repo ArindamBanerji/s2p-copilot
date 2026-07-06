@@ -40,6 +40,11 @@ from app.routers.s2p_data_helpers import find_invoice
 from app.routers.s2p_preview import _load_celonis_cache
 from app.models.outcome_receipt import OutcomeReceipt
 from app.services.receipt_store import get_receipt_store
+from app.services.cross_copilot_signals import (
+    CrossCopilotSignalConsumer,
+    latest_supplier_signal,
+    supplier_exception_from_reliability,
+)
 from app.services.novelty_tracker import compute_nearest_distance, get_novelty_tracker
 from app.services.s2p_evolver import get_active_variant, record_triage_outcome
 from app.services.supplier_profile_accumulator import accumulator as supplier_profile_accumulator
@@ -129,6 +134,74 @@ def _score_process_context() -> dict | None:
     if cause:
         process_context["cause"] = cause
     return process_context
+
+
+def _score_process_context_with_signal(signal: dict[str, Any] | None) -> dict | None:
+    process_context = _score_process_context()
+    if signal is None:
+        return process_context
+    output = dict(process_context or {})
+    output["cross_copilot_signal"] = signal
+    return output
+
+
+def _supplier_name_for_signal(invoice: dict[str, Any], request: "ScoreRequest") -> str:
+    return str(
+        invoice.get("supplier_name")
+        or invoice.get("supplier")
+        or invoice.get("vendor_name")
+        or getattr(request, "supplier_name", None)
+        or invoice.get("supplier_id")
+        or request.supplier_id
+        or ""
+    )
+
+
+def _apply_cross_copilot_signal(invoice: dict[str, Any], request: "ScoreRequest") -> dict[str, Any] | None:
+    supplier_name = _supplier_name_for_signal(invoice, request)
+    latest = latest_supplier_signal(CrossCopilotSignalConsumer().fetch_supplier_signals(supplier_name))
+    if latest is None:
+        return None
+
+    signal_exception = supplier_exception_from_reliability(latest.get("reliability_pct"))
+    factors = dict(invoice.get("factors") or {})
+    current_exception = _to_float(
+        invoice.get("supplier_exception_history", factors.get("supplier_exception_history")),
+        0.0,
+    )
+    tightened_exception = max(current_exception, signal_exception)
+    factors["supplier_exception_history"] = tightened_exception
+    invoice["factors"] = factors
+    invoice["supplier_exception_history"] = tightened_exception
+    invoice["supplier_risk_rating"] = max(0.0, min(_to_float(latest.get("reliability_pct"), 100.0), 100.0)) / 100.0
+
+    raw_delta = latest.get("delta")
+    delta = _to_float(raw_delta, 0.0) if raw_delta is not None else None
+    reliability = _to_float(latest.get("reliability_pct"), 0.0)
+    warning = (
+        f"Purchasing: reliability dropped {abs(delta):.0f}pp"
+        if delta is not None
+        else f"Purchasing: reliability {reliability:.0f}%"
+    )
+    return {
+        "source": "purchasing",
+        "supplier": str(latest.get("supplier_name") or supplier_name),
+        "reliability": reliability,
+        "delta": delta,
+        "warning": warning,
+        "supplier_exception_history": tightened_exception,
+        "supplier_risk_rating": invoice["supplier_risk_rating"],
+        "timestamp": latest.get("timestamp"),
+        "ttl_days": latest.get("ttl_days", 7),
+        "provenance": "signal",
+    }
+
+
+def _to_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _sdk_scorer(http_request: Request):
@@ -1502,6 +1575,8 @@ def _invoice_from_request(request: ScoreRequest, fixture_invoice: dict | None) -
     invoice["category"] = request.category
     invoice["amount"] = request.amount
     invoice["supplier_id"] = request.supplier_id
+    if request.supplier_name is not None:
+        invoice["supplier_name"] = request.supplier_name
     if request.contract_id is not None:
         invoice["contract_id"] = request.contract_id
     request_fields = _request_fields_set(request)
@@ -1540,6 +1615,7 @@ class ScoreRequest(BaseModel):
     category: str
     amount: float
     supplier_id: str
+    supplier_name: Optional[str] = None
     contract_id: Optional[str] = None
     approved_categories: Optional[list[str]] = None
     supplier_risk_rating: float = 0.5
@@ -1612,6 +1688,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
     active_variant = get_active_variant(category=request.category)
     lookup_id = invoice.get("invoice_id") or request.event_id
     context = _resolve_graph_context(lookup_id, http_request)
+    cross_copilot_signal = _apply_cross_copilot_signal(invoice, request)
     computed_factors = compute_all_factors(invoice, context=context)
     factor_vector = [computed_factors[name] for name in S2PDomainConfig.factors]
     scorer = _sdk_scorer(http_request)
@@ -1675,7 +1752,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
         factor_vector=factor_vector,
         factor_names=S2PDomainConfig.factors,
         decision_id=score_result.decision_id,
-        process_context=_score_process_context(),
+        process_context=_score_process_context_with_signal(cross_copilot_signal),
         active_variant=active_variant,
         auto_approve=auto_approve,
         novelty_score=novelty_score,

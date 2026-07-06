@@ -107,8 +107,8 @@ class S2PGraphContract(GraphContract):
 
 S2P_GRAPH_CONTRACT = S2PGraphContract(
     graph_name="s2p_graph",
-    expected_nodes=183,
-    expected_edges=658,
+    expected_nodes=187,
+    expected_edges=662,
     node_types=[
         NodeType("Decision", ["decision_id", "invoice_id", "category", "recommended_action", "confidence", "created_at"]),
         NodeType("Invoice", ["invoice_id", "supplier_id", "po_number", "amount", "currency", "category", "ground_truth_action"]),
@@ -119,6 +119,10 @@ S2P_GRAPH_CONTRACT = S2PGraphContract(
         NodeType("Category", ["category_id", "name"]),
         NodeType("Factor", ["factor_id", "name"]),
         NodeType("ComplianceRule", ["rule_id", "name", "category"]),
+        NodeType("CommodityIndex", ["commodity", "delta_pct", "lookback_days", "as_of"]),
+        NodeType("ContractClause", ["ref", "threshold_pct", "clause_type"]),
+        NodeType("GoodsReceipt", ["gr_id", "qty_received", "date"]),
+        NodeType("ComplianceHistory", ["rule_id", "pass_rate", "sample_count"]),
     ],
     edge_types=[
         EdgeType("DECIDED_ON", "Decision", "Invoice"),
@@ -130,5 +134,9 @@ S2P_GRAPH_CONTRACT = S2PGraphContract(
         EdgeType("EVALUATED_WITH", "Decision", "Factor"),
         EdgeType("VIOLATES", "Invoice", "ComplianceRule"),
         EdgeType("BOTTLENECK_AT", "Activity", "Supplier"),
+        EdgeType("HAS_COMMODITY_INDEX", "Invoice", "CommodityIndex"),
+        EdgeType("GOVERNED_BY", "Invoice", "ContractClause"),
+        EdgeType("RECEIVED_AS", "Invoice", "GoodsReceipt"),
+        EdgeType("COMPLIANCE_RECORD", "Supplier", "ComplianceHistory"),
     ],
 )

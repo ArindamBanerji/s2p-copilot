@@ -36,6 +36,7 @@ from app.routers.s2p_explorer import router as s2p_explorer_router
 from app.routers.factor_proposer_router import router as s2p_factor_proposer_router
 from app.routers.s2p_evidence import router as s2p_evidence_router
 from app.routers.s2p_enrichment import router as s2p_enrichment_router
+from app.routers.s2p_enrichment_context import router as s2p_enrichment_context_router
 from app.routers.s2p_situation import router as s2p_situation_router
 from app.routers.financial_router import router as s2p_financial_router
 from app.routers.s2p_governance import router as s2p_governance_router
@@ -154,6 +155,7 @@ app.include_router(s2p_insight_router)
 app.include_router(s2p_evidence_router)
 app.include_router(s2p_situation_router)
 app.include_router(s2p_enrichment_router)
+app.include_router(s2p_enrichment_context_router)
 app.include_router(s2p_governance_router)
 app.include_router(s2p_performance_router)
 app.include_router(s2p_financial_router)

@@ -159,6 +159,8 @@ def seed_s2p_graph(seed: int = 42) -> tuple[list[dict[str, Any]], list[dict[str,
         for supplier in suppliers
         if supplier.get("supplier_id")
     }
+    first_invoice_node_id: str | None = None
+    first_supplier_node_id: str | None = None
 
     for index, invoice in enumerate(invoices):
         invoice_id = str(invoice.get("invoice_id") or f"invoice-{index}")
@@ -203,6 +205,10 @@ def seed_s2p_graph(seed: int = 42) -> tuple[list[dict[str, Any]], list[dict[str,
                 "ground_truth_action": invoice.get("ground_truth_action"),
             },
         )
+        if first_invoice_node_id is None:
+            first_invoice_node_id = invoice_node_id
+        if first_supplier_node_id is None and supplier_id in supplier_ids:
+            first_supplier_node_id = supplier_ids[supplier_id]
         po_id = _add_node(
             nodes,
             seen_nodes,
@@ -231,6 +237,59 @@ def seed_s2p_graph(seed: int = 42) -> tuple[list[dict[str, Any]], list[dict[str,
                 factor_ids[factor],
                 {"value": factors.get(factor)},
             )
+
+    if first_invoice_node_id is not None:
+        commodity_index_id = _add_node(
+            nodes,
+            seen_nodes,
+            "CommodityIndex",
+            "commodity_index_demo",
+            {
+                "commodity": "demo",
+                "delta_pct": 0.0,
+                "lookback_days": 30,
+                "as_of": "fixture",
+            },
+        )
+        contract_clause_id = _add_node(
+            nodes,
+            seen_nodes,
+            "ContractClause",
+            "contract_clause_demo",
+            {
+                "ref": "demo",
+                "threshold_pct": 0.0,
+                "clause_type": "demo",
+            },
+        )
+        goods_receipt_id = _add_node(
+            nodes,
+            seen_nodes,
+            "GoodsReceipt",
+            "goods_receipt_demo",
+            {
+                "gr_id": "goods_receipt_demo",
+                "qty_received": 0,
+                "date": "fixture",
+            },
+        )
+        _add_edge(edges, seen_edges, "HAS_COMMODITY_INDEX", first_invoice_node_id, commodity_index_id)
+        _add_edge(edges, seen_edges, "GOVERNED_BY", first_invoice_node_id, contract_clause_id)
+        _add_edge(edges, seen_edges, "RECEIVED_AS", first_invoice_node_id, goods_receipt_id)
+
+    if first_supplier_node_id is not None:
+        compliance_history_id = _add_node(
+            nodes,
+            seen_nodes,
+            "ComplianceHistory",
+            "compliance_history_demo",
+            {
+                "rule_id": "compliance_history_demo",
+                "pass_rate": 1.0,
+                "sample_count": 0,
+            },
+        )
+        _add_edge(edges, seen_edges, "COMPLIANCE_RECORD", first_supplier_node_id, compliance_history_id)
 
     model_id = _add_node(
         nodes,

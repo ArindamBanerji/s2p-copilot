@@ -182,7 +182,7 @@ def _tier_from_source(source: Any) -> str:
         return normalized
     if normalized in {"fixture", "demo", "sample_data", "synthetic"}:
         return "sample"
-    if normalized in {"graph_store", "graph", "external", "scraped_external", "cached", "index", "feed"}:
+    if normalized in {"graph_store", "graph", "enriched", "external", "scraped_external", "cached", "index", "feed"}:
         return "context"
     if normalized in {"verified", "audited", "receipt", "proof"}:
         return "proven"

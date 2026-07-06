@@ -17,6 +17,7 @@ from app.domains.s2p.config import S2PDomainConfig
 from app.routers.s2p_data_helpers import find_invoice
 from app.services.s2p_evidence_templates import S2P_FACTOR_MAP, evidence_context_from_record
 from app.services.s2p_situation_pattern import _intent_context
+from app.services.situation_graph_enrichment import NAMESPACE as SITUATION_ENRICHMENT_NAMESPACE
 
 
 SITUATION_NL_TEMPLATES: dict[str, str] = {
@@ -72,7 +73,7 @@ class S2PTraversalPatternBase:
     ) -> SituationContext:
         depth = _bounded_depth(max_depth)
         prepared = _prepare_context(intent, graph_store, self.category)
-        prepared.graph_context = _query_graph_context(graph_store, prepared.invoice_id, depth)
+        prepared.graph_context = _query_graph_context(graph_store, prepared.invoice_id, min(3, depth + 1))
         nodes, edges, warnings, available = self._traversal(prepared, depth, graph_store)
         variables = self._variables(prepared, graph_store)
         variables.setdefault("action", prepared.action)
@@ -139,7 +140,7 @@ class PriceVarianceTraversal(S2PTraversalPatternBase):
                 commodity = "Commodity data unavailable"
                 warnings.append("Commodity data unavailable")
                 available = False
-            nodes.append(_graph_or_fixture_node(prepared, "commodity_index", f"commodity:{commodity}", commodity, 1, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "commodity_index", f"commodity:{commodity}", commodity, 1, {
                 "commodity": commodity,
                 "commodity_delta": prepared.variables.get("commodity_delta"),
                 "lookback_days": prepared.variables.get("lookback_days"),
@@ -152,14 +153,14 @@ class PriceVarianceTraversal(S2PTraversalPatternBase):
                 contract_ref = "No contract clause found"
                 warnings.append("No contract clause found")
                 available = False
-            nodes.append(_graph_or_fixture_node(prepared, "contract_clause", f"contract_clause:{contract_ref}", contract_ref, 2, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "contract_clause", f"contract_clause:{contract_ref}", contract_ref, 2, {
                 "ref": contract_ref,
                 "allows_blocks": prepared.variables.get("allows_blocks"),
                 "provenance": "fixture",
             }))
             edges.append(_edge(nodes[-2], nodes[-1], "CHECKS_CONTRACT_CLAUSE", 2))
         if max_depth >= 3:
-            nodes.append(_graph_or_fixture_node(prepared, "threshold", f"threshold:{prepared.variables.get('threshold_pct')}", "Threshold", 3, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "threshold", f"threshold:{prepared.variables.get('threshold_pct')}", "Threshold", 3, {
                 "threshold_pct": prepared.variables.get("threshold_pct"),
                 "within_bounds": prepared.variables.get("within_bounds"),
                 "provenance": "fixture",
@@ -179,7 +180,7 @@ class QuantityMismatchTraversal(S2PTraversalPatternBase):
         warnings: list[str] = []
         available = True
         if max_depth >= 1:
-            nodes.append(_graph_or_fixture_node(prepared, "purchase_order", str(prepared.variables.get("po_id")), "Purchase Order", 1, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "purchase_order", str(prepared.variables.get("po_id")), "Purchase Order", 1, {
                 "po_id": prepared.variables.get("po_id"),
                 "po_qty": prepared.variables.get("po_qty"),
                 "provenance": "fixture",
@@ -191,13 +192,13 @@ class QuantityMismatchTraversal(S2PTraversalPatternBase):
                 gr_qty = "GR data pending"
                 warnings.append("GR data pending")
                 available = False
-            nodes.append(_graph_or_fixture_node(prepared, "goods_receipt", f"gr:{prepared.variables.get('po_id')}", "Goods Receipt", 2, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "goods_receipt", f"gr:{prepared.variables.get('po_id')}", "Goods Receipt", 2, {
                 "gr_qty": gr_qty,
                 "provenance": "fixture",
             }))
             edges.append(_edge(nodes[-2], nodes[-1], "CONFIRMED_BY_GR", 2))
         if max_depth >= 3:
-            nodes.append(_graph_or_fixture_node(prepared, "delta", f"delta:{prepared.invoice_id}", "Quantity Delta", 3, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "delta", f"delta:{prepared.invoice_id}", "Quantity Delta", 3, {
                 "delta": prepared.variables.get("delta"),
                 "match_status": prepared.variables.get("match_status"),
                 "provenance": "fixture",
@@ -227,13 +228,13 @@ class DuplicateRiskTraversal(S2PTraversalPatternBase):
             }))
             edges.append(_edge(nodes[0], nodes[-1], "SIMILAR_TO", 1))
         if max_depth >= 2:
-            nodes.append(_graph_or_fixture_node(prepared, "supplier", str(prepared.variables.get("supplier")), str(prepared.variables.get("supplier")), 2, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "supplier", str(prepared.variables.get("supplier")), str(prepared.variables.get("supplier")), 2, {
                 "supplier": prepared.variables.get("supplier"),
                 "provenance": "fixture",
             }))
             edges.append(_edge(nodes[-2], nodes[-1], "FROM_SUPPLIER", 2))
         if max_depth >= 3:
-            nodes.append(_graph_or_fixture_node(prepared, "amount_match", f"amount:{prepared.variables.get('match_amount')}", "Amount Match", 3, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "amount_match", f"amount:{prepared.variables.get('match_amount')}", "Amount Match", 3, {
                 "match_amount": prepared.variables.get("match_amount"),
                 "verdict": prepared.variables.get("verdict"),
                 "provenance": "fixture",
@@ -261,7 +262,7 @@ class ContractGapTraversal(S2PTraversalPatternBase):
         warnings: list[str] = []
         available = True
         if max_depth >= 1:
-            nodes.append(_graph_or_fixture_node(prepared, "purchase_order", str(prepared.variables.get("po_id")), "Purchase Order", 1, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "purchase_order", str(prepared.variables.get("po_id")), "Purchase Order", 1, {
                 "po_id": prepared.variables.get("po_id"),
                 "provenance": "fixture",
             }))
@@ -272,14 +273,14 @@ class ContractGapTraversal(S2PTraversalPatternBase):
                 ref = "No contract clause found"
                 warnings.append("No contract clause found")
                 available = False
-            nodes.append(_graph_or_fixture_node(prepared, "contract", f"contract:{ref}", ref, 2, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "contract", f"contract:{ref}", ref, 2, {
                 "ref": ref,
                 "scope": prepared.variables.get("scope"),
                 "provenance": "fixture",
             }))
             edges.append(_edge(nodes[-2], nodes[-1], "REFERENCES_CONTRACT", 2))
         if max_depth >= 3:
-            nodes.append(_graph_or_fixture_node(prepared, "coverage", f"coverage:{prepared.invoice_id}", "Coverage Analysis", 3, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "coverage", f"coverage:{prepared.invoice_id}", "Coverage Analysis", 3, {
                 "covered_pct": prepared.variables.get("covered_pct"),
                 "gap_items": prepared.variables.get("gap_items"),
                 "provenance": "fixture",
@@ -297,14 +298,14 @@ class FormatComplianceTraversal(S2PTraversalPatternBase):
         nodes = [_invoice_node(prepared, 0)]
         edges: list[TraversalEdge] = []
         if max_depth >= 1:
-            nodes.append(_graph_or_fixture_node(prepared, "rules", f"rules:{prepared.invoice_id}", "Format Rules", 1, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "rules", f"rules:{prepared.invoice_id}", "Format Rules", 1, {
                 "fail_count": prepared.variables.get("n"),
                 "issues": prepared.variables.get("issues"),
                 "provenance": "fixture",
             }))
             edges.append(_edge(nodes[0], nodes[-1], "CHECKS_RULES", 1))
         if max_depth >= 2:
-            nodes.append(_graph_or_fixture_node(prepared, "historical_compliance", f"history:{prepared.variables.get('supplier')}", "Historical Compliance", 2, {
+            nodes.append(_graph_or_fixture_node(prepared, graph_store, "historical_compliance", f"history:{prepared.variables.get('supplier')}", "Historical Compliance", 2, {
                 "supplier": prepared.variables.get("supplier"),
                 "historical_pct": prepared.variables.get("historical_pct"),
                 "provenance": "fixture",
@@ -427,6 +428,7 @@ def _query_graph_context(
 
 def _graph_or_fixture_node(
     prepared: _PreparedContext,
+    graph_store: Any,
     node_type: str,
     node_id: str,
     label: str,
@@ -437,7 +439,9 @@ def _graph_or_fixture_node(
     if graph_row is None:
         return _node(node_id, node_type, label, depth, properties)
     graph_properties = _graph_properties(graph_row)
-    merged = {**dict(properties), **graph_properties, "provenance": "graph_store"}
+    enriched_properties = _read_enriched_properties(graph_store, node_type, str(graph_row.get("id") or graph_properties.get("entity_id") or ""))
+    provenance = "enriched" if enriched_properties else "graph_store"
+    merged = {**dict(properties), **graph_properties, **enriched_properties, "provenance": provenance}
     return _node(
         str(graph_row.get("id") or graph_properties.get("id") or node_id),
         node_type,
@@ -448,20 +452,93 @@ def _graph_or_fixture_node(
 
 
 def _find_graph_row(rows: list[dict[str, Any]], node_type: str) -> dict[str, Any] | None:
-    aliases = {node_type, node_type.replace("_", ""), node_type.replace("_", "-")}
+    aliases = _node_aliases(node_type)
     for row in rows:
         node = row.get("node")
         properties = _graph_properties(row)
+        edge_type = str(properties.get("edge_type") or "")
+        row_id = str(row.get("id") or properties.get("entity_id") or "")
         candidates = [
             node if isinstance(node, str) else None,
             properties.get("type"),
             properties.get("node_type"),
             properties.get("_label"),
             properties.get("label"),
+            _node_type_from_edge(edge_type),
+            _node_type_from_entity_id(row_id),
         ]
-        if any(str(candidate or "").lower() in aliases for candidate in candidates):
+        if any(_normalize_node_type(candidate) in aliases for candidate in candidates):
             return row
     return None
+
+
+def _node_aliases(node_type: str) -> set[str]:
+    canonical = {
+        "commodity_index": "CommodityIndex",
+        "contract": "ContractClause",
+        "contract_clause": "ContractClause",
+        "goods_receipt": "GoodsReceipt",
+        "compliance_rule": "ComplianceHistory",
+        "historical_compliance": "ComplianceHistory",
+    }.get(node_type, node_type)
+    return {
+        _normalize_node_type(node_type),
+        _normalize_node_type(canonical),
+        _normalize_node_type(node_type.replace("_", "")),
+        _normalize_node_type(node_type.replace("_", "-")),
+    }
+
+
+def _normalize_node_type(value: Any) -> str:
+    return str(value or "").replace("_", "").replace("-", "").lower()
+
+
+def _node_type_from_edge(edge_type: str) -> str | None:
+    return {
+        "HAS_COMMODITY_INDEX": "commodity_index",
+        "GOVERNED_BY": "contract_clause",
+        "RECEIVED_AS": "goods_receipt",
+        "COMPLIANCE_RECORD": "historical_compliance",
+    }.get(edge_type)
+
+
+def _node_type_from_entity_id(entity_id: str) -> str | None:
+    prefix = entity_id.split(":", 1)[0]
+    return {
+        "CommodityIndex": "commodity_index",
+        "ContractClause": "contract_clause",
+        "GoodsReceipt": "goods_receipt",
+        "ComplianceHistory": "historical_compliance",
+    }.get(prefix)
+
+
+def _read_enriched_properties(graph_store: Any, node_type: str, entity_id: str) -> dict[str, Any]:
+    entity_type = {
+        "commodity_index": "CommodityIndex",
+        "contract": "ContractClause",
+        "contract_clause": "ContractClause",
+        "goods_receipt": "GoodsReceipt",
+        "compliance_rule": "ComplianceHistory",
+        "historical_compliance": "ComplianceHistory",
+    }.get(node_type)
+    reader = getattr(graph_store, "read_entity_enrichment", None)
+    if not entity_type or not entity_id or not callable(reader):
+        return {}
+    try:
+        metrics = reader(
+            domain="s2p",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            namespace=SITUATION_ENRICHMENT_NAMESPACE,
+        )
+    except Exception:
+        return {}
+    if not isinstance(metrics, dict):
+        return {}
+    return {
+        str(name): getattr(value, "value", value)
+        for name, value in metrics.items()
+    }
 
 
 def _graph_properties(row: dict[str, Any]) -> dict[str, Any]:
@@ -524,6 +601,7 @@ def _evidence_chain_provenance(nodes: list[TraversalNode]) -> str:
         "demo": 0,
         "synthetic": 0,
         "graph_store": 1,
+        "enriched": 1,
         "context": 1,
         "external": 1,
         "feed": 1,

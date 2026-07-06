@@ -150,6 +150,49 @@ def test_to_dict_has_all_fields():
     } <= set(payload)
 
 
+def test_receipt_export_metadata_populated():
+    payload = make_receipt(
+        cycle_time_saved=3.97,
+        weight_updated=True,
+        exportable=True,
+    ).to_dict()
+
+    assert payload["cycle_time_saved"] == 3.97
+    assert payload["weight_updated"] is True
+    assert payload["exportable"] is True
+
+
+def test_receipt_export_metadata_backward_compatible_none():
+    payload = make_receipt().to_dict()
+
+    assert "cycle_time_saved" not in payload
+    assert "weight_updated" not in payload
+    assert "exportable" not in payload
+
+
+def test_receipt_export_metadata_does_not_change_hash():
+    baseline = make_receipt()
+    enriched = make_receipt(
+        cycle_time_saved=3.97,
+        weight_updated=True,
+        exportable=True,
+    )
+
+    assert enriched.receipt_hash == baseline.receipt_hash
+
+
+def test_receipt_serialization_includes_export_metadata_when_present():
+    receipt = make_receipt(
+        cycle_time_saved="2.5",
+        weight_updated=1,
+        exportable=1,
+    )
+
+    assert receipt.to_dict()["cycle_time_saved"] == 2.5
+    assert receipt.to_dict()["weight_updated"] is True
+    assert receipt.to_dict()["exportable"] is True
+
+
 def test_override_reason_captured():
     payload = make_receipt(
         human_action="escalate_to_buyer",
@@ -327,6 +370,7 @@ def test_learn_creates_receipt():
     assert receipt["conservation_status"]
     assert len(receipt["factor_vector"]) == S2PDomainConfig.n_factors
     assert receipt["receipt_hash"]
+    assert receipt["exportable"] is True
 
 
 def test_chain_grows_with_multiple_learns(monkeypatch):
@@ -482,6 +526,51 @@ def test_receipt_created_when_learn_result_proves_outcome_recorded(monkeypatch):
 
     assert payload["reward"] == 0.8
     assert get_receipt_store().count == 1
+
+
+def test_receipt_weight_updated_tracks_verified_delta(monkeypatch):
+    score = score_for_receipt()
+    snapshots = iter([
+        {"state": "GREEN", "verified_count": 3},
+        {"state": "GREEN", "verified_count": 3},
+    ])
+
+    monkeypatch.setattr(s2p_router, "_receipt_conservation_snapshot", lambda _request: next(snapshots))
+    monkeypatch.setattr(
+        s2p_router,
+        "_learn_with_scorer",
+        lambda *_args, **_kwargs: {
+            "decision_id": score["decision_id"],
+            "invoice_id": VALID_SCORE_REQUEST["event_id"],
+            "status": "recorded",
+            "reward": 0.8,
+        },
+    )
+
+    learn_for_receipt(score)
+
+    receipt = get_receipt_store().get_for_invoice(VALID_SCORE_REQUEST["event_id"])[0]
+    assert receipt["weight_updated"] is False
+
+
+def test_receipt_exportable_false_when_evidence_receipt_queued(monkeypatch):
+    score = score_for_receipt()
+
+    monkeypatch.setattr(
+        s2p_router,
+        "_append_evidence_receipt_before_outcome",
+        lambda **_kwargs: {
+            "receipt_intent_id": "RCP-test",
+            "payload_hash": None,
+            "receipt_queued": True,
+            "outbox_id": 1,
+        },
+    )
+
+    learn_for_receipt(score)
+
+    receipt = get_receipt_store().get_for_invoice(VALID_SCORE_REQUEST["event_id"])[0]
+    assert receipt["exportable"] is False
 
 
 def test_paused_learning_without_variant_still_does_not_422(monkeypatch):

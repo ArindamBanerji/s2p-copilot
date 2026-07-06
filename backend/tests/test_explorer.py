@@ -39,8 +39,8 @@ def test_centroid_returns_200():
 def test_centroid_has_7_factors():
     response = client.get("/api/s2p/explorer/centroid/price_variance/auto_approve")
     payload = response.json()
-    assert len(payload["centroid"]) == 7
-    assert len(payload["factors"]) == 7
+    assert len(payload["centroid"]) == S2PDomainConfig.n_factors
+    assert len(payload["factors"]) == S2PDomainConfig.n_factors
 
 
 def test_centroid_values_bounded():
@@ -102,9 +102,9 @@ def test_contribution_has_7_factors_if_available():
 
     assert response.status_code == 200
     contributions = response.json()["contributions"]
-    assert len(contributions) == 7
+    assert len(contributions) == S2PDomainConfig.n_factors
     assert [row["factor"] for row in contributions] == list(S2PDomainConfig.factors)
-    assert {row["factor_index"] for row in contributions} == set(range(7))
+    assert {row["factor_index"] for row in contributions} == set(range(S2PDomainConfig.n_factors))
     for row in contributions:
         assert set(row["distance_to_actions"]) == set(S2PDomainConfig.actions)
 

@@ -341,6 +341,7 @@ def _read_public_centroid(
         vector = [float(value) for value in list(raw)]
     except (TypeError, ValueError) as exc:
         raise CentroidExplorerError("Centroid vector is not numeric", status_code=503) from exc
+    vector = _pad_legacy_s2p_vector(vector, expected_len)
     if len(vector) != expected_len:
         raise CentroidExplorerError(
             f"Centroid vector length {len(vector)} != {expected_len}",
@@ -361,6 +362,7 @@ def _factor_vector(decision: dict[str, Any], preset: type[S2PDomainConfig]) -> l
         vector = [float(value) for value in list(raw)]
     except (TypeError, ValueError) as exc:
         raise CentroidExplorerError("Stored decision factor_vector is not numeric", status_code=422) from exc
+    vector = _pad_legacy_s2p_vector(vector, preset.n_factors)
     if len(vector) != preset.n_factors:
         raise CentroidExplorerError(
             f"Stored decision factor_vector length {len(vector)} != {preset.n_factors}",
@@ -368,6 +370,12 @@ def _factor_vector(decision: dict[str, Any], preset: type[S2PDomainConfig]) -> l
         )
     if not all(math.isfinite(value) for value in vector):
         raise CentroidExplorerError("Stored decision factor_vector contains non-finite values", status_code=422)
+    return vector
+
+
+def _pad_legacy_s2p_vector(vector: list[float], expected_len: int) -> list[float]:
+    if expected_len == 8 and len(vector) == 7:
+        return [*vector, 0.5]
     return vector
 
 
@@ -415,6 +423,7 @@ def _dk_row(dk_weights: Any, category_index: int, expected_len: int) -> list[flo
         values = [float(value) for value in list(row)]
     except (TypeError, ValueError):
         return None
+    values = _pad_legacy_s2p_vector(values, expected_len)
     if len(values) != expected_len or not all(math.isfinite(value) for value in values):
         return None
     return values

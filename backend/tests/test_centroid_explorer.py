@@ -210,7 +210,7 @@ def test_missing_factor_vector_returns_safe_error_or_exception():
 
 
 def test_invalid_factor_vector_length_returns_safe_error_or_exception():
-    with pytest.raises(CentroidExplorerError, match="length 2 != 7") as exc:
+    with pytest.raises(CentroidExplorerError, match=f"length 2 != {S2PDomainConfig.n_factors}") as exc:
         explain_decision(_decision(factor_vector=[0.1, 0.2]), FakeScorer())
 
     assert exc.value.status_code == 422
@@ -235,7 +235,7 @@ def test_centroid_cell_endpoint():
     payload = response.json()
     assert payload["category"] == "price_variance"
     assert payload["action"] == "auto_approve"
-    assert len(payload["centroid_vector"]) == 7
+    assert len(payload["centroid_vector"]) == S2PDomainConfig.n_factors
     assert payload["read_only"] is True
 
 
@@ -247,7 +247,11 @@ def test_all_centroids_endpoint_returns_25_cells():
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["shape"] == {"categories": 5, "actions": 5, "factors": 7}
+    assert payload["shape"] == {
+        "categories": S2PDomainConfig.n_categories,
+        "actions": S2PDomainConfig.n_actions,
+        "factors": S2PDomainConfig.n_factors,
+    }
     assert len(payload["cells"]) == 25
     assert payload["read_only"] is True
 
@@ -275,7 +279,7 @@ def test_explain_endpoint_success_for_stored_decision():
     assert payload["recommended_action"]
     assert payload["closest_action"] in S2PDomainConfig.actions
     assert set(payload["centroid_distances"]) == set(S2PDomainConfig.actions)
-    assert len(payload["factor_contributions"]) == 7
+    assert len(payload["factor_contributions"]) == S2PDomainConfig.n_factors
     assert payload["read_only"] is True
 
 

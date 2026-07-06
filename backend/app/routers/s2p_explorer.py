@@ -74,7 +74,7 @@ def _read_dk_weights(scorer: Any) -> list[float] | None:
                 weights = weights()
             if hasattr(weights, "tolist"):
                 weights = weights.tolist()
-            return [float(value) for value in list(weights)]
+            return _pad_legacy_vector([float(value) for value in list(weights)], S2PDomainConfig.n_factors)
     return None
 
 
@@ -102,6 +102,32 @@ def _centroid_shape(centroids: Any) -> list[int]:
                 return []
         current = first
     return shape
+
+
+def _pad_legacy_vector(vector: list[float], expected_len: int) -> list[float]:
+    if expected_len == 8 and len(vector) == 7:
+        return [*vector, 0.5]
+    return vector
+
+
+def _pad_legacy_centroids(centroids: list, config: type[S2PDomainConfig]) -> list:
+    if config.n_factors == 8 and len(centroids) == config.n_categories:
+        padded = []
+        changed = False
+        for category in centroids:
+            if not isinstance(category, list) or len(category) != config.n_actions:
+                return centroids
+            action_rows = []
+            for vector in category:
+                if not isinstance(vector, list):
+                    return centroids
+                migrated = _pad_legacy_vector(vector, config.n_factors)
+                action_rows.append(migrated)
+                changed = changed or migrated is not vector
+            padded.append(action_rows)
+        if changed:
+            return padded
+    return centroids
 
 
 def _validate_centroid_values(centroids: list) -> str | None:
@@ -235,6 +261,7 @@ def _safe_read_dk_weights(scorer: Any, expected_len: int) -> list[float] | None:
                 values = [float(value) for value in list(weights)]
             except Exception:
                 return None
+            values = _pad_legacy_vector(values, expected_len)
             if len(values) != expected_len:
                 return None
             return values
@@ -386,6 +413,7 @@ def import_centroids(payload: dict[str, Any], http_request: Request) -> dict[str
     centroids = payload["centroids"]
     if not isinstance(centroids, list):
         raise HTTPException(status_code=400, detail="centroids must be a nested list")
+    centroids = _pad_legacy_centroids(centroids, config)
 
     expected_shape = [config.n_categories, config.n_actions, config.n_factors]
     shape = _centroid_shape(centroids)

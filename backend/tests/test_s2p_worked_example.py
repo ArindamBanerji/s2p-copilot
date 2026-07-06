@@ -174,8 +174,8 @@ def test_s2p_score_factor_breakdown_present():
     data = resp.json()
     assert "factor_vector" in data
     assert "factor_names" in data
-    assert len(data["factor_vector"]) == 7
-    assert len(data["factor_names"]) == 7
+    assert len(data["factor_vector"]) == S2PDomainConfig.n_factors
+    assert len(data["factor_names"]) == S2PDomainConfig.n_factors
 
 
 def test_s2p_score_all_10_scenarios_return_valid_action():

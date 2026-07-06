@@ -38,8 +38,9 @@ BASE_INVOICE = {
 }
 
 
-def test_registry_has_seven_canonical_factors():
-    assert len(ALL_FACTORS) == 7
+def test_registry_has_canonical_factors():
+    assert len(ALL_FACTORS) == len(FACTOR_NAMES)
+    assert FACTOR_NAMES[-1] == "environmental_risk"
     assert FACTOR_NAMES == S2PDomainConfig.factors
 
 
@@ -142,7 +143,7 @@ def test_compute_all_factors_returns_canonical_keys_and_clamped_values():
     }
     values = compute_all_factors(invoice)
     assert list(values) == FACTOR_NAMES
-    assert len(values) == 7
+    assert len(values) == len(FACTOR_NAMES)
     assert all(0.0 <= value <= 1.0 for value in values.values())
     assert values["duplicate_score"] == 1.0
 
@@ -178,7 +179,7 @@ def test_compute_all_factors_catches_factor_errors(monkeypatch):
     monkeypatch.setattr(factors, "ALL_FACTORS", [BrokenFactor(), *original[1:]])
     values = factors.compute_all_factors(BASE_INVOICE)
     assert values["match_status"] == 0.42
-    assert len(values) == 7
+    assert len(values) == len(FACTOR_NAMES)
 
 
 def test_factor_module_has_no_sdk_or_soc_imports():

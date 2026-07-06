@@ -62,13 +62,15 @@ def _proposer(request: Request) -> FactorProposer:
 
 def _dk_weight_map(scorer: Any, factors: list[str]) -> dict[str, float]:
     weights = _read_dk_weights(scorer)
+    if weights is not None and len(weights) == len(factors) - 1 and len(factors) == 8:
+        weights = [*weights, 0.04]
     if weights is not None and len(weights) == len(factors):
         return {factor: float(weights[index]) for index, factor in enumerate(factors)}
     return {
         factor: weight
         for factor, weight in zip(
             factors,
-            [0.22, 0.18, 0.16, 0.10, 0.09, 0.08, 0.04],
+            [0.22, 0.18, 0.16, 0.10, 0.09, 0.08, 0.04, 0.04],
         )
     }
 
@@ -116,6 +118,7 @@ def _fallback_factor_stats() -> dict[str, dict[str, float]]:
         "payment_terms_impact": {"variance": 0.44, "outcome_corr": 0.12},
         "commodity_index_correlation": {"variance": 0.36, "outcome_corr": 0.08},
         "tax_regulatory_compliance": {"variance": 0.25, "outcome_corr": 0.03},
+        "environmental_risk": {"variance": 0.25, "outcome_corr": 0.03},
     }
 
 

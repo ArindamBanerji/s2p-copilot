@@ -25,10 +25,13 @@ class SupplierProfile:
     otif_by_quarter: dict[str, float] = field(default_factory=dict)
     avg_lead_time_days: float | None = None
     lead_time_by_quarter: dict[str, float] = field(default_factory=dict)
+    lead_time_by_volume: dict[str, dict[str, float | int]] = field(default_factory=dict)
     invoice_count: int = 0
     last_invoice_date: str | None = None
     pricing_trend: float | None = None
     categories: list[str] = field(default_factory=list)
+    payment_response: dict[str, Any] = field(default_factory=dict)
+    quality_patterns: dict[str, Any] = field(default_factory=dict)
     last_updated: str | None = None
     source: str = "fixture"
 
@@ -47,6 +50,12 @@ class SupplierEvent:
     reward: float
     factors: dict[str, float]
     timestamp: str
+    payment_days: float | None = None
+    early_pay_discount: bool = False
+    defect: bool = False
+    returned: bool = False
+    lead_time_days: float | None = None
+    quantity: float = 0.0
 
 
 class SupplierProfileAccumulator:
@@ -84,6 +93,8 @@ class SupplierProfileAccumulator:
                 otif=_numeric_or_none(row.get("otif_score", row.get("otif"))),
                 invoice_count=int(_to_float(row.get("total_invoices", row.get("invoice_count")), 0.0)),
                 categories=categories,
+                payment_response=_payment_fixture(row),
+                quality_patterns=_quality_fixture(row),
                 source="fixture",
             )
 
@@ -111,6 +122,13 @@ class SupplierProfileAccumulator:
             profile.last_invoice_date = _latest_invoice_date(events)
             profile.last_updated = _latest_timestamp(events)
             profile.categories = _merge_categories(fixture.categories, self._compute_categories(events))
+            profile.payment_response = self._merge_payment_response(fixture.payment_response, events)
+            profile.quality_patterns = self._merge_quality_patterns(fixture.quality_patterns, events)
+            lead_avg = self._compute_avg_lead_time(events)
+            if lead_avg is not None:
+                profile.avg_lead_time_days = lead_avg
+                profile.lead_time_by_quarter = self._compute_quarterly(events, "lead_time_days")
+                profile.lead_time_by_volume = self._group_by_volume(events, "lead_time_days")
             profile.source = "fixture"
             return profile
         return self._profile_from_events(supplier_id, events, fixture)
@@ -186,6 +204,12 @@ class SupplierProfileAccumulator:
             is_correct=is_correct,
             reward=reward,
             factors=_extract_factors(decision),
+            payment_days=_numeric_or_none(_first_value((metadata, outcome_metadata, context), ("payment_days", "avg_payment_days", "paymentDays"))),
+            early_pay_discount=bool(_first_value((metadata, outcome_metadata, context), ("early_pay_discount", "earlyPayDiscount"))),
+            defect=bool(_first_value((metadata, outcome_metadata, context), ("defect", "quality_defect", "qualityDefect"))),
+            returned=bool(_first_value((metadata, outcome_metadata, context), ("returned", "return", "was_returned", "wasReturned"))),
+            lead_time_days=_numeric_or_none(_first_value((metadata, outcome_metadata, context), ("lead_time_days", "leadTimeDays"))),
+            quantity=_to_float(_first_value((metadata, outcome_metadata, context), ("quantity", "volume", "invoice_quantity")), 0.0),
             timestamp=_first_text(
                 (outcome, outcome_metadata, decision, metadata),
                 ("timestamp", "verified_at", "decision_time", "invoice_date"),
@@ -208,12 +232,15 @@ class SupplierProfileAccumulator:
             exception_rate_trend=self._compute_trend(events),
             otif=otif,
             otif_by_quarter={},
-            avg_lead_time_days=None,
-            lead_time_by_quarter={},
+            avg_lead_time_days=self._compute_avg_lead_time(events),
+            lead_time_by_quarter=self._compute_quarterly(events, "lead_time_days"),
+            lead_time_by_volume=self._group_by_volume(events, "lead_time_days"),
             invoice_count=len(events),
             last_invoice_date=_latest_invoice_date(events),
             pricing_trend=self._compute_pricing_trend(events),
             categories=self._compute_categories(events),
+            payment_response=self._compute_payment_response(events),
+            quality_patterns=self._compute_quality_patterns(events),
             last_updated=_latest_timestamp(events),
             source=source,
         )
@@ -253,6 +280,16 @@ class SupplierProfileAccumulator:
             buckets[quarter].append(event)
         if not buckets:
             return {}
+        if field == "lead_time_days":
+            return {
+                quarter: round(
+                    sum(event.lead_time_days or 0.0 for event in items if event.lead_time_days is not None)
+                    / max(sum(1 for event in items if event.lead_time_days is not None), 1),
+                    2,
+                )
+                for quarter, items in sorted(buckets.items())
+                if any(event.lead_time_days is not None for event in items)
+            }
         if field != "exception_rate":
             return {}
         return {
@@ -281,6 +318,81 @@ class SupplierProfileAccumulator:
             return None
         numerator = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
         return numerator / denominator
+
+    def _compute_payment_response(self, events: list[SupplierEvent]) -> dict[str, Any]:
+        payment_days = [event.payment_days for event in events if event.payment_days is not None]
+        avg_payment_days = round(sum(payment_days) / len(payment_days), 1) if payment_days else None
+        return {
+            "avg_payment_days": avg_payment_days,
+            "early_pay_discount": any(event.early_pay_discount for event in events),
+            "payment_correlation_with_otif": self._payment_otif_correlation(events),
+        }
+
+    def _compute_quality_patterns(self, events: list[SupplierEvent]) -> dict[str, Any]:
+        if not events:
+            return {"defect_rate": 0.0, "return_rate": 0.0, "quality_trend": "stable"}
+        defect_rate = sum(1 for event in events if event.defect) / len(events)
+        return_rate = sum(1 for event in events if event.returned) / len(events)
+        midpoint = max(1, len(events) // 2)
+        early = sum(1 for event in events[:midpoint] if event.defect or event.returned) / midpoint
+        recent_count = max(1, len(events) - midpoint)
+        recent = sum(1 for event in events[midpoint:] if event.defect or event.returned) / recent_count
+        if recent > early + 0.05:
+            trend = "worsening"
+        elif recent < early - 0.05:
+            trend = "improving"
+        else:
+            trend = "stable"
+        return {
+            "defect_rate": round(defect_rate, 4),
+            "return_rate": round(return_rate, 4),
+            "quality_trend": trend,
+        }
+
+    def _payment_otif_correlation(self, events: list[SupplierEvent]) -> float | None:
+        pairs = [(event.payment_days, 1.0 if event.is_correct else 0.0) for event in events if event.payment_days is not None]
+        if len(pairs) < TREND_MIN_POINTS:
+            return None
+        xs = [float(day) for day, _ in pairs]
+        ys = [correct for _, correct in pairs]
+        mean_x = sum(xs) / len(xs)
+        mean_y = sum(ys) / len(ys)
+        den_x = sum((x - mean_x) ** 2 for x in xs)
+        den_y = sum((y - mean_y) ** 2 for y in ys)
+        if den_x == 0 or den_y == 0:
+            return None
+        numerator = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+        return numerator / ((den_x * den_y) ** 0.5)
+
+    def _compute_avg_lead_time(self, events: list[SupplierEvent]) -> float | None:
+        values = [event.lead_time_days for event in events if event.lead_time_days is not None]
+        if not values:
+            return None
+        return round(sum(values) / len(values), 2)
+
+    def _group_by_volume(self, events: list[SupplierEvent], field: str) -> dict[str, dict[str, float | int]]:
+        bands = {
+            "low": (0.0, 100.0),
+            "medium": (100.0, 500.0),
+            "high": (500.0, float("inf")),
+        }
+        result: dict[str, dict[str, float | int]] = {}
+        for band, (low, high) in bands.items():
+            values = [
+                getattr(event, field)
+                for event in events
+                if low <= event.quantity < high and getattr(event, field) is not None
+            ]
+            if values:
+                result[band] = {"avg": round(sum(values) / len(values), 2), "count": len(values)}
+        return result
+
+    def _merge_payment_response(self, fixture: dict[str, Any], events: list[SupplierEvent]) -> dict[str, Any]:
+        computed = self._compute_payment_response(events)
+        return {**fixture, **{key: value for key, value in computed.items() if value not in (None, False)}}
+
+    def _merge_quality_patterns(self, fixture: dict[str, Any], events: list[SupplierEvent]) -> dict[str, Any]:
+        return {**fixture, **self._compute_quality_patterns(events)}
 
 
 def _default_fixture_path() -> str:
@@ -375,13 +487,32 @@ def _copy_profile(profile: SupplierProfile | None) -> SupplierProfile | None:
         otif_by_quarter=dict(profile.otif_by_quarter),
         avg_lead_time_days=profile.avg_lead_time_days,
         lead_time_by_quarter=dict(profile.lead_time_by_quarter),
+        lead_time_by_volume={key: dict(value) for key, value in profile.lead_time_by_volume.items()},
         invoice_count=profile.invoice_count,
         last_invoice_date=profile.last_invoice_date,
         pricing_trend=profile.pricing_trend,
         categories=list(profile.categories),
+        payment_response=dict(profile.payment_response),
+        quality_patterns=dict(profile.quality_patterns),
         last_updated=profile.last_updated,
         source=profile.source,
     )
+
+
+def _payment_fixture(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "avg_payment_days": _numeric_or_none(row.get("avg_payment_days")),
+        "early_pay_discount": bool(row.get("early_pay_discount", False)),
+        "payment_correlation_with_otif": _numeric_or_none(row.get("payment_correlation_with_otif")),
+    }
+
+
+def _quality_fixture(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "defect_rate": _to_float(row.get("defect_rate"), 0.0),
+        "return_rate": _to_float(row.get("return_rate"), 0.0),
+        "quality_trend": str(row.get("quality_trend") or "stable"),
+    }
 
 
 accumulator = SupplierProfileAccumulator(fixture_path=_default_fixture_path())

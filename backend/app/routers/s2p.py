@@ -80,10 +80,24 @@ def _resolve_graph_context(invoice_id: str, http_request: Request):
     except Exception:
         return None
     if isinstance(context_raw, list):
+        if not any(
+            isinstance(row, dict) and _graph_context_row_is_domain_specific(row)
+            for row in context_raw
+        ):
+            return None
         return {"neighbors": context_raw}
     if isinstance(context_raw, dict):
         return context_raw
     return None
+
+
+def _graph_context_row_is_domain_specific(row: dict[str, Any]) -> bool:
+    node = row.get("node")
+    if isinstance(node, str):
+        return node not in {"entity", "decision"}
+    if isinstance(node, dict):
+        return True
+    return bool(node)
 
 
 def _score_process_context() -> dict | None:
@@ -996,6 +1010,7 @@ def _record_outcome_receipt(
     reason_code: str | None,
     conservation_before: dict[str, Any],
     conservation_after: dict[str, Any],
+    evidence_receipt: dict[str, Any] | None = None,
     context: dict[str, Any] | None = None,
 ) -> None:
     try:
@@ -1036,6 +1051,13 @@ def _record_outcome_receipt(
             supplier_name=context.get("supplier_name"),
             invoice_number=_receipt_invoice_number(context, decision_id),
             po_number=context.get("po_number"),
+            cycle_time_saved=context.get("cycle_time_saved"),
+            weight_updated=_receipt_centroid_updated(payload, conservation_before, conservation_after),
+            exportable=bool(
+                isinstance(evidence_receipt, dict)
+                and evidence_receipt.get("payload_hash")
+                and evidence_receipt.get("receipt_queued") is False
+            ),
         )
         store.add(receipt)
     except (TypeError, ValueError, AttributeError) as exc:
@@ -1457,6 +1479,12 @@ def _ensure_outcome_decision(scorer: Any, request: "OutcomeRequest") -> None:
     )
 
 
+def _pad_legacy_factor_vector(vector: list[float]) -> list[float]:
+    if S2PDomainConfig.n_factors == 8 and len(vector) == 7:
+        return [*vector, 0.5]
+    return vector
+
+
 def _request_fields_set(request: ScoreRequest) -> set[str]:
     fields = getattr(request, "model_fields_set", None)
     if fields is not None:
@@ -1494,9 +1522,9 @@ def _invoice_from_request(request: ScoreRequest, fixture_invoice: dict | None) -
         invoice[field] = value
 
     explicit_factors = {
-        name: getattr(request, name)
+        name: getattr(request, name, None)
         for name in S2PDomainConfig.factors
-        if getattr(request, name) is not None
+        if getattr(request, name, None) is not None
     }
     if explicit_factors:
         factors = dict(invoice.get("factors") or {})
@@ -1526,6 +1554,7 @@ class ScoreRequest(BaseModel):
     payment_terms_impact: Optional[float] = None
     commodity_index_correlation: Optional[float] = None
     tax_regulatory_compliance: Optional[float] = None
+    environmental_risk: Optional[float] = None
 
 
 class ScoreResponse(BaseModel):
@@ -1731,7 +1760,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         action=request.actual_action,
     )
     conservation_before = _receipt_conservation_snapshot(http_request)
-    _append_evidence_receipt_before_outcome(
+    evidence_receipt = _append_evidence_receipt_before_outcome(
         graph_store=scorer.graph_store,
         decision=decision,
         decision_id=request.decision_id,
@@ -1778,6 +1807,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             reason_code=context.get("reason_code"),
             conservation_before=conservation_before,
             conservation_after=conservation_after,
+            evidence_receipt=evidence_receipt,
             context=context,
         )
     _record_supplier_profile(decision, payload, request.actual_action, context)
@@ -1815,6 +1845,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
         raise HTTPException(status_code=422,
             detail=f"analyst_action must be one of {S2PDomainConfig.actions}")
 
+    request.factor_vector = _pad_legacy_factor_vector(list(request.factor_vector))
     if len(request.factor_vector) != S2PDomainConfig.n_factors:
         raise HTTPException(status_code=422,
             detail=f"factor_vector must contain {S2PDomainConfig.n_factors} values")
@@ -1840,7 +1871,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
         "invoice_id": invoice_id or None,
     }
     conservation_before = _receipt_conservation_snapshot(http_request)
-    _append_evidence_receipt_before_outcome(
+    evidence_receipt = _append_evidence_receipt_before_outcome(
         graph_store=scorer.graph_store,
         decision=decision,
         decision_id=request.decision_id,
@@ -1896,6 +1927,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             reason_code=request.reason_code,
             conservation_before=conservation_before,
             conservation_after=conservation_after,
+            evidence_receipt=evidence_receipt,
             context=outcome_context,
         )
     _record_supplier_profile(decision, payload, request.analyst_action, outcome_context)

@@ -73,7 +73,7 @@ def test_wrong_action_count_returns_400():
 
 def test_wrong_factor_count_returns_400():
     centroids = _valid_centroids()
-    centroids[0][0] = centroids[0][0][:-1]
+    centroids[0][0] = centroids[0][0][:-2]
     response = _post({"centroids": centroids})
 
     assert response.status_code == 400
@@ -184,7 +184,7 @@ def test_export_reads_imported_centroids(monkeypatch):
     exported = client.get("/api/s2p/explorer/centroid/price_variance/auto_approve")
 
     assert exported.status_code == 200
-    assert exported.json()["centroid"] == centroids[0][0]
+    assert exported.json()["centroid"] == [*centroids[0][0], 0.5]
 
 
 def test_checkpoint_failure_rolls_back(monkeypatch):

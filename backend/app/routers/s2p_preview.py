@@ -97,6 +97,18 @@ def _get_config_list(attr_name: str, method_name: str) -> list[str]:
     return list(getattr(S2PDomainConfig, attr_name))
 
 
+def _tensor_shape_tuple() -> tuple[int, int, int]:
+    return (
+        S2PDomainConfig.n_categories,
+        S2PDomainConfig.n_actions,
+        S2PDomainConfig.n_factors,
+    )
+
+
+def _tensor_shape_text() -> str:
+    return str(_tensor_shape_tuple())
+
+
 def _get_category_list() -> list[str]:
     return _get_config_list("categories", "get_categories")
 
@@ -154,8 +166,8 @@ def _score_invoice(invoice: dict[str, Any], scorer) -> dict[str, Any]:
     category = str(invoice["category"])
     factor_names = _get_factor_list()
     factors = invoice.get("factors") or {}
-    factor_vector = [float(factors[name]) for name in factor_names]
-    scored_factors = {name: float(factors[name]) for name in factor_names}
+    factor_vector = [float(factors.get(name, 0.5)) for name in factor_names]
+    scored_factors = {name: float(factors.get(name, 0.5)) for name in factor_names}
     metadata = invoice.get("metadata") if isinstance(invoice.get("metadata"), dict) else {}
     score_result = _score_read_only(
         scorer,
@@ -182,7 +194,7 @@ def _score_invoice(invoice: dict[str, Any], scorer) -> dict[str, Any]:
         "recommended_action_index": action_index,
         "confidence": confidence,
         "probabilities": _to_float_list(probabilities),
-        "factors": {name: float(factors[name]) for name in factor_names},
+        "factors": {name: float(factors.get(name, 0.5)) for name in factor_names},
         "factor_vector": _to_float_list(factor_vector),
         "ground_truth_action": invoice["ground_truth_action"],
         "ground_truth_action_index": actions.index(invoice["ground_truth_action"]),
@@ -444,7 +456,7 @@ def preview_queue(request: Request, limit: int = 5) -> dict[str, Any]:
         "scorer": {
             "engine": "Graph Attention Engine",
             "version": ENGINE_VERSION,
-            "tensor_shape": "(5, 5, 7)",
+            "tensor_shape": _tensor_shape_text(),
             "factors": _get_factor_list(),
         },
     }
@@ -500,7 +512,7 @@ def preview_compounding() -> dict[str, Any]:
         "current_accuracy": current_accuracy,
         "total_decisions": simulation["total_decisions"],
         "source": "s2p_preview_simulation",
-        "tensor_shape": [5, 5, 7],
+        "tensor_shape": list(_tensor_shape_tuple()),
         "trajectory": points,
     }
 
@@ -527,7 +539,7 @@ def preview_config() -> dict[str, Any]:
     return {
         "engine_version": ENGINE_VERSION,
         "domain": "s2p",
-        "tensor_shape": "(5, 5, 7)",
+        "tensor_shape": _tensor_shape_text(),
         "categories": _get_category_list(),
         "actions": _get_action_list(),
         "factors": _get_factor_list(),
@@ -545,10 +557,10 @@ def preview_config() -> dict[str, Any]:
             },
             "s2p": {
                 "domain": "Source-to-Pay",
-                "tensor": "(5, 5, 7)",
-                "categories": 5,
-                "actions": 5,
-                "factors": 7,
+                "tensor": _tensor_shape_text(),
+                "categories": S2PDomainConfig.n_categories,
+                "actions": S2PDomainConfig.n_actions,
+                "factors": S2PDomainConfig.n_factors,
                 "penalty_ratio": "5:1",
                 "conservation": "active",
             },

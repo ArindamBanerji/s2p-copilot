@@ -101,7 +101,11 @@ def test_iks_endpoint_reports_cold_start_when_learning_disabled():
 
 def test_expert_centroids_are_priors_not_cold_start_knowledge():
     centroids = S2PDomainConfig.get_profile_centroids()
-    assert centroids.shape == (5, 5, 7)
+    assert centroids.shape == (
+        S2PDomainConfig.n_categories,
+        S2PDomainConfig.n_actions,
+        S2PDomainConfig.n_factors,
+    )
     assert not np.allclose(centroids, 0.5)
 
 

@@ -14,8 +14,8 @@ def test_s2p_domain_config_shape():
     config = S2PDomainConfig
     assert config.n_categories == 5
     assert config.n_actions == 5
-    assert config.n_factors == 7
-    assert config.n_categories * config.n_actions * config.n_factors == 175
+    assert config.n_factors == 8
+    assert config.n_categories * config.n_actions * config.n_factors == 200
 
 
 def test_actions_are_canonical_s2p_not_soc_or_legacy():
@@ -40,6 +40,7 @@ def test_factors_are_canonical_s2p_not_soc_or_legacy():
         "payment_terms_impact",
         "commodity_index_correlation",
         "tax_regulatory_compliance",
+        "environmental_risk",
     ]
     assert "travel_match" not in S2P_FACTORS
     assert "spend_category_match" not in S2P_FACTORS
@@ -62,11 +63,15 @@ def test_get_initial_centroids_shape():
         assert cat in centroids
         assert len(centroids[cat]) == 5
         for act in S2P_ACTIONS:
-            assert len(centroids[cat][act]) == 7
+            assert len(centroids[cat][act]) == S2PDomainConfig.n_factors
 
 
 def test_profile_centroids_shape():
-    assert S2PDomainConfig.get_profile_centroids().shape == (5, 5, 7)
+    assert S2PDomainConfig.get_profile_centroids().shape == (
+        S2PDomainConfig.n_categories,
+        S2PDomainConfig.n_actions,
+        S2PDomainConfig.n_factors,
+    )
 
 
 def test_penalty_ratio_and_learning_gate():

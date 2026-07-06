@@ -94,6 +94,7 @@ def test_dk_weights_produce_known_order():
         factors[1],
         factors[5],
         factors[6],
+        factors[7],
         factors[4],
         factors[2],
         factors[0],
@@ -118,6 +119,7 @@ def test_centroid_variance_fallback_produces_known_order():
     _assert_ranking_contract(payload)
     assert payload["weight_source"] == "centroid_variance"
     assert ranked_factors == [
+        factors[7],
         factors[0],
         factors[6],
         factors[1],

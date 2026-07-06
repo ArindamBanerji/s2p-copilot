@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
 
+from app.domains.s2p.config import S2PDomainConfig
 from app.main import app, build_s2p_scorer
 
 
@@ -23,17 +24,10 @@ SCORE_BODY = {
     "payment_terms_impact": 0.5,
     "commodity_index_correlation": 0.4,
     "tax_regulatory_compliance": 0.7,
+    "environmental_risk": 0.5,
 }
 
-FACTOR_NAMES = [
-    "match_status",
-    "amount_variance_ratio",
-    "duplicate_score",
-    "supplier_exception_history",
-    "payment_terms_impact",
-    "commodity_index_correlation",
-    "tax_regulatory_compliance",
-]
+FACTOR_NAMES = S2PDomainConfig.factors
 
 
 def assert_json_safe(value):
@@ -75,7 +69,7 @@ def test_core_score_accepts_all_factor_names():
 
     assert data["category"] == "duplicate_risk"
     assert data["factor_names"] == FACTOR_NAMES
-    assert len(data["factor_vector"]) == 7
+    assert len(data["factor_vector"]) == S2PDomainConfig.n_factors
     assert set(FACTOR_NAMES) == set(SCORE_BODY) & set(FACTOR_NAMES)
 
 
@@ -131,7 +125,7 @@ def test_core_outcome_invalid_decision_id_returns_404():
             "outcome": "confirm",
             "analyst_action": "auto_approve",
             "analyst_id": "A-ROUTER",
-            "factor_vector": [0.5] * 7,
+            "factor_vector": [0.5] * S2PDomainConfig.n_factors,
             "category": "duplicate_risk",
             "predicted_action": "auto_approve",
         },
@@ -214,7 +208,7 @@ def test_core_outcome_rejects_wrong_factor_vector_length():
     )
 
     assert response.status_code == 422
-    assert "factor_vector must contain 7 values" in response.json()["detail"]
+    assert f"factor_vector must contain {S2PDomainConfig.n_factors} values" in response.json()["detail"]
 
 
 def test_core_learn_after_score_uses_api_learn_path():

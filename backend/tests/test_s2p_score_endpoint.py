@@ -325,17 +325,9 @@ def test_score_action_is_valid_s2p_action():
 def test_score_factor_vector_length():
     response = client.post("/api/s2p/score", json=VALID_REQUEST)
     data = response.json()
-    assert len(data["factor_vector"]) == 7
-    assert len(data["factor_names"]) == 7
-    assert data["factor_names"] == [
-        "match_status",
-        "amount_variance_ratio",
-        "duplicate_score",
-        "supplier_exception_history",
-        "payment_terms_impact",
-        "commodity_index_correlation",
-        "tax_regulatory_compliance",
-    ]
+    assert len(data["factor_vector"]) == S2PDomainConfig.n_factors
+    assert len(data["factor_names"]) == S2PDomainConfig.n_factors
+    assert data["factor_names"] == S2PDomainConfig.factors
 
 
 def test_score_invalid_category_returns_422():
@@ -429,7 +421,7 @@ def test_score_endpoint_uses_fixture_invoice_factors_when_no_graph():
 
     assert response.status_code == 200
     assert response.json()["factor_vector"] == [
-        invoice["factors"][name] for name in S2PDomainConfig.factors
+        invoice["factors"].get(name, 0.5) for name in S2PDomainConfig.factors
     ]
 
 

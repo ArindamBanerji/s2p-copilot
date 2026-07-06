@@ -38,7 +38,11 @@ def test_export_25_cells():
 def test_export_shape_5_5_7():
     payload = client.get("/api/s2p/explorer/export/centroids").json()
 
-    assert payload["tensor_shape"] == [5, 5, 7]
+    assert payload["tensor_shape"] == [
+        S2PDomainConfig.n_categories,
+        S2PDomainConfig.n_actions,
+        S2PDomainConfig.n_factors,
+    ]
     assert payload["categories"] == list(S2PDomainConfig.categories)
     assert payload["actions"] == list(S2PDomainConfig.actions)
     assert payload["factors"] == list(S2PDomainConfig.factors)
@@ -47,14 +51,14 @@ def test_export_shape_5_5_7():
 def test_centroid_7_values():
     payload = client.get("/api/s2p/explorer/export/centroids").json()
 
-    assert all(len(row["centroid"]) == 7 for row in payload["centroids"])
+    assert all(len(row["centroid"]) == S2PDomainConfig.n_factors for row in payload["centroids"])
 
 
 def test_csv_header():
     payload = client.get("/api/s2p/explorer/export/csv").json()
 
     assert payload["header"] == ["category", "action"] + list(S2PDomainConfig.factors)
-    assert len(payload["header"]) == 9
+    assert len(payload["header"]) == 2 + S2PDomainConfig.n_factors
 
 
 def test_csv_25_rows():
@@ -67,7 +71,7 @@ def test_csv_25_rows():
 def test_csv_rows_have_9_columns():
     payload = client.get("/api/s2p/explorer/export/csv").json()
 
-    assert all(len(row) == 9 for row in payload["rows"])
+    assert all(len(row) == 2 + S2PDomainConfig.n_factors for row in payload["rows"])
 
 
 def test_export_routes_mounted():

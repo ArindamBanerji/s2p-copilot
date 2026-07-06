@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
 
+from app.domains.s2p.config import S2PDomainConfig
 from app.main import app, build_s2p_scorer
 from app.routers import s2p as s2p_router
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
@@ -14,15 +15,7 @@ from copilot_sdk.scoring.dk_persistence import DKWelfordTracker
 
 DOMAIN = "s2p"
 CATEGORY = "price_variance"
-FACTORS = (
-    "match_status",
-    "amount_variance_ratio",
-    "duplicate_score",
-    "supplier_exception_history",
-    "payment_terms_impact",
-    "commodity_index_correlation",
-    "tax_regulatory_compliance",
-)
+FACTORS = tuple(S2PDomainConfig.factors)
 ACTIONS = (
     "auto_approve",
     "hold_for_review",
@@ -44,9 +37,9 @@ class FullFlowGraphStore(InMemoryGraphStore):
 
 def _factor_payload(i: int) -> dict[str, float]:
     if i % 2 == 0:
-        values = [0.95, 0.9, 0.1, 0.1, 0.5, 0.5, 0.5]
+        values = [0.95, 0.9, 0.1, 0.1, 0.5, 0.5, 0.5, 0.5]
     else:
-        values = [0.05, 0.1, 0.9, 0.8, 0.5, 0.5, 0.5]
+        values = [0.05, 0.1, 0.9, 0.8, 0.5, 0.5, 0.5, 0.5]
     return dict(zip(FACTORS, values))
 
 

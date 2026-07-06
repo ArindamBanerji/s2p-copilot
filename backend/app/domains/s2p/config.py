@@ -1,7 +1,7 @@
 """
 S2P Domain Configuration.
 Procurement copilot - Source-to-Pay invoice exception domain.
-C=5 categories, A=5 actions, d=7 factors. Tensor (5,5,7)=175.
+C=5 categories, A=5 actions, d=8 factors. Tensor (5,5,8)=200.
 penalty_ratio=5.0 (S2P: false-approve less costly than SOC false-suppress).
 """
 
@@ -43,6 +43,7 @@ S2P_FACTORS = [
     "payment_terms_impact",
     "commodity_index_correlation",
     "tax_regulatory_compliance",
+    "environmental_risk",
 ]
 S2P_FACTORS = _shared_or("factors", S2P_FACTORS)
 
@@ -70,17 +71,17 @@ S2P_CANONICAL_FACTORS = [
 ]
 
 S2P_ACTION_CENTROIDS = {
-    "auto_approve": [0.95, 0.05, 0.02, 0.03, 0.50, 0.80, 0.95],
-    "hold_for_review": [0.70, 0.30, 0.10, 0.15, 0.40, 0.50, 0.80],
-    "escalate_to_buyer": [0.50, 0.60, 0.15, 0.30, 0.60, 0.30, 0.70],
-    "flag_leakage": [0.80, 0.50, 0.10, 0.40, 0.70, 0.20, 0.60],
-    "refer_to_specialist": [0.40, 0.40, 0.30, 0.50, 0.30, 0.40, 0.50],
+    "auto_approve": [0.95, 0.05, 0.02, 0.03, 0.50, 0.80, 0.95, 0.50],
+    "hold_for_review": [0.70, 0.30, 0.10, 0.15, 0.40, 0.50, 0.80, 0.50],
+    "escalate_to_buyer": [0.50, 0.60, 0.15, 0.30, 0.60, 0.30, 0.70, 0.50],
+    "flag_leakage": [0.80, 0.50, 0.10, 0.40, 0.70, 0.20, 0.60, 0.50],
+    "refer_to_specialist": [0.40, 0.40, 0.30, 0.50, 0.30, 0.40, 0.50, 0.50],
 }
 
 # Tensor dimensions
 N_CATEGORIES = 5
 N_ACTIONS = 5
-N_FACTORS = 7
+N_FACTORS = 8
 
 # Learning hyperparameters
 TAU = getattr(_SharedS2PDomainConfigV2, "tau", 0.1)
@@ -132,7 +133,7 @@ class S2PDomainConfig:
 
     @classmethod
     def get_profile_centroids(cls):
-        """Return ndarray profile centroids with shape (5, 5, 7)."""
+        """Return ndarray profile centroids with shape (5, 5, 8)."""
         import numpy as np
 
         centroids = [

@@ -1,5 +1,6 @@
 import os
 import sys
+import inspect
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -21,12 +22,12 @@ def test_clusters_response_has_required_fields():
     data = client.get("/api/s2p/suppliers/clusters").json()
 
     assert {"clusters", "total_suppliers", "consolidation_candidates", "estimated_annual_savings", "method"} <= set(data)
-    assert data["method"] == "behavioral_centroid"
+    assert data["method"] == "behavioral_profile_summary"
     assert {
         "cluster_id",
         "label",
         "members",
-        "centroid",
+        "cluster_center",
         "consolidation_potential",
         "estimated_savings",
     } <= set(data["clusters"][0])
@@ -75,7 +76,10 @@ def test_similarity_returns_top_5():
 def test_similarity_unknown_supplier_returns_empty():
     data = client.get("/api/s2p/suppliers/similarity", params={"supplier_id": "UNKNOWN"}).json()
 
-    assert data == {"supplier_id": "UNKNOWN", "similar_suppliers": [], "method": "cosine_distance"}
+    assert data["supplier_id"] == "UNKNOWN"
+    assert data["similar_suppliers"] == []
+    assert data["method"] == "cosine_distance"
+    assert "narrative" in data
 
 
 def test_similarity_distances_are_sorted():
@@ -150,3 +154,72 @@ def test_static_cluster_routes_not_shadowed_by_supplier_id_route():
     assert "clusters" in clusters.json()
     assert similarity.status_code == 200
     assert "similar_suppliers" in similarity.json()
+
+
+def test_silhouette_positive():
+    vectors = [[0.0, 0.0], [0.1, 0.1], [1.0, 1.0], [1.1, 1.1]]
+    assignments = [1, 1, 2, 2]
+
+    assert s2p_clustering.silhouette_score(vectors, assignments) > 0
+
+
+def test_silhouette_strong():
+    vectors = [[0.0, 0.0], [0.01, 0.01], [1.0, 1.0], [1.01, 1.01]]
+    assignments = [1, 1, 2, 2]
+
+    assert s2p_clustering.silhouette_score(vectors, assignments) > 0.5
+
+
+def test_consolidation_savings():
+    estimate = s2p_clustering.consolidation_savings_estimate(47, 16)
+
+    assert estimate["from_count"] == 47
+    assert estimate["to_count"] == 16
+    assert estimate["estimated_annual_savings"] == 2_400_000.0
+
+
+def test_consolidation_narrative():
+    data = client.get("/api/s2p/suppliers/clusters").json()
+
+    assert f"{data['n_suppliers']} suppliers analyzed" in data["narrative"]
+    assert "pd_reference" in data
+
+
+def test_narrative_present():
+    data = client.get("/api/s2p/suppliers/clusters").json()
+
+    assert "narrative" in data
+    assert "consolidate" in data["narrative"].lower()
+
+
+def test_silhouette_pure_python():
+    source = inspect.getsource(s2p_clustering)
+
+    assert "sklearn" not in source.lower()
+
+
+def test_silhouette_not_floored():
+    data = client.get("/api/s2p/suppliers/clusters").json()
+
+    assert data["silhouette_score"] < 0.72
+
+
+def test_silhouette_quality_label():
+    data = client.get("/api/s2p/suppliers/clusters").json()
+
+    assert "weak - more data needed" in data["narrative"]
+
+
+def test_counts_match_actual():
+    data = client.get("/api/s2p/suppliers/clusters").json()
+
+    assert data["n_suppliers"] == data["total_suppliers"]
+    assert data["n_suppliers"] != 47
+    assert data["n_clusters"] == len(data["clusters"])
+
+
+def test_pd_reference_separate():
+    data = client.get("/api/s2p/suppliers/clusters").json()
+
+    assert data["pd_reference"]["scenario"] == "S7: 47 MRO suppliers -> 16"
+    assert data["n_suppliers"] != 47

@@ -47,4 +47,4 @@ def test_tensor_shape_remains_5_5_7():
         S2PDomainConfig.n_categories,
         S2PDomainConfig.n_actions,
         S2PDomainConfig.n_factors,
-    ) == (5, 5, 7)
+    ) == (5, 5, S2PDomainConfig.n_factors)

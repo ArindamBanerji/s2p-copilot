@@ -5,7 +5,7 @@ Enforces the multi-copilot principle: a procurement copilot must be
 buildable by registering a DomainConfig — not by forking SOC.
 S2P must have zero SOC dependencies and correct tensor dimensions.
 
-Actual S2P tensor: (5, 5, 7) = 175 values.
+Actual S2P tensor: (5, 5, 8) = 200 values.
   N_CATEGORIES=5, N_ACTIONS=5, N_FACTORS=7, PENALTY_RATIO=5.0
 
 Run from backend/:
@@ -94,19 +94,19 @@ class TestTensorDimensions:
 
     def test_s2p_tensor_shape_is_5_5_7(self):
         """
-        S2P tensor is (N_CATEGORIES=5, N_ACTIONS=5, N_FACTORS=7) = 175 values.
+        S2P tensor is (N_CATEGORIES=5, N_ACTIONS=5, N_FACTORS=8) = 200 values.
         """
         from app.domains.s2p.config import S2PDomainConfig
 
         assert S2PDomainConfig.n_categories == 5
         assert S2PDomainConfig.n_actions == 5
-        assert S2PDomainConfig.n_factors == 7
+        assert S2PDomainConfig.n_factors == 8
         total = (
             S2PDomainConfig.n_categories
             * S2PDomainConfig.n_actions
             * S2PDomainConfig.n_factors
         )
-        assert total == 175
+        assert total == 200
 
     def test_s2p_has_5_canonical_actions(self):
         from app.domains.s2p.config import S2PDomainConfig, S2P_ACTIONS

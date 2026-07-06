@@ -40,6 +40,10 @@ class OutcomeReceipt:
     supplier_name: str | None = None
     invoice_number: str | None = None
     po_number: str | None = None
+    # Export-only metadata. These fields are intentionally excluded from the hash.
+    cycle_time_saved: Optional[float] = None
+    weight_updated: Optional[bool] = None
+    exportable: Optional[bool] = None
 
     def __post_init__(self) -> None:
         self.confidence = float(self.confidence)
@@ -57,6 +61,9 @@ class OutcomeReceipt:
         self.amount = float(self.amount) if self.amount is not None else None
         self.amount_at_risk = float(self.amount_at_risk) if self.amount_at_risk is not None else None
         self.amount_recovered = float(self.amount_recovered) if self.amount_recovered is not None else None
+        self.cycle_time_saved = float(self.cycle_time_saved) if self.cycle_time_saved is not None else None
+        self.weight_updated = bool(self.weight_updated) if self.weight_updated is not None else None
+        self.exportable = bool(self.exportable) if self.exportable is not None else None
         self.verified_count_before = int(self.verified_count_before)
         self.verified_count_after = int(self.verified_count_after)
         self.receipt_hash = self.compute_hash()
@@ -99,7 +106,7 @@ class OutcomeReceipt:
         return hashlib.sha256(encoded).hexdigest()[:16]
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "receipt_id": self.receipt_id,
             "invoice_id": self.invoice_id,
             "timestamp": self.timestamp,
@@ -133,3 +140,10 @@ class OutcomeReceipt:
             "invoice_number": self.invoice_number,
             "po_number": self.po_number,
         }
+        if self.cycle_time_saved is not None:
+            payload["cycle_time_saved"] = round(self.cycle_time_saved, 6)
+        if self.weight_updated is not None:
+            payload["weight_updated"] = self.weight_updated
+        if self.exportable is not None:
+            payload["exportable"] = self.exportable
+        return payload

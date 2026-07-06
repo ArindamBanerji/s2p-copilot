@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import (
     S2PEvent,
     MatchStatusFactor,
@@ -22,7 +23,7 @@ def test_factor_vector_length():
     event = S2PEvent(event_id="E001", category="price_variance",
                      amount=5000.0, supplier_id="SUP-001")
     vector = compute_factor_vector(event)
-    assert len(vector) == 7
+    assert len(vector) == S2PDomainConfig.n_factors
     assert all(0.0 <= v <= 1.0 for v in vector)
 
 

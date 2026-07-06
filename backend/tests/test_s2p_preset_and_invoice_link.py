@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
 
+from app.domains.s2p.config import S2PDomainConfig
 from app.main import app, build_s2p_scorer
 
 
@@ -48,7 +49,7 @@ def test_s2p_scorer_uses_sdk_preset():
     assert scorer._preset.name == "s2p"
     assert scorer._preset.shape.n_categories == 5
     assert scorer._preset.shape.n_actions == 5
-    assert scorer._preset.shape.n_factors == 7
+    assert scorer._preset.shape.n_factors == S2PDomainConfig.n_factors
 
 
 def test_score_response_shape_preserved_and_invoice_metadata_persisted():

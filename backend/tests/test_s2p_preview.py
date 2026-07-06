@@ -76,16 +76,16 @@ def test_queue_invoices_have_required_fields():
         assert key in invoice
 
 
-def test_queue_factor_vector_length_7():
+def test_queue_factor_vector_length_matches_config():
     invoices = _queue(50).json()["invoices"]
-    assert all(len(invoice["factor_vector"]) == 7 for invoice in invoices)
-    assert all(len(invoice["factors"]) == 7 for invoice in invoices)
+    assert all(len(invoice["factor_vector"]) == S2PDomainConfig.n_factors for invoice in invoices)
+    assert all(len(invoice["factors"]) == S2PDomainConfig.n_factors for invoice in invoices)
 
 
 def test_queue_scorer_metadata():
     scorer = _queue().json()["scorer"]
     assert scorer["engine"] == "Graph Attention Engine"
-    assert scorer["tensor_shape"] == "(5, 5, 7)"
+    assert scorer["tensor_shape"] == f"({S2PDomainConfig.n_categories}, {S2PDomainConfig.n_actions}, {S2PDomainConfig.n_factors})"
     assert scorer["factors"] == S2PDomainConfig.factors
     assert "version" in scorer
 
@@ -134,7 +134,11 @@ def test_compounding_initial_accuracy():
 
 def test_compounding_uses_s2p_tensor_shape():
     data = client.get("/api/s2p/preview/compounding").json()
-    assert data["tensor_shape"] == [5, 5, 7]
+    assert data["tensor_shape"] == [
+        S2PDomainConfig.n_categories,
+        S2PDomainConfig.n_actions,
+        S2PDomainConfig.n_factors,
+    ]
 
 
 def test_compounding_accuracy_values_in_range():
@@ -200,12 +204,12 @@ def test_config_returns_200():
 
 def test_config_tensor_shape():
     data = client.get("/api/s2p/preview/config").json()
-    assert data["tensor_shape"] == "(5, 5, 7)"
+    assert data["tensor_shape"] == f"({S2PDomainConfig.n_categories}, {S2PDomainConfig.n_actions}, {S2PDomainConfig.n_factors})"
 
 
-def test_config_factors_count_7():
+def test_config_factors_count_matches_config():
     data = client.get("/api/s2p/preview/config").json()
-    assert len(data["factors"]) == 7
+    assert len(data["factors"]) == S2PDomainConfig.n_factors
     assert data["factors"] == S2PDomainConfig.factors
 
 
@@ -251,8 +255,8 @@ def test_score_endpoint_is_canonical_too():
 
     assert score.status_code == 200
     assert preview.status_code == 200
-    assert len(score.json()["factor_vector"]) == 7
-    assert len(preview.json()["invoices"][0]["factor_vector"]) == 7
+    assert len(score.json()["factor_vector"]) == S2PDomainConfig.n_factors
+    assert len(preview.json()["invoices"][0]["factor_vector"]) == S2PDomainConfig.n_factors
 
 
 def test_reset_clears_cache():

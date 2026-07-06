@@ -219,9 +219,13 @@ def test_scorer_with_new_config():
         categories=S2PDomainConfig.get_categories(),
         eta_override=S2PDomainConfig.eta_override,
     )
-    assert scorer.centroids.shape == (5, 5, 7)
+    assert scorer.centroids.shape == (
+        S2PDomainConfig.n_categories,
+        S2PDomainConfig.n_actions,
+        S2PDomainConfig.n_factors,
+    )
     result = scorer.score(
-        np.array([0.95, 0.05, 0.02, 0.03, 0.50, 0.80, 0.95], dtype=float),
+        np.array([0.95, 0.05, 0.02, 0.03, 0.50, 0.80, 0.95, 0.50], dtype=float),
         category_index=S2PDomainConfig.get_category_index("price_variance"),
     )
     assert result.action_name in EXPECTED_ACTIONS

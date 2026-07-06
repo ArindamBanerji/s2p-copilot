@@ -65,16 +65,16 @@ def test_invoice_has_all_fields():
         assert hasattr(invoice, field_name)
 
 
-def test_factor_vector_length_7():
+def test_factor_vector_length_matches_config():
     invoices = SyntheticInvoiceGenerator(seed=7).generate(100)
-    assert all(len(invoice.factor_vector) == 7 for invoice in invoices)
+    assert all(len(invoice.factor_vector) == S2PDomainConfig.n_factors for invoice in invoices)
 
 
 def test_factors_dict_has_7_keys():
     invoices = SyntheticInvoiceGenerator(seed=7).generate(100)
     expected = _v2_factors()
     for invoice in invoices:
-        assert len(invoice.factors) == 7
+        assert len(invoice.factors) == S2PDomainConfig.n_factors
         assert list(invoice.factors.keys()) == expected
 
 
@@ -161,7 +161,7 @@ def test_export_as_scoring_input_shape():
     exported = generator.export_as_scoring_input(generator.generate(25))
     assert isinstance(exported, list)
     assert all(isinstance(row, dict) for row in exported)
-    assert all(len(row["factor_vector"]) == 7 for row in exported)
+    assert all(len(row["factor_vector"]) == S2PDomainConfig.n_factors for row in exported)
     json.dumps(exported)
 
 

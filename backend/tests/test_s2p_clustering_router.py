@@ -83,3 +83,4 @@ def test_clustering_similarity_unknown_supplier_returns_empty_rows():
 
     assert data["supplier_id"] == "UNKNOWN"
     assert data["similar_suppliers"] == []
+    assert "narrative" in data

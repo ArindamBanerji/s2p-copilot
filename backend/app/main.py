@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import numpy as np
 
 from copilot_sdk.backend import create_conservation_router
 from copilot_sdk.backend.transfer_router import create_transfer_router
@@ -35,6 +36,7 @@ from app.routers.s2p_explorer import router as s2p_explorer_router
 from app.routers.factor_proposer_router import router as s2p_factor_proposer_router
 from app.routers.s2p_evidence import router as s2p_evidence_router
 from app.routers.s2p_enrichment import router as s2p_enrichment_router
+from app.routers.s2p_situation import router as s2p_situation_router
 from app.routers.financial_router import router as s2p_financial_router
 from app.routers.s2p_governance import router as s2p_governance_router
 from app.routers.s2p_insight import router as s2p_insight_router
@@ -80,11 +82,30 @@ def build_s2p_scorer(db_path: str | None = None, graph_store=None) -> Compoundin
         domain="s2p",
         decision_id_prefix="S2P-",
     )
-    return CompoundingScorer.from_preset(
+    scorer = CompoundingScorer.from_preset(
         "s2p",
         graph_store=selected_graph_store,
         reward_function=S2PRewardFunction(),
     )
+    _migrate_s2p_scorer_runtime(scorer)
+    return scorer
+
+
+def _migrate_s2p_scorer_runtime(scorer: CompoundingScorer) -> None:
+    from app.domains.s2p.config import S2PDomainConfig
+
+    profile_scorer = getattr(scorer, "_scorer", None)
+    if profile_scorer is None:
+        return
+    mu = getattr(profile_scorer, "mu", None)
+    if mu is not None and getattr(mu, "shape", ())[-1:] == (S2PDomainConfig.n_factors - 1,):
+        pad = np.full((*mu.shape[:-1], 1), 0.5, dtype=float)
+        profile_scorer.mu = np.concatenate([mu, pad], axis=-1)
+        profile_scorer.n_factors = S2PDomainConfig.n_factors
+    dk_weights = getattr(profile_scorer, "_dk_weights", None)
+    if dk_weights is not None and getattr(dk_weights, "shape", ())[-1:] == (S2PDomainConfig.n_factors - 1,):
+        pad = np.ones((*dk_weights.shape[:-1], 1), dtype=float)
+        profile_scorer._dk_weights = np.concatenate([dk_weights, pad], axis=-1)
 
 app = FastAPI(title="S2P Copilot", version="0.1.0")
 app.state.s2p_active_graph_config = initialize_s2p_active_graph_config()
@@ -131,6 +152,7 @@ app.include_router(s2p_discovery_router)
 app.include_router(s2p_simulation_router)
 app.include_router(s2p_insight_router)
 app.include_router(s2p_evidence_router)
+app.include_router(s2p_situation_router)
 app.include_router(s2p_enrichment_router)
 app.include_router(s2p_governance_router)
 app.include_router(s2p_performance_router)

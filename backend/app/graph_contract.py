@@ -107,8 +107,8 @@ class S2PGraphContract(GraphContract):
 
 S2P_GRAPH_CONTRACT = S2PGraphContract(
     graph_name="s2p_graph",
-    expected_nodes=182,
-    expected_edges=608,
+    expected_nodes=183,
+    expected_edges=658,
     node_types=[
         NodeType("Decision", ["decision_id", "invoice_id", "category", "recommended_action", "confidence", "created_at"]),
         NodeType("Invoice", ["invoice_id", "supplier_id", "po_number", "amount", "currency", "category", "ground_truth_action"]),

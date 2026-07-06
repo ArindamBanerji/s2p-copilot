@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
 
+from app.domains.s2p.config import S2PDomainConfig
 from app.main import app, build_s2p_scorer
 
 
@@ -57,7 +58,11 @@ def test_explorer_export_centroids_returns_expected_tensor_shape():
     reset_sdk_scorer()
     data = assert_dict_response(client.get("/api/s2p/explorer/export/centroids"))
 
-    assert data["tensor_shape"] == [5, 5, 7]
+    assert data["tensor_shape"] == [
+        S2PDomainConfig.n_categories,
+        S2PDomainConfig.n_actions,
+        S2PDomainConfig.n_factors,
+    ]
     assert data["total_cells"] == 25
     assert len(data["centroids"]) == 25
 
@@ -68,7 +73,7 @@ def test_explorer_export_csv_endpoint_returns_json_rows():
 
     assert data["total_rows"] == 25
     assert data["header"][:2] == ["category", "action"]
-    assert len(data["header"]) == 9
+    assert len(data["header"]) == 2 + S2PDomainConfig.n_factors
 
 
 def test_explorer_centroid_returns_valid_category_action_pair():
@@ -77,7 +82,7 @@ def test_explorer_centroid_returns_valid_category_action_pair():
 
     assert data["category_name"] == "price_variance"
     assert data["action_name"] == "auto_approve"
-    assert len(data["centroid"]) == 7
+    assert len(data["centroid"]) == S2PDomainConfig.n_factors
 
 
 def test_explorer_centroid_unknown_category_returns_404():
@@ -133,7 +138,7 @@ def test_explorer_contribution_uses_scored_invoice_id():
     )
 
     assert data["decision_id"] == score["decision_id"]
-    assert len(data["contributions"]) == 7
+    assert len(data["contributions"]) == S2PDomainConfig.n_factors
 
 
 def test_explorer_contribution_unknown_invoice_returns_404():

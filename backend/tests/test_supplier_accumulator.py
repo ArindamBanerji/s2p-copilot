@@ -219,6 +219,180 @@ def test_quarterly_empty_without_dates():
     assert accumulator._compute_quarterly(list(accumulator._events["SUP-NODATE"])) == {}
 
 
+def test_payment_response_computed():
+    accumulator = make_accumulator()
+    for index in range(COMPUTED_THRESHOLD):
+        accumulator.on_decision_verified(
+            decision("SUP-PAY", invoice_id=f"pay-{index}", invoice_date=f"2026-01-{index + 1:02d}"),
+            outcome(),
+            {"payment_days": 20 + index},
+        )
+
+    profile = accumulator.get_profile("SUP-PAY")
+    assert profile is not None
+    assert profile.payment_response["avg_payment_days"] == 29.5
+
+
+def test_early_pay_discount_detected():
+    accumulator = make_accumulator()
+    accumulator.on_decision_verified(
+        decision("SUP-DISCOUNT"),
+        outcome(),
+        {"early_pay_discount": True},
+    )
+
+    profile = accumulator.get_profile("SUP-DISCOUNT")
+    assert profile is not None
+    assert profile.payment_response["early_pay_discount"] is True
+
+
+def test_quality_defect_rate():
+    accumulator = make_accumulator()
+    for index in range(COMPUTED_THRESHOLD):
+        accumulator.on_decision_verified(
+            decision("SUP-QUALITY", invoice_id=f"quality-{index}", invoice_date=f"2026-01-{index + 1:02d}"),
+            outcome(),
+            {"defect": index < 5},
+        )
+
+    profile = accumulator.get_profile("SUP-QUALITY")
+    assert profile is not None
+    assert profile.quality_patterns["defect_rate"] == 0.25
+
+
+def test_quality_trend_worsening():
+    accumulator = make_accumulator()
+    for index in range(COMPUTED_THRESHOLD):
+        accumulator.on_decision_verified(
+            decision("SUP-WORSE", invoice_id=f"worse-{index}", invoice_date=f"2026-01-{index + 1:02d}"),
+            outcome(),
+            {"defect": index >= 10},
+        )
+
+    profile = accumulator.get_profile("SUP-WORSE")
+    assert profile is not None
+    assert profile.quality_patterns["quality_trend"] == "worsening"
+
+
+def test_quality_trend_improving():
+    accumulator = make_accumulator()
+    for index in range(COMPUTED_THRESHOLD):
+        accumulator.on_decision_verified(
+            decision("SUP-BETTER", invoice_id=f"better-{index}", invoice_date=f"2026-01-{index + 1:02d}"),
+            outcome(),
+            {"defect": index < 10},
+        )
+
+    profile = accumulator.get_profile("SUP-BETTER")
+    assert profile is not None
+    assert profile.quality_patterns["quality_trend"] == "improving"
+
+
+def test_f14_shape_ready():
+    accumulator = make_accumulator()
+    for index in range(COMPUTED_THRESHOLD):
+        accumulator.on_decision_verified(
+            decision("SUP-F14", invoice_id=f"f14-{index}", invoice_date=f"2026-01-{index + 1:02d}"),
+            outcome(),
+            {"lead_time_days": 10 + (index % 3), "quantity": 50 + index * 25},
+        )
+    profile = accumulator.get_profile("SUP-F14")
+    assert profile is not None
+    assert profile.avg_lead_time_days is not None
+    assert profile.avg_lead_time_days > 0
+    assert len(profile.lead_time_by_quarter) > 0
+    assert len(profile.lead_time_by_volume) > 0
+
+
+def test_f16_shape_ready():
+    accumulator = make_accumulator()
+    for index in range(COMPUTED_THRESHOLD):
+        accumulator.on_decision_verified(
+            decision("SUP-F16", invoice_id=f"f16-{index}", invoice_date=f"2026-01-{index + 1:02d}", amount=100 + index),
+            outcome(is_correct=index < 15),
+            {"lead_time_days": 8 + (index % 4), "quantity": 75 + index * 20, "defect": index >= 16, "payment_days": 25 + index},
+        )
+    profile = accumulator.get_profile("SUP-F16")
+    assert profile is not None
+    assert profile.avg_lead_time_days is not None
+    assert profile.pricing_trend is not None
+    assert profile.exception_rate >= 0
+    assert profile.quality_patterns["defect_rate"] > 0
+    assert profile.payment_response["avg_payment_days"] > 0
+
+
+def test_f19_shape_ready():
+    accumulator = make_accumulator()
+    for index in range(COMPUTED_THRESHOLD):
+        accumulator.on_decision_verified(
+            decision("SUP-F19", invoice_id=f"f19-{index}", invoice_date=f"2026-01-{index + 1:02d}"),
+            outcome(is_correct=index < 10),
+            {"payment_days": 15 + index, "early_pay_discount": index == 0},
+        )
+    profile = accumulator.get_profile("SUP-F19")
+    assert profile is not None
+    assert profile.payment_response["avg_payment_days"] > 0
+    assert profile.payment_response["early_pay_discount"] is True
+    assert profile.payment_response["payment_correlation_with_otif"] is not None
+
+
+def test_lead_time_computed():
+    accumulator = make_accumulator()
+    for index in range(COMPUTED_THRESHOLD):
+        accumulator.on_decision_verified(
+            decision("SUP-LEAD", invoice_id=f"lead-{index}", invoice_date=f"2026-01-{index + 1:02d}"),
+            outcome(),
+            {"lead_time_days": 12, "quantity": 100},
+        )
+    profile = accumulator.get_profile("SUP-LEAD")
+    assert profile is not None
+    assert profile.avg_lead_time_days == 12
+
+
+def test_lead_time_by_quarter():
+    accumulator = make_accumulator()
+    for index in range(COMPUTED_THRESHOLD):
+        month = 1 if index < 10 else 4
+        day = (index % 10) + 1
+        accumulator.on_decision_verified(
+            decision("SUP-LEAD-Q", invoice_id=f"lead-q-{index}", invoice_date=f"2026-{month:02d}-{day:02d}"),
+            outcome(),
+            {"lead_time_days": 10 if month == 1 else 20, "quantity": 100},
+        )
+    profile = accumulator.get_profile("SUP-LEAD-Q")
+    assert profile is not None
+    assert profile.lead_time_by_quarter == {"Q1": 10.0, "Q2": 20.0}
+
+
+def test_lead_time_by_volume():
+    accumulator = make_accumulator()
+    for index in range(COMPUTED_THRESHOLD):
+        quantity = 50 if index < 7 else 200 if index < 14 else 700
+        accumulator.on_decision_verified(
+            decision("SUP-LEAD-V", invoice_id=f"lead-v-{index}", invoice_date=f"2026-01-{index + 1:02d}"),
+            outcome(),
+            {"lead_time_days": 8 + index, "quantity": quantity},
+        )
+    profile = accumulator.get_profile("SUP-LEAD-V")
+    assert profile is not None
+    assert set(profile.lead_time_by_volume) == {"low", "medium", "high"}
+
+
+def test_f14_shape_semantic():
+    accumulator = make_accumulator()
+    for index in range(COMPUTED_THRESHOLD):
+        accumulator.on_decision_verified(
+            decision("SUP-F14-SEM", invoice_id=f"f14-sem-{index}", invoice_date=f"2026-01-{index + 1:02d}"),
+            outcome(),
+            {"lead_time_days": 9 + (index % 2), "quantity": 600 if index > 10 else 50},
+        )
+    profile = accumulator.get_profile("SUP-F14-SEM")
+    assert profile is not None
+    assert profile.avg_lead_time_days is not None
+    assert profile.lead_time_by_quarter
+    assert profile.lead_time_by_volume
+
+
 def test_no_created_at_proxy_for_seasonality():
     accumulator = make_accumulator()
     for index in range(TREND_MIN_POINTS):

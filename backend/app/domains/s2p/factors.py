@@ -36,6 +36,7 @@ class S2PEvent:
     payment_terms_impact: Optional[float] = None
     commodity_index_correlation: Optional[float] = None
     tax_regulatory_compliance: Optional[float] = None
+    environmental_risk: Optional[float] = None
 
 
 class S2PFactorComputer(Protocol):
@@ -301,6 +302,32 @@ class TaxRegulatoryCompliance:
         return _fallback(invoice, self.name, 0.9)
 
 
+class EnvironmentalRisk:
+    name = "environmental_risk"
+
+    def compute(
+        self,
+        invoice: dict[str, Any] | S2PEvent,
+        context: dict[str, Any] | list[dict[str, Any]] | None = None,
+    ) -> float:
+        invoice = _as_invoice(invoice)
+        for entry in _neighbors(context):
+            node = _node(entry)
+            if node.get("environmental_risk") is not None:
+                return _clamp(node.get("environmental_risk"))
+            if node.get("carbon_footprint") is not None:
+                return _clamp(float(node.get("carbon_footprint")) / 1_000.0)
+        metadata = invoice.get("metadata")
+        if isinstance(metadata, dict):
+            if metadata.get("environmental_risk") is not None:
+                return _clamp(metadata.get("environmental_risk"))
+            if metadata.get("carbon_footprint") is not None:
+                return _clamp(float(metadata.get("carbon_footprint")) / 1_000.0)
+            if metadata.get("route_weather_risk") is not None:
+                return _clamp(metadata.get("route_weather_risk"))
+        return _fallback(invoice, self.name, 0.5)
+
+
 ALL_FACTORS: list[S2PFactorComputer] = [
     MatchStatus(),
     AmountVarianceRatio(),
@@ -309,6 +336,7 @@ ALL_FACTORS: list[S2PFactorComputer] = [
     PaymentTermsImpact(),
     CommodityIndexCorrelation(),
     TaxRegulatoryCompliance(),
+    EnvironmentalRisk(),
 ]
 FACTOR_NAMES = [factor.name for factor in ALL_FACTORS]
 
@@ -341,7 +369,7 @@ def compute_all_factors(
 
 
 def compute_factor_vector(event: S2PEvent) -> list[float]:
-    """Compute the canonical seven-factor vector in S2PDomainConfig order."""
+    """Compute the canonical factor vector in S2PDomainConfig order."""
     if FACTOR_NAMES != S2PDomainConfig.factors:
         raise RuntimeError("S2P factor computer order does not match config")
     factors = compute_all_factors(event)

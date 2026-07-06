@@ -75,8 +75,13 @@ class SyntheticInvoiceGenerator:
         self.actions = self._config_sequence("actions", "get_actions")
         self.factors = self._config_sequence("factors", "get_factors")
         self.centroids = self.config.get_profile_centroids()
-        if self.centroids.shape != (5, 5, 7):
-            raise ValueError(f"Expected v2 centroids shape (5, 5, 7), got {self.centroids.shape}")
+        expected_shape = (
+            self.config.n_categories,
+            self.config.n_actions,
+            self.config.n_factors,
+        )
+        if self.centroids.shape != expected_shape:
+            raise ValueError(f"Expected v2 centroids shape {expected_shape}, got {self.centroids.shape}")
         self.n_categories, self.n_actions, self.n_factors = self.centroids.shape
 
     def _config_sequence(self, attr_name: str, method_name: str) -> List[str]:

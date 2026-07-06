@@ -34,7 +34,7 @@ def test_actions_count_5():
     assert S2PDomainConfig.n_actions == 5
 
 
-def test_factors_count_7():
+def test_factors_count_8():
     assert S2PDomainConfig.factors == [
         "match_status",
         "amount_variance_ratio",
@@ -43,8 +43,9 @@ def test_factors_count_7():
         "payment_terms_impact",
         "commodity_index_correlation",
         "tax_regulatory_compliance",
+        "environmental_risk",
     ]
-    assert S2PDomainConfig.n_factors == 7
+    assert S2PDomainConfig.n_factors == 8
 
 
 def test_canonical_factors_count_4():
@@ -57,9 +58,9 @@ def test_canonical_factors_count_4():
     assert len(S2PDomainConfig.canonical_factors) == 4
 
 
-def test_centroid_shape_5_5_7():
+def test_centroid_shape_5_5_8():
     centroids = S2PDomainConfig.get_profile_centroids()
-    assert centroids.shape == (5, 5, 7)
+    assert centroids.shape == (5, 5, 8)
 
 
 def test_centroids_bounded_0_1():
@@ -115,7 +116,7 @@ def test_scorer_accepts_shape():
         eta_override=S2PDomainConfig.eta_override,
     )
     result = scorer.score(
-        np.array([0.92, 0.08, 0.04, 0.05, 0.48, 0.76, 0.90], dtype=float),
+        np.array([0.92, 0.08, 0.04, 0.05, 0.48, 0.76, 0.90, 0.50], dtype=float),
         category_index=0,
     )
     assert result.action_name in S2PDomainConfig.actions

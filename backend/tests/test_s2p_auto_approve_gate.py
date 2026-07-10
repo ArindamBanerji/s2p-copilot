@@ -524,7 +524,9 @@ def test_p39_context_metrics_do_not_gate_automation():
 
 
 def test_p39_verified_metrics_reported_as_evidence_only():
-    gate = AutoApproveGate(AutoApproveConfig(enabled=True, mode="shadow", min_verified_decisions=1))
+    gate = AutoApproveGate(
+        AutoApproveConfig(enabled=True, mode="shadow", min_verified_decisions=1, spot_check_rate=0.0)
+    )
     evidence = {"exception_rate": {"source": "verified_outcomes", "provenance_tier": "learned"}}
     result = gate.evaluate(
         category="price_variance",

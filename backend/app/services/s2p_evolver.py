@@ -63,7 +63,7 @@ def record_triage_outcome(
 
 def check_promotion() -> dict | None:
     """Promote a qualifying S2P shadow variant, if one exists."""
-    return cast(dict[Any, Any] | None, _s2p_evolver.check_for_promotion())
+    return cast(dict[Any, Any] | None, _s2p_evolver.check_for_promotion(conservation_state="GREEN"))
 
 
 def get_evolution_summary() -> dict[str, Any]:

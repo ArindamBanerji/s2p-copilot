@@ -138,6 +138,7 @@ def save_state(
             "W_after":                wu.W_after.tolist(),
         })
     payload = {
+        "provenance":    "sample",
         "W":             learning_state.W.tolist(),
         "n_actions":     learning_state.n_actions,
         "n_factors":     learning_state.n_factors,

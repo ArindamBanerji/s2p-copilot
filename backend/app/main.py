@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 
 from copilot_sdk.backend import create_conservation_router
+from copilot_sdk.backend.counterfactual_router import create_counterfactual_router
 from copilot_sdk.backend.transfer_router import create_transfer_router
 from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
 from copilot_sdk.scoring import CompoundingScorer
@@ -143,6 +144,13 @@ app.include_router(
         state_provider=lambda: cached_conservation_state_provider(app.state),
     ),
     prefix="/api",
+)
+app.include_router(
+    create_counterfactual_router(
+        "s2p",
+        prefix="/api/s2p/score",
+        scorer_provider=lambda: app.state.scorer,
+    )
 )
 app.include_router(create_transfer_router(app.state.scorer))
 app.include_router(s2p_router)

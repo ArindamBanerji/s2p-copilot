@@ -19,7 +19,7 @@ try:
 except ImportError:
     _HAS_HTTPX = False
 
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL = "http://127.0.0.1:8000"
 SCENARIOS_FILE = Path(__file__).parent / "scenarios.json"
 
 # S2P actions that map to "defer" in scenario ground truth

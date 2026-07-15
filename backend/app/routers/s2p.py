@@ -36,7 +36,7 @@ from app.domains.s2p.auto_approve import (
 from app.domains.s2p.config import PENALTY_RATIO, S2PDomainConfig
 from app.domains.s2p.factors import S2PEvent, compute_all_factors
 from app.models.responses import GenericResponse, LearningGateResponse, S2PScoreResponse
-from app.routers.s2p_data_helpers import find_invoice
+from app.routers.s2p_data_helpers import find_invoice, load_invoices
 from app.routers.s2p_preview import _load_celonis_cache
 from app.models.outcome_receipt import OutcomeReceipt
 from app.services.receipt_store import get_receipt_store
@@ -1610,6 +1610,98 @@ def _invoice_from_request(request: ScoreRequest, fixture_invoice: dict | None) -
     return invoice
 
 
+_MANUAL_REVIEW_HOURS = 0.5
+_ANALYST_HOURLY_RATE = 80.0
+
+
+def _invoice_value(invoice: Any) -> float:
+    if isinstance(invoice, dict):
+        for key in ("amount", "invoice_amount", "total_amount", "value"):
+            amount = _to_float(invoice.get(key), 0.0)
+            if amount > 0:
+                return amount
+    for key in ("amount", "invoice_amount", "total_amount", "value"):
+        amount = _to_float(getattr(invoice, key, None), 0.0)
+        if amount > 0:
+            return amount
+    return 0.0
+
+
+def _invoice_category(invoice: Any) -> str:
+    if isinstance(invoice, dict):
+        return str(invoice.get("category") or "")
+    return str(getattr(invoice, "category", "") or "")
+
+
+def _invoice_variance_pct(invoice: Any) -> float:
+    if isinstance(invoice, dict):
+        raw_variance = invoice.get("price_variance_pct")
+        if raw_variance is None:
+            raw_variance = invoice.get("amount_variance_pct")
+        if raw_variance is None:
+            raw_variance = _to_float(invoice.get("amount_variance_ratio"), 0.0) * 100.0
+    else:
+        raw_variance = getattr(invoice, "price_variance_pct", None)
+        if raw_variance is None:
+            raw_variance = getattr(invoice, "amount_variance_pct", None)
+        if raw_variance is None:
+            raw_variance = _to_float(getattr(invoice, "amount_variance_ratio", 0.0), 0.0) * 100.0
+    return round(_to_float(raw_variance, 0.0), 2)
+
+
+def _computed_cost_of_error(invoice: Any) -> dict[str, Any]:
+    category = _invoice_category(invoice)
+    similar = [
+        item
+        for item in load_invoices()
+        if (not category or _invoice_category(item) == category)
+        and abs(_invoice_variance_pct(item)) > 5.0
+    ]
+    if not similar:
+        similar = [invoice]
+    values = [_invoice_value(item) for item in similar]
+    values = [value for value in values if value > 0]
+    average_value = sum(values) / len(values) if values else _invoice_value(invoice)
+    similar_count = max(len(similar), 1)
+    analyst_time_cost = similar_count * _MANUAL_REVIEW_HOURS * _ANALYST_HOURLY_RATE
+    exposure = similar_count * average_value
+    total_cost = exposure + analyst_time_cost
+    return {
+        "similar_invoice_count": similar_count,
+        "average_invoice_value": round(average_value, 2),
+        "analyst_time_cost": round(analyst_time_cost, 2),
+        "exposure": round(exposure, 2),
+        "total_cost": round(total_cost, 2),
+        "provenance": "sample",
+        "display": (
+            f"${total_cost:,.0f} computed exposure "
+            f"({similar_count} similar invoices + ${analyst_time_cost:,.0f} analyst time)"
+        ),
+    }
+
+
+def compute_threshold_decision(invoice: Any) -> dict[str, Any]:
+    """What a rule-based system would decide."""
+    variance_pct = _invoice_variance_pct(invoice)
+    if variance_pct > 5.0:
+        cost = _computed_cost_of_error(invoice)
+        return {
+            "decision": "REJECT",
+            "reason": f"Price variance {variance_pct}% exceeds 5.0% threshold",
+            "cost_of_error": cost["display"],
+            "cost_of_error_details": cost,
+            "provenance": "sample",
+            "price_variance_pct": variance_pct,
+            "threshold_pct": 5.0,
+        }
+    return {
+        "decision": "APPROVE",
+        "reason": "Within threshold",
+        "price_variance_pct": variance_pct,
+        "threshold_pct": 5.0,
+    }
+
+
 class ScoreRequest(BaseModel):
     event_id: str
     category: str
@@ -1647,6 +1739,7 @@ class ScoreResponse(BaseModel):
     active_variant: Optional[dict] = None
     auto_approve: Optional[dict] = None
     novelty_score: Optional[float] = None
+    threshold_decision: Optional[dict] = None
 
 
 @router.post("/score", response_model=S2PScoreResponse)
@@ -1756,6 +1849,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
         active_variant=active_variant,
         auto_approve=auto_approve,
         novelty_score=novelty_score,
+        threshold_decision=compute_threshold_decision(invoice),
     )
 
 

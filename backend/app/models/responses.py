@@ -31,6 +31,7 @@ class S2PScoreResponse(FlexibleResponse):
     active_variant: dict[str, Any] | None = None
     auto_approve: dict[str, Any] | None = None
     novelty_score: float | None = None
+    threshold_decision: dict[str, Any] | None = None
 
 
 class LearningGateResponse(FlexibleResponse):

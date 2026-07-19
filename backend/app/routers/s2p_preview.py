@@ -12,6 +12,8 @@ from typing import Any
 import numpy as np
 from fastapi import APIRouter, Request
 
+from copilot_sdk.state.cached_static import cached_static
+
 from app.domains.s2p.config import S2PDomainConfig
 from app.models.responses import GenericResponse
 
@@ -417,8 +419,7 @@ def reset_preview_state() -> None:
     _centroids = None
 
 
-@router.get("/queue", response_model=GenericResponse)
-def preview_queue(request: Request, limit: int = 5) -> dict[str, Any]:
+def _preview_queue_payload(request: Request, limit: int = 5) -> dict[str, Any]:
     clamped_limit = _clamp_limit(limit, 1, 50)
     fixture_invoices = _get_fixture_invoices()
     preview_size = min(max(clamped_limit, 10), len(fixture_invoices))
@@ -462,6 +463,25 @@ def preview_queue(request: Request, limit: int = 5) -> dict[str, Any]:
     }
 
 
+def _preview_queue_limit(request: Request, default: int = 5) -> int:
+    try:
+        raw = request.query_params.get("limit")
+    except Exception:
+        raw = None
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+@router.get("/queue", response_model=GenericResponse)
+@cached_static("preview-queue", copilot="s2p", url="/api/s2p/preview/queue")
+def preview_queue(request: Request) -> dict[str, Any]:
+    return _preview_queue_payload(request, _preview_queue_limit(request))
+
+
 @router.get("/conservation", response_model=GenericResponse)
 def preview_conservation(request: Request) -> dict[str, Any]:
     invoices = _get_scored_invoices(request)
@@ -500,6 +520,7 @@ def preview_conservation(request: Request) -> dict[str, Any]:
 
 
 @router.get("/compounding", response_model=GenericResponse)
+@cached_static("preview-compounding", copilot="s2p")
 def preview_compounding() -> dict[str, Any]:
     simulation = _build_compounding_trajectory()
     points = simulation["points"]
@@ -535,6 +556,7 @@ def preview_suppliers(limit: int | None = None) -> dict[str, Any]:
 
 
 @router.get("/config", response_model=GenericResponse)
+@cached_static("preview-config", copilot="s2p")
 def preview_config() -> dict[str, Any]:
     return {
         "engine_version": ENGINE_VERSION,

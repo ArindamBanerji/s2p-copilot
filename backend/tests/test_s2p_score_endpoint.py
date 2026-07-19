@@ -13,6 +13,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -71,6 +72,163 @@ def test_score_response_has_required_fields():
         assert key in data, f"Missing key: {key}"
 
 
+class TimingLock:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.holds = []
+
+    def __enter__(self):
+        self._lock.acquire()
+        self._started = time.perf_counter()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.holds.append(time.perf_counter() - self._started)
+        self._lock.release()
+
+
+class SlowScoreScorer:
+    def __init__(self, score_sleep: float = 0.05):
+        self.score_sleep = score_sleep
+        self.graph_store = SimpleNamespace()
+        self.centroids = [
+            [
+                [0.5 for _factor in S2PDomainConfig.factors]
+                for _action in S2PDomainConfig.actions
+            ]
+            for _category in S2PDomainConfig.categories
+        ]
+
+    def score(self, factors, category, metadata=None):
+        time.sleep(self.score_sleep)
+        return SimpleNamespace(
+            action="auto_approve",
+            action_index=0,
+            confidence=0.91,
+            probabilities=[0.91, 0.03, 0.02, 0.02, 0.02],
+            decision_id=f"S2P-TEST-{uuid4().hex[:8]}",
+        )
+
+
+def _install_fast_score_dependencies(monkeypatch, scorer=None, submit_side_effects: bool = False):
+    import app.domains.s2p.graph as graph_module
+
+    scorer = scorer or SlowScoreScorer()
+    monkeypatch.setattr(app.state, "scorer", scorer, raising=False)
+    monkeypatch.setattr(app.state, "graph_store", scorer.graph_store, raising=False)
+    monkeypatch.setattr(s2p_router, "_resolve_graph_context", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(s2p_router, "_apply_cross_copilot_signal", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(s2p_router, "_score_conservation_status", lambda *_args, **_kwargs: "GREEN")
+    monkeypatch.setattr(s2p_router, "get_active_variant", lambda **_kwargs: None)
+    monkeypatch.setattr(s2p_router, "_link_decision_to_invoice", lambda *_args, **_kwargs: None)
+    if not submit_side_effects:
+        monkeypatch.setattr(s2p_router, "_submit_side_effect", lambda fn: None)
+    monkeypatch.setattr(graph_module, "write_s2p_decision", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(s2p_router, "apply_cache_invalidation_event", lambda *_args, **_kwargs: [])
+    return scorer
+
+
+def test_score_lock_hold_time(monkeypatch):
+    import app.domains.s2p.graph as graph_module
+
+    timing_lock = TimingLock()
+    _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.05))
+    monkeypatch.setattr(s2p_router, "get_mutation_lock", lambda _domain: timing_lock)
+
+    def slow_graph_write(*_args, **_kwargs):
+        time.sleep(0.2)
+
+    monkeypatch.setattr(graph_module, "write_s2p_decision", slow_graph_write)
+    started = time.perf_counter()
+
+    response = client.post("/api/s2p/score", json=VALID_REQUEST)
+
+    elapsed = time.perf_counter() - started
+    assert response.status_code == 200
+    assert timing_lock.holds
+    assert max(timing_lock.holds) < 0.2
+    assert elapsed > 0.2
+
+
+def test_score_concurrent_not_serialized_on_enrichment(monkeypatch):
+    _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.05))
+
+    def slow_process_context(_signal):
+        time.sleep(0.5)
+        return None
+
+    monkeypatch.setattr(s2p_router, "_score_process_context_with_signal", slow_process_context)
+    payloads = [
+        {**VALID_REQUEST, "event_id": f"E-CONCURRENT-ENRICH-{index}", "amount": 5000.0 + index}
+        for index in range(2)
+    ]
+    started = time.perf_counter()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda payload: client.post("/api/s2p/score", json=payload), payloads))
+
+    elapsed = time.perf_counter() - started
+    assert all(response.status_code == 200 for response in responses)
+    assert elapsed < 0.7
+
+
+def test_fire_and_forget_failure_logged(monkeypatch, caplog):
+    _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.01), submit_side_effects=True)
+
+    def failing_shadow(*_args, **_kwargs):
+        raise RuntimeError("shadow write failed")
+
+    monkeypatch.setattr(s2p_router, "_record_score_shadow", failing_shadow)
+
+    with caplog.at_level("WARNING"):
+        response = client.post("/api/s2p/score", json=VALID_REQUEST)
+        deadline = time.time() + 2.0
+        while time.time() < deadline and "S2P side effect failed" not in caplog.text:
+            time.sleep(0.01)
+
+    assert response.status_code == 200
+    assert "S2P side effect failed" in caplog.text
+
+
+def test_response_shape_unchanged():
+    response = client.post("/api/s2p/score", json=VALID_REQUEST)
+    data = response.json()
+    expected = {
+        "event_id",
+        "category",
+        "action",
+        "action_index",
+        "confidence",
+        "probabilities",
+        "factor_vector",
+        "factor_names",
+        "decision_id",
+        "process_context",
+        "active_variant",
+        "auto_approve",
+        "novelty_score",
+        "threshold_decision",
+    }
+    assert response.status_code == 200
+    assert expected <= set(data)
+
+
+def test_enrichment_failure_doesnt_break_score(monkeypatch):
+    _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.01))
+
+    def broken_process_context(_signal):
+        raise RuntimeError("process context unavailable")
+
+    monkeypatch.setattr(s2p_router, "_score_process_context_with_signal", broken_process_context)
+
+    response = client.post("/api/s2p/score", json=VALID_REQUEST)
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["process_context"] is None
+    assert data["decision_id"]
+
+
 def test_score_response_includes_active_variant():
     reset_sdk_scorer()
 
@@ -86,6 +244,7 @@ def test_score_response_includes_active_variant():
 def test_score_response_includes_cached_conservation_status(monkeypatch):
     reset_sdk_scorer()
     monkeypatch.setattr(s2p_router, "_current_conservation_status", lambda _request: "GREEN")
+    s2p_router._score_conservation_status(SimpleNamespace(app=app))
 
     response = client.post("/api/s2p/score", json=VALID_REQUEST)
 
@@ -140,7 +299,7 @@ def test_concurrent_score_requests_coalesce_conservation_status(monkeypatch):
     elapsed = time.perf_counter() - started
 
     assert [response.status_code for response in responses] == [200, 200, 200, 200]
-    assert calls == 1
+    assert calls == 0
     assert elapsed < 1.5
 
 

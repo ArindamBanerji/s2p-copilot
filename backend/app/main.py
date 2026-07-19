@@ -1,4 +1,5 @@
 import os
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,9 +12,11 @@ from copilot_sdk.backend.transfer_router import create_transfer_router
 from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
 from copilot_sdk.scoring import CompoundingScorer
 from copilot_sdk.scoring.startup_restore import restore_l5_runtime_state
+from copilot_sdk.state import create_invalidation_header_middleware, create_tab_state_router
 
 DATA_DIR = Path(os.environ.get("CI_DATA_DIR", Path(__file__).parent / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+REQUEST_TIMING_LOG = Path(__file__).resolve().parents[1] / "request_timing.log"
 
 from app.domains.s2p.evolution import S2PEvolutionService
 from app.domains.s2p.reward import S2PRewardFunction
@@ -48,6 +51,7 @@ from app.routers.s2p_novelty import router as s2p_novelty_router
 from app.routers.s2p_payment import router as s2p_payment_router
 from app.routers.s2p_performance import router as s2p_performance_router
 from app.routers.s2p_preview import router as s2p_preview_router
+from app.routers.s2p_process_fusion import router as s2p_process_fusion_router
 from app.routers.s2p_pvg import router as s2p_pvg_router
 from app.routers.s2p_simulation import router as s2p_simulation_router
 from app.routers.s2p_suppliers import router as s2p_suppliers_router
@@ -57,6 +61,7 @@ from app.s2p_graph_status import (
     router as s2p_graph_status_router,
 )
 from app.s2p_shadow import initialize_s2p_shadow_state
+from app.state import S2P_MUTATION_PATHS, create_s2p_tab_state_cache
 
 
 DEFAULT_CORS_ORIGINS = (
@@ -130,13 +135,46 @@ app.state.l5_startup_status = l5_startup_status
 app.state.s2p_reward_function = app.state.scorer._reward_fn
 app.state.s2p_evolution = S2PEvolutionService(app.state.scorer)
 app.state.s2p_shadow = initialize_s2p_shadow_state()
+app.state.s2p_tab_state_cache = create_s2p_tab_state_cache(app.state)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Invalidated-Urls"],
 )
+app.middleware("http")(
+    create_invalidation_header_middleware(
+        "s2p",
+        mutation_paths=S2P_MUTATION_PATHS,
+    )
+)
+
+
+def _write_request_timing(line: str) -> None:
+    try:
+        with REQUEST_TIMING_LOG.open("a", encoding="ascii") as timing_log:
+            timing_log.write(f"{line}\n")
+    except OSError:
+        pass
+
+
+# Starlette applies the most recently registered middleware first.
+@app.middleware("http")
+async def request_timing_middleware(request, call_next):
+    ingress_ms = time.time_ns() // 1_000_000
+    method = request.method
+    path = request.url.path
+    _write_request_timing(f"INGRESS {ingress_ms} {method} {path}")
+    response = await call_next(request)
+    egress_ms = time.time_ns() // 1_000_000
+    _write_request_timing(
+        f"EGRESS {egress_ms} {method} {path} {response.status_code} {egress_ms - ingress_ms}"
+    )
+    return response
+
+
 app.include_router(learn_router)
 app.include_router(
     create_conservation_router(
@@ -181,8 +219,15 @@ app.include_router(s2p_payment_router)
 app.include_router(s2p_optimizer_router)
 app.include_router(s2p_suppliers_router)
 app.include_router(s2p_preview_router)
+app.include_router(s2p_process_fusion_router)
 app.include_router(create_cohort_status_router(lambda: app.state.graph_store))
 app.include_router(s2p_graph_status_router)
+app.include_router(create_tab_state_router(app.state.s2p_tab_state_cache))
+
+
+@app.on_event("startup")
+async def warm_s2p_tab_state_cache() -> None:
+    await app.state.s2p_tab_state_cache.warm_up()
 
 
 @app.get("/health")

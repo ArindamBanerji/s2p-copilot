@@ -7,6 +7,8 @@ from typing import Any, Callable
 
 from fastapi import APIRouter
 
+from copilot_sdk.state.cached_static import cached_static
+
 from app.services.cohort_status import CohortStatusService
 
 
@@ -17,6 +19,7 @@ def create_cohort_status_router(
     router = APIRouter(prefix="/api/s2p", tags=["cohort-status"])
 
     @router.get("/cohort-status")
+    @cached_static("cohort-status", copilot="s2p")
     def get_cohort_status() -> dict[str, Any]:
         store = graph_store_factory() if graph_store_factory is not None else None
         return CohortStatusService(

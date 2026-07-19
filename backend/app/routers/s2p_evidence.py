@@ -8,6 +8,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
+from copilot_sdk.state.cached_static import cached_static
+
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
 from app.models.responses import GenericResponse
@@ -297,6 +299,7 @@ def receipts_for_decision(decision_id: str) -> dict[str, Any]:
 
 
 @router.get("/chain-integrity", response_model=GenericResponse)
+@cached_static("evidence-chain-integrity", copilot="s2p")
 def chain_integrity() -> dict[str, Any]:
     return get_receipt_store().verify_chain()
 
@@ -397,6 +400,7 @@ def evidence_template(
 
 
 @router.get("/rules", response_model=GenericResponse)
+@cached_static("evidence-rules", copilot="s2p")
 def rules() -> dict[str, Any]:
     ruleset = [
         {
@@ -437,6 +441,7 @@ def rules() -> dict[str, Any]:
 
 
 @router.get("/compliance", response_model=GenericResponse)
+@cached_static("evidence-compliance", copilot="s2p")
 def compliance() -> dict[str, Any]:
     invoices = _load_invoices()
     flagged: list[dict[str, Any]] = []

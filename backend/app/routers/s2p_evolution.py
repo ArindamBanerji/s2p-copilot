@@ -4,6 +4,8 @@ from typing import Callable, cast
 
 from fastapi import APIRouter, Body, HTTPException, Request
 
+from copilot_sdk.scoring.mutation_lock import serialize_mutation
+
 from app.domains.s2p.evolution import S2PEvolutionService
 from app.models.responses import GenericResponse, StatusResponse
 from app.services.s2p_evolver import (
@@ -43,6 +45,7 @@ def create_s2p_evolution_router(
         return {"dimensions": get_dimensions()}
 
     @router.post("/propose", response_model=GenericResponse)
+    @serialize_mutation("s2p", event="evolution")
     def propose(payload: dict = Body(default_factory=dict)) -> dict:
         dimension = payload.get("dimension") if isinstance(payload, dict) else None
         if not dimension:
@@ -54,6 +57,7 @@ def create_s2p_evolution_router(
         return {"promotion": check_promotion()}
 
     @router.post("/reset", response_model=StatusResponse)
+    @serialize_mutation("s2p", event="reset")
     def reset() -> dict:
         reset_s2p_evolver()
         return {"status": "reset"}

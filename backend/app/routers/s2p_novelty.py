@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from copilot_sdk.state.cached_static import cached_static
+
 from app.domains.s2p.config import S2PDomainConfig
 from app.models.responses import GenericResponse
 from app.services.novelty_tracker import get_novelty_tracker
@@ -43,6 +45,7 @@ def _category_rate_rows() -> list[dict]:
 
 
 @router.get("/status", response_model=GenericResponse)
+@cached_static("novelty-status", copilot="s2p")
 def novelty_status() -> dict:
     status = get_novelty_tracker().get_status()
     rate = float(status.get("novelty_rate", 0.0) or 0.0)
@@ -74,6 +77,7 @@ def novelty_history(limit: int = 50) -> dict:
 
 
 @router.get("/rate", response_model=GenericResponse)
+@cached_static("novelty-rate", copilot="s2p")
 def novelty_rate() -> dict:
     tracker = get_novelty_tracker()
     overall_rate = float(tracker.novelty_rate)

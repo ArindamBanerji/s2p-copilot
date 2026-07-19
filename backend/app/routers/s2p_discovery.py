@@ -6,6 +6,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from copilot_sdk.state.cached_static import cached_static
+
 from app.models.responses import GenericResponse
 
 router = APIRouter(prefix="/api/s2p/discovery", tags=["s2p-discovery"])
@@ -216,6 +218,7 @@ EXTENDED_DISCOVERIES: tuple[dict[str, Any], ...] = (
 
 
 @router.get("/alerts", response_model=GenericResponse)
+@cached_static("discovery-alerts", copilot="s2p")
 def discovery_alerts() -> dict[str, Any]:
     """Return deterministic cross-system discovery examples for the S2P demo."""
 
@@ -233,6 +236,7 @@ def discovery_alerts() -> dict[str, Any]:
 
 
 @router.get("/disruptions", response_model=GenericResponse)
+@cached_static("discovery-disruptions", copilot="s2p")
 def disruption_recovery() -> dict[str, Any]:
     """Return deterministic tariff-shock recovery history for the S2P demo."""
 
@@ -299,6 +303,7 @@ def _by_type(discoveries: list[dict[str, Any]]) -> dict[str, int]:
 
 
 @router.get("/extended", response_model=GenericResponse)
+@cached_static("discovery-extended", copilot="s2p")
 def extended_discoveries() -> dict[str, Any]:
     """Return deterministic extended discovery graph examples for S2P."""
 

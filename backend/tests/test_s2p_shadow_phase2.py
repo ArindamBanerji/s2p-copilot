@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 from fastapi.testclient import TestClient
 import pytest
@@ -224,16 +225,25 @@ def test_non_strict_score_shadow_failure_keeps_sqlite_response_and_redacts_error
     assert "password=***" in event.error_message
 
 
-def test_strict_score_shadow_failure_fails_clearly_after_authoritative_write():
+def test_strict_score_shadow_failure_logs_after_authoritative_write(caplog):
     fake = FakeShadowStore(fail_governed=True)
     shadow = _shadow_state(fake, strict=True)
     _reset_app_state(shadow)
 
-    response = _score(TestClient(app), "S2P-SHADOW-SCORE-STRICT")
+    with caplog.at_level("WARNING"):
+        response = _score(TestClient(app), "S2P-SHADOW-SCORE-STRICT")
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            events = shadow.diagnostics.events()
+            if events and events[-1].operation == "score_shadow":
+                break
+            time.sleep(0.01)
 
-    assert response.status_code == 502
-    assert "score_shadow failed" in response.json()["detail"]
-    assert shadow.diagnostics.events()[-1].status == "failed"
+    assert response.status_code == 200
+    event = shadow.diagnostics.events()[-1]
+    assert event.operation == "score_shadow"
+    assert event.status == "failed"
+    assert "S2P side effect failed" in caplog.text
 
 
 def test_non_strict_outcome_shadow_failure_keeps_sqlite_response():

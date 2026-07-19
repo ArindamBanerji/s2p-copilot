@@ -7,6 +7,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from copilot_sdk.scoring.mutation_lock import serialize_mutation
+from copilot_sdk.state.cached_static import cached_static
+
 from app.routers.s2p import _current_conservation_status
 from app.services.s2p_auto_approve_gate import gate
 
@@ -41,6 +44,7 @@ class EvaluateRequest(BaseModel):
 
 
 @router.get("/status")
+@cached_static("auto-approve-status", copilot="s2p")
 def auto_approve_status(request: Request) -> dict[str, Any]:
     conservation_status = _current_conservation_status(request)
     return gate.status_by_category(
@@ -50,6 +54,7 @@ def auto_approve_status(request: Request) -> dict[str, Any]:
 
 
 @router.post("/enable")
+@serialize_mutation("s2p", event="reset")
 def enable_auto_approve(request: EnableRequest) -> dict[str, Any]:
     if request.mode not in {"shadow"}:
         raise HTTPException(
@@ -75,6 +80,7 @@ def enable_auto_approve(request: EnableRequest) -> dict[str, Any]:
 
 
 @router.post("/disable")
+@serialize_mutation("s2p", event="reset")
 def disable_auto_approve() -> dict[str, Any]:
     config = gate.disable()
     return {
@@ -87,6 +93,7 @@ def disable_auto_approve() -> dict[str, Any]:
 
 
 @router.get("/audit")
+@cached_static("auto-approve-audit", copilot="s2p")
 def auto_approve_audit() -> dict[str, Any]:
     events = gate.audit_log()
     return {
@@ -99,6 +106,7 @@ def auto_approve_audit() -> dict[str, Any]:
 
 
 @router.post("/evaluate")
+@serialize_mutation("s2p", event="score")
 def evaluate_auto_approve(request: EvaluateRequest, http_request: Request) -> dict[str, Any]:
     conservation_status = _current_conservation_status(http_request)
     return gate.evaluate(

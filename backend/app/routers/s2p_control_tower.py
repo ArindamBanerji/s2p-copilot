@@ -6,6 +6,8 @@ from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Query
 
+from copilot_sdk.state.cached_static import cached_static
+
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
 from app.models.intents import INTENT_METADATA, IntentCategory, IntentType
@@ -151,6 +153,7 @@ def _classified_intent_payload(classified_intent) -> dict[str, Any]:
 
 
 @router.get("/intents", response_model=CollectionResponse)
+@cached_static("control-tower-intents", copilot="s2p")
 def intents() -> dict[str, Any]:
     return {
         "intents": [_intent_payload(intent.value) for intent in IntentType],

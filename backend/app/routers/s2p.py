@@ -6,6 +6,8 @@ This file: S2P procurement domain endpoints only.
 
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor
+import copy
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -21,10 +23,13 @@ from pydantic import BaseModel
 from typing import Any, Optional, cast
 
 from copilot_sdk.backend.conservation_utils import compute_conservation_metrics
+from copilot_sdk.scoring.mutation_lock import get_mutation_lock, serialize_mutation
 from copilot_sdk.scoring.dk_persistence import (
     DKWelfordTracker,
     persist_dk_after_reestimate,
 )
+from copilot_sdk.state.invalidation import apply_cache_invalidation_event
+from copilot_sdk.state.cached_static import cached_static
 
 from app.domains.s2p.auto_approve import (
     AUTO_APPROVE_THRESHOLDS,
@@ -53,9 +58,11 @@ from app.s2p_shadow import S2PShadowState
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 learn_router = APIRouter(prefix="/api", tags=["S2P"])
 log = logging.getLogger(__name__)
+_SIDE_EFFECT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="s2p-side-effect")
 _GRAPH_LINK_ADVISORY_LOCK = threading.RLock()
 _SCORE_CONSERVATION_STATUS_TTL_SECONDS = 2.0
 _SCORE_CONSERVATION_STATUS_LOCK = threading.RLock()
+_SCORE_PROCESS_CONTEXT_LOCK = threading.RLock()
 _L5_CONSERVATION_STATE_LOCK = threading.RLock()
 _L5_DK_STATE_LOCK = threading.RLock()
 _L5_CENTROID_STATE_LOCK = threading.RLock()
@@ -71,6 +78,28 @@ def set_l5_dk_welford_tracker(tracker: DKWelfordTracker | None) -> None:
         _S2P_DK_WELFORD_TRACKER = tracker
 _SCORE_CONSERVATION_STATUS_CACHE: dict[str, tuple[float, str]] = {}
 _CONSERVATION_COUNTS_CACHE: dict[str, tuple[float, dict[str, float | int]]] = {}
+_SCORE_PROCESS_CONTEXT_CACHE: tuple[int, dict] | None = None
+
+
+def _log_side_effect_failure(future: Future) -> None:
+    try:
+        exc = future.exception()
+    except Exception as callback_exc:
+        log.warning("S2P side effect status check failed: %s", callback_exc, exc_info=True)
+        return
+    if exc is not None:
+        log.warning(
+            "S2P side effect failed: %s",
+            exc,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+
+
+def _submit_side_effect(fn):
+    """Submit a non-essential side effect to the bounded executor."""
+    future = _SIDE_EFFECT_EXECUTOR.submit(fn)
+    future.add_done_callback(_log_side_effect_failure)
+    return future
 
 def _resolve_graph_context(invoice_id: str, http_request: Request):
     state = getattr(http_request.app, "state", None)
@@ -105,7 +134,7 @@ def _graph_context_row_is_domain_specific(row: dict[str, Any]) -> bool:
     return bool(node)
 
 
-def _score_process_context() -> dict | None:
+def _compute_score_process_context() -> dict | None:
     celonis_data = _load_celonis_cache()
     activities = celonis_data.get("activities")
     if not isinstance(activities, list):
@@ -134,6 +163,16 @@ def _score_process_context() -> dict | None:
     if cause:
         process_context["cause"] = cause
     return process_context
+
+
+def _score_process_context() -> dict | None:
+    global _SCORE_PROCESS_CONTEXT_CACHE
+    with _SCORE_PROCESS_CONTEXT_LOCK:
+        loader_id = id(_load_celonis_cache)
+        if _SCORE_PROCESS_CONTEXT_CACHE is None or _SCORE_PROCESS_CONTEXT_CACHE[0] != loader_id:
+            _SCORE_PROCESS_CONTEXT_CACHE = (loader_id, _compute_score_process_context() or {})
+        process_context = _SCORE_PROCESS_CONTEXT_CACHE[1]
+        return dict(process_context) if process_context else None
 
 
 def _score_process_context_with_signal(signal: dict[str, Any] | None) -> dict | None:
@@ -404,6 +443,30 @@ def _record_score_novelty(
     except (AttributeError, TypeError, ValueError, IndexError) as exc:
         log.warning("S2P novelty observation skipped: %s", exc)
         return None
+
+
+def _snapshot_score_centroids(scorer: Any) -> Any:
+    gae_scorer = getattr(scorer, "gae_scorer", None)
+    centroids = getattr(gae_scorer, "centroids", None) if gae_scorer is not None else None
+    if centroids is None:
+        centroids = getattr(scorer, "centroids", None)
+    if centroids is None:
+        return None
+    if hasattr(centroids, "copy"):
+        return centroids.copy()
+    return copy.deepcopy(centroids)
+
+
+def _record_score_novelty_from_snapshot(
+    factor_vector: list[float],
+    category: str,
+    centroid_snapshot: Any,
+    scorer: Any,
+) -> float | None:
+    if centroid_snapshot is None:
+        return None
+    snapshot_scorer = type("CentroidSnapshotScorer", (), {"centroids": centroid_snapshot})()
+    return _record_score_novelty(factor_vector, category, snapshot_scorer)
 
 
 def _json_safe_float(value: Any) -> float | None:
@@ -841,6 +904,20 @@ def _score_conservation_status(http_request: Request) -> str:
         return status
 
 
+def _cached_score_conservation_status_only(http_request: Request) -> str:
+    """Read score-path conservation status cache without graph/scorer I/O."""
+    now = time.monotonic()
+    key = _score_conservation_cache_key(http_request)
+    with _SCORE_CONSERVATION_STATUS_LOCK:
+        cached = _SCORE_CONSERVATION_STATUS_CACHE.get(key)
+        if cached is None:
+            return "UNKNOWN"
+        timestamp, status = cached
+        if now - timestamp > _SCORE_CONSERVATION_STATUS_TTL_SECONDS:
+            return "UNKNOWN"
+        return status
+
+
 def _is_learning_paused(conservation: Any) -> bool:
     if conservation is None:
         return False
@@ -878,6 +955,12 @@ def _record_evolver_outcome_if_allowed(
         payload["evolution_note"] = "learning paused by conservation"
         return
 
+    if reward is None:
+        payload["evolution_recorded"] = False
+        payload["evolution_note"] = "evolver recording skipped: reward not available"
+        log.warning("S2P evolver recording skipped for variant %s: reward not available", variant_id)
+        return
+
     try:
         record_triage_outcome(
             variant_id,
@@ -885,7 +968,10 @@ def _record_evolver_outcome_if_allowed(
             category=category,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        payload["evolution_recorded"] = False
+        payload["evolution_note"] = f"evolver recording skipped: {exc}"
+        log.warning("S2P evolver recording failed for variant %s: %s", variant_id, exc, exc_info=True)
+        return
     payload["active_variant_id"] = variant_id
     payload["evolution_recorded"] = True
 
@@ -1743,7 +1829,7 @@ class ScoreResponse(BaseModel):
 
 
 @router.post("/score", response_model=S2PScoreResponse)
-def score_procurement_event(request: ScoreRequest, http_request: Request) -> ScoreResponse:
+def score_procurement_event(request: ScoreRequest, http_request: Request) -> dict[str, Any]:
     """
     Score a procurement event and return recommended action.
     POST /api/s2p/score
@@ -1778,82 +1864,130 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> Sco
 
     fixture_invoice = find_invoice(request.event_id)
     invoice = _invoice_from_request(request, fixture_invoice)
-    active_variant = get_active_variant(category=request.category)
+    try:
+        active_variant = get_active_variant(category=request.category)
+    except Exception:
+        log.exception("S2P active variant enrichment failed")
+        active_variant = None
     lookup_id = invoice.get("invoice_id") or request.event_id
     context = _resolve_graph_context(lookup_id, http_request)
     cross_copilot_signal = _apply_cross_copilot_signal(invoice, request)
     computed_factors = compute_all_factors(invoice, context=context)
     factor_vector = [computed_factors[name] for name in S2PDomainConfig.factors]
     scorer = _sdk_scorer(http_request)
+
+    with get_mutation_lock("s2p"):
+        try:
+            score_result = scorer.score(
+                computed_factors,
+                request.category,
+                metadata=_invoice_decision_metadata(invoice),
+            )
+        except AssertionError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        core = {
+            "event_id": request.event_id,
+            "category": request.category,
+            "action": score_result.action,
+            "action_index": score_result.action_index,
+            "confidence": score_result.confidence,
+            "probabilities": list(score_result.probabilities),
+            "factor_vector": list(factor_vector),
+            "factor_names": list(S2PDomainConfig.factors),
+            "decision_id": score_result.decision_id,
+        }
+        conservation_snapshot = _cached_score_conservation_status_only(http_request)
+        centroid_snapshot = {}
+        try:
+            centroid_snapshot = _snapshot_score_centroids(scorer)
+            if centroid_snapshot is None:
+                centroid_snapshot = {}
+        except Exception:
+            log.exception("S2P score centroid snapshot skipped")
+            centroid_snapshot = {}
+        try:
+            apply_cache_invalidation_event("s2p", "score")
+        except Exception:
+            log.exception("S2P score cache invalidation failed")
+
+    conservation_status = conservation_snapshot
     try:
-        score_result = scorer.score(
-            computed_factors,
+        auto_approve = _should_auto_approve(
             request.category,
-            metadata=_invoice_decision_metadata(invoice),
+            core["confidence"],
+            conservation_status,
+            core["action"],
         )
-    except AssertionError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        auto_approve["confidence"] = core["confidence"]
+        auto_approve["conservation_status"] = conservation_status
+        auto_approve["action"] = core["action"]
+    except Exception:
+        log.exception("S2P auto-approve enrichment failed")
+        auto_approve = None
+
+    novelty_score = _record_score_novelty_from_snapshot(factor_vector, request.category, centroid_snapshot, scorer)
+    try:
+        process_context = _score_process_context_with_signal(cross_copilot_signal)
+    except Exception:
+        log.exception("S2P process context enrichment failed")
+        process_context = None
+    try:
+        threshold_decision = compute_threshold_decision(invoice)
+    except Exception:
+        log.exception("S2P threshold decision enrichment failed")
+        threshold_decision = None
 
     try:
         from app.db.neo4j import neo4j_client
         from app.domains.s2p.graph import write_s2p_decision
         write_s2p_decision(
             neo4j_client,
-            event_id=request.event_id,
-            category=request.category,
-            action=score_result.action,
-            action_index=score_result.action_index,
-            confidence=score_result.confidence,
+            event_id=core["event_id"],
+            category=core["category"],
+            action=core["action"],
+            action_index=core["action_index"],
+            confidence=core["confidence"],
             factor_vector=factor_vector,
             factor_names=S2PDomainConfig.factors,
             supplier_id=request.supplier_id,
             amount=request.amount,
         )
-    except Exception:
-        pass
-
-    conservation_status = _score_conservation_status(http_request)
-    auto_approve = _should_auto_approve(
-        request.category,
-        score_result.confidence,
-        conservation_status,
-        score_result.action,
-    )
-    auto_approve["confidence"] = score_result.confidence
-    auto_approve["conservation_status"] = conservation_status
-    auto_approve["action"] = score_result.action
-    record_auto_approve_decision(auto_approve)
-
-    novelty_score = _record_score_novelty(factor_vector, request.category, scorer)
-    _link_decision_to_invoice(scorer.graph_store, score_result.decision_id, str(lookup_id))
-    _record_score_shadow(
-        http_request,
-        score_request=request,
-        score_result=score_result,
-        factor_vector=factor_vector,
-        invoice=invoice,
-        active_variant=active_variant,
+    except Exception as exc:
+        logging.getLogger("s2p.score").warning(
+            "Primary graph write failed for %s: %s",
+            core.get("decision_id", "?"),
+            exc,
+            exc_info=True,
+        )
+    _link_decision_to_invoice(scorer.graph_store, core["decision_id"], str(lookup_id))
+    if auto_approve is not None:
+        _submit_side_effect(lambda: record_auto_approve_decision(dict(auto_approve)))
+    _submit_side_effect(
+        lambda: _record_score_shadow(
+            http_request,
+            score_request=request,
+            score_result=score_result,
+            factor_vector=factor_vector,
+            invoice=invoice,
+            active_variant=active_variant,
+        )
     )
 
-    return ScoreResponse(
-        event_id=request.event_id,
-        category=request.category,
-        action=score_result.action,
-        action_index=score_result.action_index,
-        confidence=score_result.confidence,
-        probabilities=score_result.probabilities,
-        factor_vector=factor_vector,
-        factor_names=S2PDomainConfig.factors,
-        decision_id=score_result.decision_id,
-        process_context=_score_process_context_with_signal(cross_copilot_signal),
+    response = ScoreResponse(
+        **core,
+        process_context=process_context,
         active_variant=active_variant,
         auto_approve=auto_approve,
         novelty_score=novelty_score,
-        threshold_decision=compute_threshold_decision(invoice),
+        threshold_decision=threshold_decision,
     )
+    payload = cast(dict[str, Any], _json_safe(response.model_dump()))
+    S2PScoreResponse.model_validate(payload)
+    return payload
 
 
 @router.get("/auto-approve/stats", response_model=GenericResponse)
+@cached_static("auto-approve-stats", copilot="s2p")
 def get_auto_approve_stats_endpoint() -> dict[str, Any]:
     return get_auto_approve_stats()
 
@@ -1908,6 +2042,7 @@ class LearnRequest(BaseModel):
 
 
 @learn_router.post("/learn", response_model=GenericResponse)
+@serialize_mutation("s2p", event="learn")
 def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, Any]:
     """SDK-shaped learn endpoint backed by the S2P CompoundingScorer."""
     if request.actual_action not in S2PDomainConfig.actions:
@@ -2002,6 +2137,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
 
 
 @router.post("/outcome", response_model=GenericResponse)
+@serialize_mutation("s2p", event="learn")
 def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, Any]:
     """
     Record analyst outcome and optionally update centroids.
@@ -2129,6 +2265,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
 
 
 @router.get("/iks", response_model=GenericResponse)
+@cached_static("iks", copilot="s2p")
 def get_iks(http_request: Request) -> dict[str, Any]:
     """
     GET /api/s2p/iks
@@ -2140,6 +2277,7 @@ def get_iks(http_request: Request) -> dict[str, Any]:
 
 
 @router.get("/learning-gate", response_model=LearningGateResponse)
+@cached_static("learning-gate", copilot="s2p")
 def get_learning_gate() -> dict:
     """
     GET /api/s2p/learning-gate

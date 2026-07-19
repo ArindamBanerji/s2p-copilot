@@ -53,6 +53,7 @@ def test_preview_queue_includes_process_context_when_celonis_cache_available(mon
             ],
         },
     )
+    app.state.s2p_tab_state_cache.delete_standard("reset")
 
     row = _queue()["exceptions"][0]
 

@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from typing import Any, Iterable, Mapping
+
+
+MAX_FINANCIAL_DECISIONS = 500
 
 
 @dataclass
@@ -76,9 +80,15 @@ def _bucket_add(
 def compute_financial_impact(
     decisions: Iterable[Any],
     receipts: Iterable[Any] | None = None,
+    *,
+    max_decisions: int | None = MAX_FINANCIAL_DECISIONS,
 ) -> FinancialSummary:
     """Aggregate verified S2P financial impact from decisions and receipts."""
-    decision_list = list(decisions)
+    decision_list = (
+        list(decisions)
+        if max_decisions is None
+        else limit_recent_decisions(decisions, max_decisions)
+    )
     receipt_by_key = {
         str(key): receipt
         for receipt in (receipts or [])
@@ -117,3 +127,24 @@ def compute_financial_impact(
         summary.total_recovered / summary.total_at_risk if summary.total_at_risk else 0.0
     )
     return summary
+
+
+def limit_recent_decisions(
+    decisions: Iterable[Any],
+    limit: int = MAX_FINANCIAL_DECISIONS,
+) -> list[Any]:
+    """Bound fallback aggregation work to the newest available decisions."""
+    return sorted(list(decisions), key=_decision_timestamp, reverse=True)[:limit]
+
+
+def _decision_timestamp(decision: Any) -> float:
+    for field_name in ("created_at", "timestamp", "updated_at", "verified_at"):
+        value = _get_value(decision, field_name)
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                continue
+    return float("-inf")

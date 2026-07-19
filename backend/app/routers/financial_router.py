@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
@@ -18,6 +19,11 @@ from app.services.receipt_store import get_receipt_store
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/s2p/financial-impact", tags=["s2p-financial-impact"])
+
+_FINANCIAL_SNAPSHOT: dict[str, Any] | None = None
+_FINANCIAL_TREND_SNAPSHOT: dict[str, Any] | None = None
+_FINANCIAL_CATEGORY_SNAPSHOTS: dict[str, dict[str, Any]] = {}
+_FINANCIAL_SNAPSHOT_GRAPH_STORE: Any | None = None
 
 
 class FinancialImpactSummaryResponse(BaseModel):
@@ -237,6 +243,7 @@ def _trend_response(
     decisions: list[dict[str, Any]],
     receipts: list[dict[str, Any]],
     window_weeks: int = 12,
+    max_decisions: int | None = 500,
 ) -> dict[str, Any]:
     timestamps = [
         timestamp
@@ -268,7 +275,11 @@ def _trend_response(
         week_end = week_start + timedelta(days=6)
         week_decisions = decisions_by_week[week]
         week_receipts = _matched_receipts_for_decisions(week_decisions, receipt_lookup)
-        summary = compute_financial_impact(week_decisions, week_receipts)
+        summary = compute_financial_impact(
+            week_decisions,
+            week_receipts,
+            max_decisions=max_decisions,
+        )
         point = {
             **_summary_response(summary),
             "week": f"{year}-W{week_number:02d}",
@@ -283,6 +294,7 @@ def _trend_response(
     totals = compute_financial_impact(
         window_decisions,
         _matched_receipts_for_decisions(window_decisions, receipt_lookup),
+        max_decisions=max_decisions,
     )
     return {
         "window_weeks": window_weeks,
@@ -292,18 +304,74 @@ def _trend_response(
     }
 
 
+def warm_financial_snapshots(
+    graph_store: Any | None,
+    max_decisions: int | None = None,
+) -> None:
+    """Materialize financial responses after seeded state is available."""
+    global _FINANCIAL_SNAPSHOT
+    global _FINANCIAL_TREND_SNAPSHOT
+    global _FINANCIAL_CATEGORY_SNAPSHOTS
+    global _FINANCIAL_SNAPSHOT_GRAPH_STORE
+
+    decisions = _all_graph_decisions(graph_store)
+    receipts = _receipt_rows()
+    allowed_categories = list(S2PDomainConfig.categories)
+    _FINANCIAL_SNAPSHOT = _summary_response(
+        compute_financial_impact(decisions, receipts, max_decisions=max_decisions)
+    )
+    _FINANCIAL_TREND_SNAPSHOT = _trend_response(
+        decisions,
+        receipts,
+        window_weeks=12,
+        max_decisions=max_decisions,
+    )
+    _FINANCIAL_CATEGORY_SNAPSHOTS = {}
+    for category in allowed_categories:
+        filtered_decisions, filtered_receipts = _filter_category(decisions, receipts, category)
+        _FINANCIAL_CATEGORY_SNAPSHOTS[category] = {
+            **_summary_response(
+                compute_financial_impact(
+                    filtered_decisions,
+                    filtered_receipts,
+                    max_decisions=max_decisions,
+                )
+            ),
+            "category": category,
+            "allowed_categories": allowed_categories,
+        }
+    _FINANCIAL_SNAPSHOT_GRAPH_STORE = graph_store
+
+
+def reset_financial_snapshots() -> None:
+    """Clear snapshots for an explicit demo reset or isolated test."""
+    global _FINANCIAL_SNAPSHOT
+    global _FINANCIAL_TREND_SNAPSHOT
+    global _FINANCIAL_CATEGORY_SNAPSHOTS
+    global _FINANCIAL_SNAPSHOT_GRAPH_STORE
+
+    _FINANCIAL_SNAPSHOT = None
+    _FINANCIAL_TREND_SNAPSHOT = None
+    _FINANCIAL_CATEGORY_SNAPSHOTS = {}
+    _FINANCIAL_SNAPSHOT_GRAPH_STORE = None
+
+
+def _ensure_financial_snapshots(request: Request) -> None:
+    graph_store = _graph_store(request)
+    if _FINANCIAL_SNAPSHOT is None or _FINANCIAL_SNAPSHOT_GRAPH_STORE is not graph_store:
+        warm_financial_snapshots(graph_store, max_decisions=500)
+
+
 @router.get("", response_model=FinancialImpactSummaryResponse)
 def financial_impact(request: Request) -> dict[str, Any]:
-    decisions = _all_graph_decisions(_graph_store(request))
-    receipts = _receipt_rows()
-    return _summary_response(compute_financial_impact(decisions, receipts))
+    _ensure_financial_snapshots(request)
+    return deepcopy(_FINANCIAL_SNAPSHOT or {})
 
 
 @router.get("/trend", response_model=FinancialImpactTrendResponse)
 def financial_impact_trend(request: Request) -> dict[str, Any]:
-    decisions = _all_graph_decisions(_graph_store(request))
-    receipts = _receipt_rows()
-    return _trend_response(decisions, receipts, window_weeks=12)
+    _ensure_financial_snapshots(request)
+    return deepcopy(_FINANCIAL_TREND_SNAPSHOT or {})
 
 
 @router.get("/{category}", response_model=FinancialImpactCategoryResponse)
@@ -317,12 +385,5 @@ def financial_impact_category(category: str, request: Request) -> dict[str, Any]
                 "allowed_categories": allowed_categories,
             },
         )
-    decisions = _all_graph_decisions(_graph_store(request))
-    receipts = _receipt_rows()
-    filtered_decisions, filtered_receipts = _filter_category(decisions, receipts, category)
-    summary = compute_financial_impact(filtered_decisions, filtered_receipts)
-    return {
-        **_summary_response(summary),
-        "category": category,
-        "allowed_categories": allowed_categories,
-    }
+    _ensure_financial_snapshots(request)
+    return deepcopy(_FINANCIAL_CATEGORY_SNAPSHOTS[category])

@@ -14,6 +14,7 @@ from app.routers import s2p_auto_approve
 from app.routers import s2p_control_tower
 from app.routers import s2p_discovery
 from app.routers import s2p_evidence
+from app.routers import financial_router
 from app.routers import s2p_novelty
 from app.routers import s2p_preview
 from app.services.cohort_status import CohortStatusService
@@ -79,6 +80,16 @@ def create_s2p_tab_state_cache(app_state: Any) -> TabStateCache:
         "/api/s2p/preview/queue",
         lambda: _call(s2p_preview.preview_queue, request),
         s2p_preview.preview_queue,
+        tier="STANDARD",
+        invalidated_by=("reset",),
+        reads_scorer=False,
+    )
+    _register(
+        cache,
+        "financial-impact",
+        "/api/s2p/financial-impact",
+        lambda: _call(financial_router.financial_impact, request),
+        financial_router.financial_impact,
         tier="STANDARD",
         invalidated_by=("reset",),
         reads_scorer=False,

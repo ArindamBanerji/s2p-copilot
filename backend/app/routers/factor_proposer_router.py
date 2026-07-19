@@ -11,9 +11,14 @@ from app.domains.s2p.config import S2PDomainConfig
 from app.models.responses import GenericResponse
 from app.routers.s2p_explorer import _decision_factor_vector, _graph_domain, _read_dk_weights
 from app.services.factor_proposer import FactorProposer
+from app.services.financial_impact import limit_recent_decisions
 
 
 router = APIRouter(prefix="/api/s2p/factors", tags=["s2p-factor-proposer"])
+
+_FACTOR_ANALYSIS_SNAPSHOT: dict[str, Any] | None = None
+_FACTOR_RECOMMENDATIONS_SNAPSHOT: dict[str, Any] | None = None
+_FACTOR_SNAPSHOT_SCORER: Any | None = None
 
 
 class FactorProposalRequest(BaseModel):
@@ -23,26 +28,14 @@ class FactorProposalRequest(BaseModel):
 
 @router.get("/analysis", response_model=GenericResponse)
 def factor_analysis(request: Request) -> dict[str, Any]:
-    recommendations = _proposer(request).analyze()
-    return {
-        "factors": [item.to_dict() for item in recommendations],
-        "count": len(recommendations),
-        "advisory": True,
-    }
+    _ensure_factor_snapshots(request)
+    return dict(_FACTOR_ANALYSIS_SNAPSHOT or {})
 
 
 @router.get("/recommendations", response_model=GenericResponse)
 def factor_recommendations(request: Request) -> dict[str, Any]:
-    recommendations = [
-        item.to_dict()
-        for item in _proposer(request).analyze()
-        if item.verdict == "replace_candidate"
-    ]
-    return {
-        "recommendations": recommendations,
-        "count": len(recommendations),
-        "advisory": True,
-    }
+    _ensure_factor_snapshots(request)
+    return dict(_FACTOR_RECOMMENDATIONS_SNAPSHOT or {})
 
 
 @router.post("/propose", response_model=GenericResponse)
@@ -56,8 +49,12 @@ def propose_factor(payload: FactorProposalRequest, request: Request) -> dict[str
 def _proposer(request: Request) -> FactorProposer:
     factors = list(S2PDomainConfig.factors)
     scorer = getattr(request.app.state, "scorer", None)
+    return _proposer_for_scorer(scorer, factors)
+
+
+def _proposer_for_scorer(scorer: Any, factors: list[str]) -> FactorProposer:
     weights = _dk_weight_map(scorer, factors)
-    return FactorProposer(weights, _factor_stats(request, factors))
+    return FactorProposer(weights, _factor_stats(scorer, factors))
 
 
 def _dk_weight_map(scorer: Any, factors: list[str]) -> dict[str, float]:
@@ -75,8 +72,8 @@ def _dk_weight_map(scorer: Any, factors: list[str]) -> dict[str, float]:
     }
 
 
-def _factor_stats(request: Request, factors: list[str]) -> dict[str, dict[str, float]]:
-    live = _live_factor_stats(getattr(request.app.state, "scorer", None), factors)
+def _factor_stats(scorer: Any, factors: list[str]) -> dict[str, dict[str, float]]:
+    live = _live_factor_stats(scorer, factors)
     defaults = _fallback_factor_stats()
     if not live:
         return {factor: defaults.get(factor, {"variance": 0.30, "outcome_corr": 0.05}) for factor in factors}
@@ -88,7 +85,9 @@ def _live_factor_stats(scorer: Any, factors: list[str]) -> dict[str, dict[str, f
     get_all_decisions = getattr(graph_store, "get_all_decisions", None)
     if not callable(get_all_decisions):
         return {}
-    rows = [row for row in get_all_decisions(_graph_domain(graph_store)) if isinstance(row, dict)]
+    rows = limit_recent_decisions(
+        row for row in get_all_decisions(_graph_domain(graph_store)) if isinstance(row, dict)
+    )
     vectors: list[list[float]] = []
     outcomes: list[float] = []
     for row in rows:
@@ -107,6 +106,44 @@ def _live_factor_stats(scorer: Any, factors: list[str]) -> dict[str, dict[str, f
             "outcome_corr": _correlation(values, outcomes),
         }
     return stats
+
+
+def warm_factor_snapshots(scorer: Any) -> None:
+    """Materialize factor analysis after seeded scorer state is available."""
+    global _FACTOR_ANALYSIS_SNAPSHOT
+    global _FACTOR_RECOMMENDATIONS_SNAPSHOT
+    global _FACTOR_SNAPSHOT_SCORER
+
+    recommendations = _proposer_for_scorer(scorer, list(S2PDomainConfig.factors)).analyze()
+    factors = [item.to_dict() for item in recommendations]
+    _FACTOR_ANALYSIS_SNAPSHOT = {
+        "factors": factors,
+        "count": len(factors),
+        "advisory": True,
+    }
+    recommended = [item for item in factors if item["verdict"] == "replace_candidate"]
+    _FACTOR_RECOMMENDATIONS_SNAPSHOT = {
+        "recommendations": recommended,
+        "count": len(recommended),
+        "advisory": True,
+    }
+    _FACTOR_SNAPSHOT_SCORER = scorer
+
+
+def reset_factor_snapshots() -> None:
+    global _FACTOR_ANALYSIS_SNAPSHOT
+    global _FACTOR_RECOMMENDATIONS_SNAPSHOT
+    global _FACTOR_SNAPSHOT_SCORER
+
+    _FACTOR_ANALYSIS_SNAPSHOT = None
+    _FACTOR_RECOMMENDATIONS_SNAPSHOT = None
+    _FACTOR_SNAPSHOT_SCORER = None
+
+
+def _ensure_factor_snapshots(request: Request) -> None:
+    scorer = getattr(request.app.state, "scorer", None)
+    if _FACTOR_ANALYSIS_SNAPSHOT is None or _FACTOR_SNAPSHOT_SCORER is not scorer:
+        warm_factor_snapshots(scorer)
 
 
 def _fallback_factor_stats() -> dict[str, dict[str, float]]:

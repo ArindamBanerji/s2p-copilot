@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.main import app
-from app.services.financial_impact import compute_financial_impact
+from app.services.financial_impact import MAX_FINANCIAL_DECISIONS, compute_financial_impact
 
 
 client = TestClient(app)
@@ -187,3 +187,18 @@ def test_compute_financial_impact_to_dict_shape():
     data = summary.to_dict()
     assert data["verified_decisions"] == 1
     assert data["by_category"]["price_variance"]["recovered"] == 7.0
+
+
+def test_compute_financial_impact_caps_to_recent_decisions():
+    decisions = [
+        {
+            "decision_id": f"d{index}",
+            "status": "confirmed",
+            "created_at": index,
+        }
+        for index in range(MAX_FINANCIAL_DECISIONS + 1)
+    ]
+
+    summary = compute_financial_impact(decisions)
+
+    assert summary.total_decisions == MAX_FINANCIAL_DECISIONS

@@ -235,7 +235,7 @@ def test_financial_impact_uses_p28_compute_function(monkeypatch):
     _set_financial_state(monkeypatch, [{"decision_id": "D1", "status": "confirmed"}])
     calls = []
 
-    def fake_compute(decisions, receipts=None):
+    def fake_compute(decisions, receipts=None, **_kwargs):
         calls.append((list(decisions), list(receipts or [])))
         return FinancialSummary(total_decisions=99, verified_decisions=88, total_recovered=77.0)
 
@@ -246,6 +246,20 @@ def test_financial_impact_uses_p28_compute_function(monkeypatch):
     assert response.status_code == 200
     assert response.json()["total_decisions"] == 99
     assert calls
+
+
+def test_financial_snapshot_reuses_one_graph_read(monkeypatch):
+    _set_financial_state(
+        monkeypatch,
+        [{"decision_id": "D1", "status": "confirmed", "category": "price_variance"}],
+    )
+    graph_store = app.state.graph_store
+
+    assert client.get("/api/s2p/financial-impact").status_code == 200
+    assert client.get("/api/s2p/financial-impact/trend").status_code == 200
+    assert client.get("/api/s2p/financial-impact/price_variance").status_code == 200
+
+    assert len(graph_store.calls) == 1
 
 
 def test_financial_impact_has_single_active_route_owner():

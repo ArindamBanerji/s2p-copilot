@@ -122,6 +122,7 @@ def test_router_propose() -> None:
 def test_proposer_uses_live_dk_weights(monkeypatch) -> None:
     live_weights = [0.04, 0.22, 0.18, 0.16, 0.10, 0.09, 0.08]
     monkeypatch.setattr(factor_proposer_router, "_read_dk_weights", lambda _scorer: live_weights)
+    factor_proposer_router.reset_factor_snapshots()
 
     payload = client.get("/api/s2p/factors/analysis").json()
     by_factor = {row["factor_name"]: row for row in payload["factors"]}

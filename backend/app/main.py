@@ -1,5 +1,4 @@
 import os
-import time
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -16,7 +15,6 @@ from copilot_sdk.state import create_invalidation_header_middleware, create_tab_
 
 DATA_DIR = Path(os.environ.get("CI_DATA_DIR", Path(__file__).parent / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-REQUEST_TIMING_LOG = Path(__file__).resolve().parents[1] / "request_timing.log"
 
 from app.domains.s2p.evolution import S2PEvolutionService
 from app.domains.s2p.reward import S2PRewardFunction
@@ -37,12 +35,12 @@ from app.routers.s2p_discovery import router as s2p_discovery_router
 from app.routers.s2p_early_warning import router as s2p_early_warning_router
 from app.routers.s2p_evolution import router as s2p_evolution_router
 from app.routers.s2p_explorer import router as s2p_explorer_router
-from app.routers.factor_proposer_router import router as s2p_factor_proposer_router
+from app.routers.factor_proposer_router import router as s2p_factor_proposer_router, warm_factor_snapshots
 from app.routers.s2p_evidence import router as s2p_evidence_router
 from app.routers.s2p_enrichment import router as s2p_enrichment_router
 from app.routers.s2p_enrichment_context import router as s2p_enrichment_context_router
 from app.routers.s2p_situation import router as s2p_situation_router
-from app.routers.financial_router import router as s2p_financial_router
+from app.routers.financial_router import router as s2p_financial_router, warm_financial_snapshots
 from app.routers.s2p_governance import router as s2p_governance_router
 from app.routers.s2p_insight import router as s2p_insight_router
 from app.routers.lead_time_router import router as s2p_lead_time_router
@@ -152,29 +150,6 @@ app.middleware("http")(
 )
 
 
-def _write_request_timing(line: str) -> None:
-    try:
-        with REQUEST_TIMING_LOG.open("a", encoding="ascii") as timing_log:
-            timing_log.write(f"{line}\n")
-    except OSError:
-        pass
-
-
-# Starlette applies the most recently registered middleware first.
-@app.middleware("http")
-async def request_timing_middleware(request, call_next):
-    ingress_ms = time.time_ns() // 1_000_000
-    method = request.method
-    path = request.url.path
-    _write_request_timing(f"INGRESS {ingress_ms} {method} {path}")
-    response = await call_next(request)
-    egress_ms = time.time_ns() // 1_000_000
-    _write_request_timing(
-        f"EGRESS {egress_ms} {method} {path} {response.status_code} {egress_ms - ingress_ms}"
-    )
-    return response
-
-
 app.include_router(learn_router)
 app.include_router(
     create_conservation_router(
@@ -227,6 +202,8 @@ app.include_router(create_tab_state_router(app.state.s2p_tab_state_cache))
 
 @app.on_event("startup")
 async def warm_s2p_tab_state_cache() -> None:
+    warm_financial_snapshots(app.state.graph_store)
+    warm_factor_snapshots(app.state.scorer)
     await app.state.s2p_tab_state_cache.warm_up()
 
 

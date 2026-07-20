@@ -2042,7 +2042,6 @@ class LearnRequest(BaseModel):
 
 
 @learn_router.post("/learn", response_model=GenericResponse)
-@serialize_mutation("s2p", event="learn")
 def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, Any]:
     """SDK-shaped learn endpoint backed by the S2P CompoundingScorer."""
     if request.actual_action not in S2PDomainConfig.actions:
@@ -2055,89 +2054,94 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
     if request.reason_code:
         context["reason_code"] = request.reason_code
     scorer = _sdk_scorer(http_request)
-    try:
-        decision = scorer.graph_store.get_decision(request.decision_id)
-    except Exception:
-        decision = None
-    category = _decision_category(decision)
-    pre_centroid = _read_centroid_for_l5(
-        scorer,
-        category=category,
-        action=request.actual_action,
-    )
-    conservation_before = _receipt_conservation_snapshot(http_request)
-    evidence_receipt = _append_evidence_receipt_before_outcome(
-        graph_store=scorer.graph_store,
-        decision=decision,
-        decision_id=request.decision_id,
-        actual_action=request.actual_action,
-        outcome=request.outcome,
-        actor="api/learn",
-        source_route="/api/learn",
-        conservation_before=conservation_before,
-        context=context,
-    )
-    payload = _learn_with_scorer(
-        scorer,
-        request.decision_id,
-        request.actual_action,
-        request.outcome,
-        context,
-    )
-    _clear_score_conservation_status_cache()
-    _persist_l5_centroid_state(
-        http_request,
-        scorer=scorer,
-        category=category,
-        actual_action=request.actual_action,
-        decision_id=request.decision_id,
-        pre_centroid=pre_centroid,
-    )
-    _persist_l5_conservation_state(http_request, request.decision_id)
-    _persist_l5_dk_state(
-        http_request,
-        decision=decision,
-        actual_action=request.actual_action,
-        payload=payload,
-    )
-    conservation_after = _receipt_conservation_snapshot(http_request)
+
+    with get_mutation_lock("s2p"):
+        try:
+            decision = scorer.graph_store.get_decision(request.decision_id)
+        except Exception:
+            decision = None
+        category = _decision_category(decision)
+        pre_centroid = _read_centroid_for_l5(
+            scorer,
+            category=category,
+            action=request.actual_action,
+        )
+        conservation_before = _receipt_conservation_snapshot(http_request)
+        evidence_receipt = _append_evidence_receipt_before_outcome(
+            graph_store=scorer.graph_store,
+            decision=decision,
+            decision_id=request.decision_id,
+            actual_action=request.actual_action,
+            outcome=request.outcome,
+            actor="api/learn",
+            source_route="/api/learn",
+            conservation_before=conservation_before,
+            context=context,
+        )
+        payload = _learn_with_scorer(
+            scorer,
+            request.decision_id,
+            request.actual_action,
+            request.outcome,
+            context,
+        )
+        _clear_score_conservation_status_cache()
+        _persist_l5_centroid_state(
+            http_request,
+            scorer=scorer,
+            category=category,
+            actual_action=request.actual_action,
+            decision_id=request.decision_id,
+            pre_centroid=pre_centroid,
+        )
+        _persist_l5_conservation_state(http_request, request.decision_id)
+        _persist_l5_dk_state(
+            http_request,
+            decision=decision,
+            actual_action=request.actual_action,
+            payload=payload,
+        )
+        apply_cache_invalidation_event("s2p", "learn")
+        conservation_after_snapshot = _receipt_conservation_snapshot(http_request)
+        payload_snapshot = dict(payload)
+        decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None
+
     if _outcome_recorded_for_receipt(
-        payload,
+        payload_snapshot,
         conservation_before.get("verified_count"),
-        conservation_after.get("verified_count"),
+        conservation_after_snapshot.get("verified_count"),
     ):
         _record_outcome_receipt(
-            decision=decision,
-            payload=payload,
+            decision=decision_snapshot,
+            payload=payload_snapshot,
             actual_action=request.actual_action,
             reason_code=context.get("reason_code"),
             conservation_before=conservation_before,
-            conservation_after=conservation_after,
+            conservation_after=conservation_after_snapshot,
             evidence_receipt=evidence_receipt,
             context=context,
         )
-    _record_supplier_profile(decision, payload, request.actual_action, context)
+    _record_supplier_profile(decision_snapshot, payload_snapshot, request.actual_action, context)
     _record_evolver_outcome_if_allowed(
-        payload,
+        payload_snapshot,
         request.variant_id,
-        reward=payload.get("reward"),
-        category=_decision_category(decision) or "",
+        reward=payload_snapshot.get("reward"),
+        category=_decision_category(decision_snapshot) or "",
         http_request=http_request,
     )
     _record_outcome_shadow(
         http_request,
         operation="learn_shadow",
-        decision=decision,
+        decision=decision_snapshot,
         decision_id=request.decision_id,
         actual_action=request.actual_action,
         outcome=request.outcome,
         metadata={"reason_code": context.get("reason_code")},
     )
-    return payload
+    return payload_snapshot
 
 
 @router.post("/outcome", response_model=GenericResponse)
-@serialize_mutation("s2p", event="learn")
 def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, Any]:
     """
     Record analyst outcome and optionally update centroids.
@@ -2158,100 +2162,106 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             detail=f"factor_vector must contain {S2PDomainConfig.n_factors} values")
 
     scorer = _sdk_scorer(http_request)
-    _ensure_outcome_decision(scorer, request)
-    try:
-        decision = scorer.graph_store.get_decision(request.decision_id)
-    except Exception:
-        decision = None
-    category = _decision_category(decision) or request.category
-    pre_centroid = _read_centroid_for_l5(
-        scorer,
-        category=category,
-        action=request.analyst_action,
-    )
-    invoice_id = _decision_invoice_id(decision)
     outcome_context = {
         "amount": request.amount,
         "at_risk": request.at_risk,
         "recovery_pct": request.recovery_pct,
         "reason_code": request.reason_code,
-        "invoice_id": invoice_id or None,
     }
-    conservation_before = _receipt_conservation_snapshot(http_request)
-    evidence_receipt = _append_evidence_receipt_before_outcome(
-        graph_store=scorer.graph_store,
-        decision=decision,
-        decision_id=request.decision_id,
-        actual_action=request.analyst_action,
-        outcome=request.outcome,
-        actor=request.analyst_id,
-        source_route="/api/s2p/outcome",
-        conservation_before=conservation_before,
-        context=outcome_context,
-    )
-    try:
-        from app.db.neo4j import neo4j_client
-        from app.domains.s2p.graph import write_s2p_outcome
-        write_s2p_outcome(neo4j_client, request.decision_id,
-            request.outcome, request.analyst_action, request.analyst_id)
-    except Exception:
-        pass  # Neo4j unavailable — outcome still processed
 
-    payload = _learn_with_scorer(
-        scorer,
-        request.decision_id,
-        request.analyst_action,
-        request.outcome,
-        outcome_context,
-    )
-    payload["outcome"] = request.outcome
-    _clear_score_conservation_status_cache()
-    _persist_l5_centroid_state(
-        http_request,
-        scorer=scorer,
-        category=category,
-        actual_action=request.analyst_action,
-        decision_id=request.decision_id,
-        pre_centroid=pre_centroid,
-    )
-    _persist_l5_conservation_state(http_request, request.decision_id)
-    _persist_l5_dk_state(
-        http_request,
-        decision=decision,
-        actual_action=request.analyst_action,
-        payload=payload,
-    )
-    conservation_after = _receipt_conservation_snapshot(http_request)
+    with get_mutation_lock("s2p"):
+        _ensure_outcome_decision(scorer, request)
+        try:
+            decision = scorer.graph_store.get_decision(request.decision_id)
+        except Exception:
+            decision = None
+        category = _decision_category(decision) or request.category
+        pre_centroid = _read_centroid_for_l5(
+            scorer,
+            category=category,
+            action=request.analyst_action,
+        )
+        invoice_id = _decision_invoice_id(decision)
+        outcome_context["invoice_id"] = invoice_id or None
+        conservation_before = _receipt_conservation_snapshot(http_request)
+        evidence_receipt = _append_evidence_receipt_before_outcome(
+            graph_store=scorer.graph_store,
+            decision=decision,
+            decision_id=request.decision_id,
+            actual_action=request.analyst_action,
+            outcome=request.outcome,
+            actor=request.analyst_id,
+            source_route="/api/s2p/outcome",
+            conservation_before=conservation_before,
+            context=outcome_context,
+        )
+        try:
+            from app.db.neo4j import neo4j_client
+            from app.domains.s2p.graph import write_s2p_outcome
+            write_s2p_outcome(neo4j_client, request.decision_id,
+                request.outcome, request.analyst_action, request.analyst_id)
+        except Exception:
+            pass  # Neo4j unavailable - outcome still processed
+
+        payload = _learn_with_scorer(
+            scorer,
+            request.decision_id,
+            request.analyst_action,
+            request.outcome,
+            outcome_context,
+        )
+        payload["outcome"] = request.outcome
+        _clear_score_conservation_status_cache()
+        _persist_l5_centroid_state(
+            http_request,
+            scorer=scorer,
+            category=category,
+            actual_action=request.analyst_action,
+            decision_id=request.decision_id,
+            pre_centroid=pre_centroid,
+        )
+        _persist_l5_conservation_state(http_request, request.decision_id)
+        _persist_l5_dk_state(
+            http_request,
+            decision=decision,
+            actual_action=request.analyst_action,
+            payload=payload,
+        )
+        apply_cache_invalidation_event("s2p", "learn")
+        conservation_after_snapshot = _receipt_conservation_snapshot(http_request)
+        payload_snapshot = dict(payload)
+        decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None
+
     if _outcome_recorded_for_receipt(
-        payload,
+        payload_snapshot,
         conservation_before.get("verified_count"),
-        conservation_after.get("verified_count"),
+        conservation_after_snapshot.get("verified_count"),
     ):
         _record_outcome_receipt(
-            decision=decision,
-            payload=payload,
+            decision=decision_snapshot,
+            payload=payload_snapshot,
             actual_action=request.analyst_action,
             reason_code=request.reason_code,
             conservation_before=conservation_before,
-            conservation_after=conservation_after,
+            conservation_after=conservation_after_snapshot,
             evidence_receipt=evidence_receipt,
             context=outcome_context,
         )
-    _record_supplier_profile(decision, payload, request.analyst_action, outcome_context)
+    _record_supplier_profile(decision_snapshot, payload_snapshot, request.analyst_action, outcome_context)
     _record_evolver_outcome_if_allowed(
-        payload,
+        payload_snapshot,
         request.variant_id,
-        reward=payload.get("reward"),
+        reward=payload_snapshot.get("reward"),
         category=request.category,
         http_request=http_request,
     )
     if request.reason_code:
-        payload["reason_code"] = request.reason_code
-    payload["learning_applied"] = payload.get("status") != "paused"
+        payload_snapshot["reason_code"] = request.reason_code
+    payload_snapshot["learning_applied"] = payload_snapshot.get("status") != "paused"
     _record_outcome_shadow(
         http_request,
         operation="outcome_shadow",
-        decision=decision,
+        decision=decision_snapshot,
         decision_id=request.decision_id,
         actual_action=request.analyst_action,
         outcome=request.outcome,
@@ -2261,7 +2271,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             "invoice_id": invoice_id or None,
         },
     )
-    return payload
+    return payload_snapshot
 
 
 @router.get("/iks", response_model=GenericResponse)

@@ -642,6 +642,26 @@ def test_sdk_learn_route_exists_and_returns_reward_fields():
     assert data["reward_raw"] == 0.8
 
 
+def test_learn_response_contains_required_fields():
+    scored = score_for_learn()
+
+    response = client.post(
+        "/api/learn",
+        json={
+            "decision_id": scored["decision_id"],
+            "actual_action": scored["action"],
+            "outcome": "confirmed",
+            "context": {"recovery_pct": 80},
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    for key in ("decision_id", "reward", "reward_raw"):
+        assert key in data, f"Missing key: {key}"
+    assert "decisions_total" in data
+
+
 def test_learn_with_variant_id_records_outcome(monkeypatch):
     scored = score_for_learn()
     variant_id = scored["active_variant"]["id"]

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 
-from copilot_sdk.backend import create_conservation_router
+from copilot_sdk.backend import create_conservation_router, create_measurement_state_router
 from copilot_sdk.backend.counterfactual_router import create_counterfactual_router
 from copilot_sdk.backend.transfer_router import create_transfer_router
 from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
@@ -155,6 +155,13 @@ app.include_router(
     create_conservation_router(
         "s2p",
         state_provider=lambda: cached_conservation_state_provider(app.state),
+    ),
+    prefix="/api",
+)
+app.include_router(
+    create_measurement_state_router(
+        "s2p",
+        scorer_factory=lambda: app.state.scorer,
     ),
     prefix="/api",
 )

@@ -390,6 +390,7 @@ def _record_outcome_shadow(
             decision_id=decision_id,
             actual_action=actual_action,
             is_correct=is_correct,
+            domain=shadow.config.domain,
             metadata={
                 "shadow": True,
                 "shadow_run_id": shadow.diagnostics.shadow_run_id,

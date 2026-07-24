@@ -43,9 +43,22 @@ class FakeGraphStore:
         assert domain == "s2p"
         return len(self.rows)
 
-    def write_outcome(self, *args, **kwargs):
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict | None = None,
+        domain: str | None = None,
+    ) -> None:
         self.write_outcome_calls += 1
         raise AssertionError("shadow gate must not write outcomes")
+
+    def get_decision(self, decision_id: str, domain: str | None = None):
+        return None
+
+    def get_archived_decisions(self, domain: str):
+        return []
 
 
 class SpyScorer:

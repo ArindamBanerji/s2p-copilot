@@ -78,26 +78,77 @@ class FakeGraphStore:
         self.write_outcome_calls = 0
         self.write_entity_enrichment_calls = 0
 
-    def get_decision(self, decision_id: str):
+    def get_decision(self, decision_id: str, domain: str | None = None):
+        if domain is not None:
+            assert domain == "s2p"
         if self.decision and self.decision.get("decision_id") == decision_id:
             return dict(self.decision)
         return None
 
-    def get_centroid_checkpoints(self, domain: str, **_kwargs):
+    def get_centroid_checkpoints(
+        self,
+        domain: str,
+        *,
+        limit: int = 100,
+        checkpoint_time_start: str | None = None,
+        checkpoint_time_end: str | None = None,
+        decision_time_start: str | None = None,
+        decision_time_end: str | None = None,
+        category: str | None = None,
+    ):
+        assert domain == "s2p"
         return list(self.checkpoints or [])
 
-    def read_entity_enrichment(self, **_kwargs):
+    def read_entity_enrichment(
+        self,
+        *,
+        domain: str,
+        entity_type: str,
+        entity_id: str,
+        namespace: str | None = None,
+    ):
+        assert domain == "s2p"
         return {"otif_score": FakeProvenanced(0.91, provenance_label="fixture OTIF context · integration pending")}
 
-    def write_decision(self, *_args, **_kwargs):
+    def write_decision(
+        self,
+        domain: str,
+        category: str,
+        action: str,
+        confidence: float,
+        factors: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
         self.write_decision_calls += 1
         raise AssertionError("write_decision must not be called")
 
-    def write_outcome(self, *_args, **_kwargs):
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict[str, Any] | None = None,
+        domain: str | None = None,
+    ) -> None:
         self.write_outcome_calls += 1
         raise AssertionError("write_outcome must not be called")
 
-    def write_entity_enrichment(self, *_args, **_kwargs):
+    def get_archived_decisions(self, domain: str) -> list[dict[str, Any]]:
+        assert domain == "s2p"
+        return []
+
+    def write_entity_enrichment(
+        self,
+        *,
+        domain: str,
+        entity_type: str,
+        entity_id: str,
+        namespace: str,
+        metrics: dict[str, Any],
+        computed_from: Any,
+        dry_run: bool = False,
+        idempotency_key: str | None = None,
+    ):
         self.write_entity_enrichment_calls += 1
         raise AssertionError("write_entity_enrichment must not be called")
 

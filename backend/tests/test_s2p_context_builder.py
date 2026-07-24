@@ -58,18 +58,43 @@ class FakeGraphStore:
         assert domain == "s2p"
         return list(self.decisions)
 
-    def get_decision(self, decision_id: str):
+    def get_decision(self, decision_id: str, domain: str | None = None):
+        if domain is not None:
+            assert domain == self.domain
         for decision in self.decisions:
             if decision["decision_id"] == decision_id:
                 return decision
         return None
 
-    def write_decision(self, *_args, **_kwargs):
+    def write_decision(
+        self,
+        domain: str,
+        category: str,
+        action: str,
+        confidence: float,
+        factors: dict,
+        metadata: dict | None = None,
+    ) -> str:
         self.write_calls += 1
+        return "D-TEST"
+
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict | None = None,
+        domain: str | None = None,
+    ) -> None:
+        raise AssertionError("outcome writes are not part of this double")
+
+    def get_archived_decisions(self, domain: str) -> list[dict]:
+        assert domain == self.domain
+        return []
 
 
 class MissingDecisionGraphStore(FakeGraphStore):
-    def get_decision(self, decision_id: str):
+    def get_decision(self, decision_id: str, domain: str | None = None):
         return None
 
 

@@ -1609,33 +1609,55 @@ def _learn_with_scorer(
 
 
 def _ensure_outcome_decision(scorer: Any, request: "OutcomeRequest") -> None:
-    if scorer.graph_store.get_decision(request.decision_id) is not None:
+    decision = scorer.graph_store.get_decision(request.decision_id, domain="s2p")
+    if decision is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown decision: {request.decision_id}",
+        )
+    # Existing governed records can be re-submitted idempotently to repair a
+    # secondary that missed the original write.  Legacy raw records do not
+    # have enough versioned fields for a safe governed reconstruction, so we
+    # leave them untouched.  The scorer's learn() call below writes the
+    # domain-scoped Outcome exactly once.
+    metadata = decision.get("metadata")
+    governed = getattr(scorer.graph_store, "write_governed_decision", None)
+    if not isinstance(metadata, dict) or not callable(governed):
         return
-    factors = {
-        name: float(request.factor_vector[index])
-        for index, name in enumerate(S2PDomainConfig.factors)
-    }
-    category_index = S2PDomainConfig.get_category_index(request.category)
-    recommended_index = S2PDomainConfig.get_action_index(request.predicted_action)
-    metadata = {
-        "decision_id": request.decision_id,
-        "domain": "s2p",
-        "entity_id": request.decision_id,
-        "category_index": category_index,
-        "factor_vector": list(request.factor_vector),
-        "recommended_index": recommended_index,
-        "probabilities": [
-            1.0 if index == recommended_index else 0.0
-            for index in range(S2PDomainConfig.n_actions)
-        ],
-    }
-    scorer.graph_store.write_decision(
-        domain=_graph_domain(scorer.graph_store),
-        category=request.category,
-        action=request.predicted_action,
-        confidence=1.0,
-        factors=factors,
-        metadata=metadata,
+    required = (
+        "source",
+        "scorer_version",
+        "preset_version",
+        "factor_schema_version",
+        "factor_names",
+    )
+    if any(key not in metadata for key in required):
+        return
+    factor_vector = decision.get("factor_vector")
+    probabilities = decision.get("probabilities")
+    factor_names = metadata.get("factor_names")
+    if not (
+        isinstance(factor_vector, list)
+        and isinstance(probabilities, list)
+        and isinstance(factor_names, list)
+    ):
+        return
+    governed(
+        decision_id=str(decision.get("decision_id") or request.decision_id),
+        domain="s2p",
+        category=str(decision.get("category") or request.category),
+        category_index=int(decision.get("category_index", 0)),
+        recommended_action=str(decision.get("recommended_action") or request.predicted_action),
+        recommended_index=int(decision.get("recommended_index", 0)),
+        confidence=float(decision.get("confidence", 0.0)),
+        probabilities=[float(value) for value in probabilities],
+        factor_vector=[float(value) for value in factor_vector],
+        factor_names=[str(value) for value in factor_names],
+        source=str(metadata["source"]),
+        scorer_version=str(metadata["scorer_version"]),
+        preset_version=str(metadata["preset_version"]),
+        factor_schema_version=str(metadata["factor_schema_version"]),
+        metadata=dict(metadata),
     )
 
 
@@ -2173,7 +2195,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
     with get_mutation_lock("s2p"):
         _ensure_outcome_decision(scorer, request)
         try:
-            decision = scorer.graph_store.get_decision(request.decision_id)
+            decision = scorer.graph_store.get_decision(request.decision_id, domain="s2p")
         except Exception:
             decision = None
         category = _decision_category(decision) or request.category

@@ -20,9 +20,28 @@ class FakeGraphStore:
         self.decisions = list(decisions or [])
         self.calls: list[tuple] = []
 
-    def get_all_decisions(self, *args):
-        self.calls.append(args)
+    def get_all_decisions(self, domain: str):
+        self.calls.append((domain,))
         return list(self.decisions)
+
+    def get_decision(self, decision_id: str, domain: str | None = None):
+        if domain is not None:
+            assert domain == self.domain
+        return next((row for row in self.decisions if row.get("decision_id") == decision_id), None)
+
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict | None = None,
+        domain: str | None = None,
+    ) -> None:
+        raise AssertionError("financial route must not write outcomes")
+
+    def get_archived_decisions(self, domain: str):
+        assert domain == self.domain
+        return []
 
 
 class FakeReceiptStore:

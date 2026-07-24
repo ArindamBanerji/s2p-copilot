@@ -392,6 +392,22 @@ def test_read_conservation_counts_uses_verified_decision_count_for_conservation_
         def get_all_decisions(self, domain):
             raise AssertionError("get_all_decisions should not be used for conservation V")
 
+        def get_decision(self, decision_id: str, domain: str | None = None):
+            return None
+
+        def write_outcome(
+            self,
+            decision_id: str,
+            actual_action: str,
+            is_correct: bool,
+            metadata: dict | None = None,
+            domain: str | None = None,
+        ) -> None:
+            raise AssertionError("conservation route must not write outcomes")
+
+        def get_archived_decisions(self, domain: str):
+            return []
+
     counts = s2p_router._read_conservation_counts(Store(), "s2p")
 
     assert counts["verified_count"] == 2
@@ -417,6 +433,22 @@ def test_read_conservation_counts_falls_back_to_verified_count_not_all_rows():
 
         def get_all_decisions(self, domain):
             raise AssertionError("all-row get_all_decisions must not define conservation V")
+
+        def get_decision(self, decision_id: str, domain: str | None = None):
+            return None
+
+        def write_outcome(
+            self,
+            decision_id: str,
+            actual_action: str,
+            is_correct: bool,
+            metadata: dict | None = None,
+            domain: str | None = None,
+        ) -> None:
+            raise AssertionError("conservation route must not write outcomes")
+
+        def get_archived_decisions(self, domain: str):
+            return []
 
     counts = s2p_router._read_conservation_counts(Store(), "s2p")
 
@@ -1066,12 +1098,28 @@ def test_learn_context_isolated_between_requests():
 
 def test_learn_with_scorer_uses_context_without_mutating_reward_function():
     class GraphStore:
-        def get_decision(self, decision_id):
+        def get_decision(self, decision_id: str, domain: str | None = None):
+            if domain is not None:
+                assert domain == "s2p"
             return {
                 "decision_id": decision_id,
                 "recommended_action": "auto_approve",
                 "metadata": {"invoice_id": "S2P-INV-TEST"},
             }
+
+        def write_outcome(
+            self,
+            decision_id: str,
+            actual_action: str,
+            is_correct: bool,
+            metadata: dict | None = None,
+            domain: str | None = None,
+        ) -> None:
+            raise AssertionError("outcome writes are not part of this double")
+
+        def get_archived_decisions(self, domain: str):
+            assert domain == "s2p"
+            return []
 
     class RecordingScorer:
         def __init__(self):

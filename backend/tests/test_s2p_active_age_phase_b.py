@@ -2,6 +2,7 @@ import os
 import sys
 import hashlib
 import json
+import uuid
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -47,30 +48,55 @@ class FakeAGEStore:
         self.fail_evidence_receipt = False
         self.fail_outbox = False
 
-    def write_governed_decision(self, **kwargs: Any) -> None:
-        decision_id = str(kwargs["decision_id"])
-        metadata = dict(kwargs.get("metadata") or {})
+    def generate_decision_id(self, domain: str) -> str:
+        assert domain == self.domain
+        return uuid.uuid4().hex[:12]
+
+    def write_governed_decision(
+        self,
+        decision_id: str,
+        domain: str,
+        category: str,
+        category_index: int,
+        recommended_action: str,
+        recommended_index: int,
+        confidence: float,
+        probabilities: list[float],
+        factor_vector: list[float],
+        factor_names: list[str],
+        source: str = "score",
+        scorer_version: str = "",
+        preset_version: str = "",
+        factor_schema_version: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        assert domain == self.domain
+        metadata = dict(metadata or {})
         if decision_id in self.decisions:
             raise ValueError(f"duplicate governed decision_id in domain: {decision_id}")
         self.governed_writes += 1
         self.decisions[decision_id] = {
             "decision_id": decision_id,
-            "domain": kwargs["domain"],
-            "category": kwargs["category"],
-            "category_index": kwargs["category_index"],
-            "recommended_action": kwargs["recommended_action"],
-            "recommended_index": kwargs["recommended_index"],
-            "action": kwargs["recommended_action"],
-            "confidence": kwargs["confidence"],
-            "probabilities": list(kwargs["probabilities"]),
-            "factor_vector": list(kwargs["factor_vector"]),
-            "factor_names": list(kwargs["factor_names"]),
+            "domain": domain,
+            "category": category,
+            "category_index": category_index,
+            "recommended_action": recommended_action,
+            "recommended_index": recommended_index,
+            "action": recommended_action,
+            "confidence": confidence,
+            "probabilities": list(probabilities),
+            "factor_vector": list(factor_vector),
+            "factor_names": list(factor_names),
             "factors": {
                 name: value
-                for name, value in zip(kwargs["factor_names"], kwargs["factor_vector"])
+                for name, value in zip(factor_names, factor_vector)
             },
             "metadata": metadata,
             "status": "pending",
+            "source": source,
+            "scorer_version": scorer_version,
+            "preset_version": preset_version,
+            "factor_schema_version": factor_schema_version,
         }
 
     def write_outcome(
@@ -79,7 +105,10 @@ class FakeAGEStore:
         actual_action: str,
         is_correct: bool,
         metadata: dict[str, Any] | None = None,
+        domain: str | None = None,
     ) -> None:
+        if domain is not None and domain != self.domain:
+            raise ValueError(f"unknown domain: {domain}")
         decision = self.decisions.get(decision_id)
         if decision is None:
             raise KeyError(decision_id)
@@ -158,9 +187,15 @@ class FakeAGEStore:
         )
         return outbox_id
 
-    def get_decision(self, decision_id: str) -> dict[str, Any] | None:
+    def get_decision(self, decision_id: str, domain: str | None = None) -> dict[str, Any] | None:
+        if domain is not None and domain != self.domain:
+            return None
         decision = self.decisions.get(decision_id)
         return dict(decision) if decision else None
+
+    def get_archived_decisions(self, domain: str) -> list[dict[str, Any]]:
+        assert domain == self.domain
+        return [dict(decision) for decision in getattr(self, "_archive", [])]
 
     def get_all_decisions(self, domain: str) -> list[dict[str, Any]]:
         return [
@@ -192,13 +227,33 @@ class FakeAGEStore:
             if bool(decision.get("is_correct"))
         )
 
-    def save_centroids(self, *args: Any, **kwargs: Any) -> None:
+    def save_centroids(
+        self,
+        domain: str,
+        category: str,
+        centroids: Any,
+        metadata: dict[str, Any] | None = None,
+        decision_id: str | None = None,
+        decision_time_start: str | None = None,
+        decision_time_end: str | None = None,
+    ) -> None:
         return None
 
     def load_latest_centroids(self, domain: str) -> Any | None:
         return None
 
-    def get_centroid_checkpoints(self, domain: str, **kwargs: Any) -> list[dict[str, Any]]:
+    def get_centroid_checkpoints(
+        self,
+        domain: str,
+        *,
+        limit: int = 100,
+        checkpoint_time_start: str | None = None,
+        checkpoint_time_end: str | None = None,
+        decision_time_start: str | None = None,
+        decision_time_end: str | None = None,
+        category: str | None = None,
+    ) -> list[dict[str, Any]]:
+        assert domain == self.domain
         return []
 
     def archive_old_decisions(self, domain: str, keep_recent: int = 800) -> int:

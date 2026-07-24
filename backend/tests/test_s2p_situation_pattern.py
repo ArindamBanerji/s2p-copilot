@@ -35,7 +35,9 @@ class FakeStore:
             }
         ]
 
-    def get_decision(self, decision_id: str):
+    def get_decision(self, decision_id: str, domain: str | None = None):
+        if domain is not None:
+            assert domain == self.domain
         return self.decisions.get(decision_id)
 
     def get_decision_links(self, decision_id: str | None = None):
@@ -50,8 +52,31 @@ class FakeStore:
     def query_context(self, invoice_id: str, max_depth: int):
         return {"neighbors": [{"node": {"invoice_id": invoice_id}, "max_depth": max_depth}]}
 
-    def write_decision(self, *_args, **_kwargs):
+    def write_decision(
+        self,
+        domain: str,
+        category: str,
+        action: str,
+        confidence: float,
+        factors: dict,
+        metadata: dict | None = None,
+    ) -> str:
         self.write_calls += 1
+        return "D-TEST"
+
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict | None = None,
+        domain: str | None = None,
+    ) -> None:
+        raise AssertionError("outcome writes are not part of this double")
+
+    def get_archived_decisions(self, domain: str) -> list[dict]:
+        assert domain == self.domain
+        return []
 
 
 class FakeScorer:

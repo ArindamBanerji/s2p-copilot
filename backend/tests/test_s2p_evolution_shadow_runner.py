@@ -68,9 +68,33 @@ def test_shadow_runner_does_not_write_graph_store():
         def __init__(self):
             self.write_calls = 0
 
-        def write_decision(self, *_args, **_kwargs):
+        def write_decision(
+            self,
+            domain: str,
+            category: str,
+            action: str,
+            confidence: float,
+            factors: dict,
+            metadata: dict | None = None,
+        ) -> str:
             self.write_calls += 1
             raise AssertionError("graph writes must not happen")
+
+        def get_decision(self, decision_id: str, domain: str | None = None):
+            return None
+
+        def write_outcome(
+            self,
+            decision_id: str,
+            actual_action: str,
+            is_correct: bool,
+            metadata: dict | None = None,
+            domain: str | None = None,
+        ) -> None:
+            raise AssertionError("graph writes must not happen")
+
+        def get_archived_decisions(self, domain: str):
+            return []
 
     graph_store = FakeGraphStore()
     scorer = type("FakeScorer", (), {"graph_store": graph_store})()

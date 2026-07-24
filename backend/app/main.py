@@ -1,4 +1,5 @@
 import os
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -8,13 +9,14 @@ import numpy as np
 from copilot_sdk.backend import create_conservation_router, create_measurement_state_router
 from copilot_sdk.backend.counterfactual_router import create_counterfactual_router
 from copilot_sdk.backend.transfer_router import create_transfer_router
-from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
+from copilot_sdk.graph.factory import create_graph_store
 from copilot_sdk.scoring import CompoundingScorer
 from copilot_sdk.scoring.startup_restore import restore_l5_runtime_state
 from copilot_sdk.state import create_invalidation_header_middleware, create_tab_state_router
 
-DATA_DIR = Path(os.environ.get("CI_DATA_DIR", Path(__file__).parent / "data"))
+DATA_DIR = Path(os.environ.get("CI_DATA_DIR", Path(__file__).parent / "data")).expanduser().resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+logger = logging.getLogger(__name__)
 
 from app.domains.s2p.evolution import S2PEvolutionService
 from app.domains.s2p.reward import S2PRewardFunction
@@ -86,10 +88,22 @@ def _cors_origins() -> list[str]:
 
 def build_s2p_scorer(db_path: str | None = None, graph_store=None) -> CompoundingScorer:
     effective = db_path if db_path is not None else ":memory:"
-    selected_graph_store = graph_store or SQLiteGraphStore(
+    if effective != ":memory:":
+        effective = str(Path(effective).expanduser().resolve())
+    if graph_store is not None:
+        selected_graph_store = graph_store
+    else:
+        selected_graph_store = create_graph_store(
+            backend=os.environ.get("GRAPH_BACKEND", "sqlite"),
+            domain="s2p",
+            db_path=str(effective),
+            decision_id_prefix="S2P-",
+        )
+    logger.info(
+        "S2P graph store initialized: backend=%s path=%s store=%s",
+        os.environ.get("GRAPH_BACKEND", "sqlite"),
         effective,
-        domain="s2p",
-        decision_id_prefix="S2P-",
+        type(selected_graph_store).__name__,
     )
     scorer = CompoundingScorer.from_preset(
         "s2p",
@@ -123,6 +137,23 @@ app.state.scorer = build_s2p_scorer(
     graph_store=create_s2p_active_graph_store(app.state.s2p_active_graph_config),
 )
 app.state.graph_store = app.state.scorer.graph_store
+# Enrichment remains SQLite-owned during the split-read migration.  The
+# canonical DualWriteStore exposes its primary as ``primary``; support the
+# legacy private spelling as well for compatible wrappers.
+enrichment_store = getattr(app.state.scorer.graph_store, "primary", None)
+if enrichment_store is None:
+    enrichment_store = getattr(app.state.scorer.graph_store, "_primary", app.state.graph_store)
+app.state.enrichment_store = enrichment_store
+if enrichment_store is not app.state.graph_store and os.environ.get("GRAPH_BACKEND", "sqlite").strip().lower() == "dual_write":
+    # The enrichment router resolves its store from app.state.graph_store.
+    # Keep that dependency pointed at the SQLite primary; scorer writes still
+    # use the DualWriteStore held by app.state.scorer.
+    app.state.graph_store = enrichment_store
+logger.info(
+    "S2P resolved data path: %s (enrichment_store=%s)",
+    DATA_DIR / "s2p.db",
+    type(enrichment_store).__name__,
+)
 l5_startup_status = restore_l5_runtime_state(
     domain="s2p",
     scorer=app.state.scorer,

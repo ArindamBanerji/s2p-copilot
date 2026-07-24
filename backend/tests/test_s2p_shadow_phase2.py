@@ -1,6 +1,8 @@
 import os
 import sys
 import time
+import uuid
+from typing import Any
 
 from fastapi.testclient import TestClient
 import pytest
@@ -39,17 +41,79 @@ class FakeShadowStore:
         self.governed_decisions: list[dict] = []
         self.outcomes: list[dict] = []
 
-    def write_governed_decision(self, **kwargs):
+    def generate_decision_id(self, domain: str) -> str:
+        assert domain == "s2p"
+        return uuid.uuid4().hex[:12]
+
+    def write_governed_decision(
+        self,
+        decision_id: str,
+        domain: str,
+        category: str,
+        category_index: int,
+        recommended_action: str,
+        recommended_index: int,
+        confidence: float,
+        probabilities: list[float],
+        factor_vector: list[float],
+        factor_names: list[str],
+        source: str = "score",
+        scorer_version: str = "",
+        preset_version: str = "",
+        factor_schema_version: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         if self.fail_governed:
             raise RuntimeError("postgresql://postgres:secret@127.0.0.1/db?password=abc")
-        self.governed_decisions.append(dict(kwargs))
-        return kwargs.get("decision_id")
+        self.governed_decisions.append(
+            {
+                "decision_id": decision_id,
+                "domain": domain,
+                "category": category,
+                "category_index": category_index,
+                "recommended_action": recommended_action,
+                "recommended_index": recommended_index,
+                "confidence": confidence,
+                "probabilities": probabilities,
+                "factor_vector": factor_vector,
+                "factor_names": factor_names,
+                "source": source,
+                "scorer_version": scorer_version,
+                "preset_version": preset_version,
+                "factor_schema_version": factor_schema_version,
+                "metadata": metadata,
+            }
+        )
 
-    def write_outcome(self, **kwargs):
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict[str, Any] | None = None,
+        domain: str | None = None,
+    ) -> None:
         if self.fail_outcome:
             raise RuntimeError("postgresql://postgres:secret@127.0.0.1/db?password=abc")
-        self.outcomes.append(dict(kwargs))
-        return kwargs.get("decision_id")
+        self.outcomes.append(
+            {
+                "decision_id": decision_id,
+                "actual_action": actual_action,
+                "is_correct": is_correct,
+                "metadata": metadata,
+                "domain": domain,
+            }
+        )
+
+    def get_decision(self, decision_id: str, domain: str | None = None) -> dict[str, Any] | None:
+        return next(
+            (dict(row) for row in self.governed_decisions if row["decision_id"] == decision_id),
+            None,
+        )
+
+    def get_archived_decisions(self, domain: str) -> list[dict[str, Any]]:
+        assert domain == "s2p"
+        return []
 
 
 def _enabled_config(*, strict: bool = False) -> S2PShadowConfig:

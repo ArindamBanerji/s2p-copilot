@@ -33,6 +33,25 @@ class FakeGraphStore:
         assert domain == "s2p"
         return self.verified
 
+    def get_decision(self, decision_id: str, domain: str | None = None):
+        if domain is not None:
+            assert domain == self.domain
+        return None
+
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict | None = None,
+        domain: str | None = None,
+    ) -> None:
+        raise AssertionError("conservation hook must not write outcomes")
+
+    def get_archived_decisions(self, domain: str):
+        assert domain == self.domain
+        return []
+
     def count_categories_with_n(self, domain: str, n: int) -> int:
         assert domain == "s2p"
         assert n == 1
@@ -50,6 +69,22 @@ class MissingCoverageGraphStore:
 
     def count_verified_decisions(self, domain: str) -> int:
         return 2
+
+    def get_decision(self, decision_id: str, domain: str | None = None):
+        return None
+
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict | None = None,
+        domain: str | None = None,
+    ) -> None:
+        raise AssertionError("conservation hook must not write outcomes")
+
+    def get_archived_decisions(self, domain: str):
+        return []
 
 
 class RecordingLearningStore:

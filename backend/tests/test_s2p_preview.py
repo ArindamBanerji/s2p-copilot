@@ -6,6 +6,7 @@ import os
 import pathlib
 import sys
 from types import SimpleNamespace
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -440,8 +441,65 @@ def test_preview_queue_does_not_write_age_shadow_decisions():
         def __init__(self):
             self.governed_decisions = []
 
-        def write_governed_decision(self, **kwargs):
-            self.governed_decisions.append(dict(kwargs))
+        def generate_decision_id(self, domain: str) -> str:
+            return "S2P-PREVIEW-TEST"
+
+        def write_governed_decision(
+            self,
+            decision_id: str,
+            domain: str,
+            category: str,
+            category_index: int,
+            recommended_action: str,
+            recommended_index: int,
+            confidence: float,
+            probabilities: list[float],
+            factor_vector: list[float],
+            factor_names: list[str],
+            source: str = "score",
+            scorer_version: str = "",
+            preset_version: str = "",
+            factor_schema_version: str = "",
+            metadata: dict[str, Any] | None = None,
+        ) -> None:
+            self.governed_decisions.append(
+                {
+                    "decision_id": decision_id,
+                    "domain": domain,
+                    "category": category,
+                    "category_index": category_index,
+                    "recommended_action": recommended_action,
+                    "recommended_index": recommended_index,
+                    "confidence": confidence,
+                    "probabilities": probabilities,
+                    "factor_vector": factor_vector,
+                    "factor_names": factor_names,
+                    "source": source,
+                    "scorer_version": scorer_version,
+                    "preset_version": preset_version,
+                    "factor_schema_version": factor_schema_version,
+                    "metadata": metadata,
+                }
+            )
+
+        def get_decision(self, decision_id: str, domain: str | None = None):
+            return next(
+                (row for row in self.governed_decisions if row["decision_id"] == decision_id),
+                None,
+            )
+
+        def write_outcome(
+            self,
+            decision_id: str,
+            actual_action: str,
+            is_correct: bool,
+            metadata: dict[str, Any] | None = None,
+            domain: str | None = None,
+        ) -> None:
+            raise AssertionError("preview shadow must not write outcomes")
+
+        def get_archived_decisions(self, domain: str):
+            return []
 
     original_shadow = app.state.s2p_shadow
     fake = FakeShadowStore()

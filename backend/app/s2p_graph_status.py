@@ -188,6 +188,13 @@ class S2PActiveAGEGraphStore:
         self._store = store
         self.active_phase = active_phase
 
+    def generate_decision_id(self, domain: str) -> str:
+        """Generate a prefix-bearing S2P decision ID for active AGE writes."""
+        import uuid
+
+        _ = domain
+        return f"S2P-{uuid.uuid4().hex[:12]}"
+
     def write_decision(
         self,
         domain: str,

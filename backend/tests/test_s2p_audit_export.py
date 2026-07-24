@@ -19,6 +19,26 @@ class ReadOnlyGraphStore:
         assert domain == "s2p"
         return list(self.decisions)
 
+    def get_decision(self, decision_id: str, domain: str | None = None):
+        if domain is not None:
+            assert domain == self.domain
+        return next((row for row in self.decisions if row.get("decision_id") == decision_id), None)
+
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict | None = None,
+        domain: str | None = None,
+    ) -> None:
+        self.write_calls += 1
+        raise AssertionError("audit export must not write outcomes")
+
+    def get_archived_decisions(self, domain: str) -> list[dict]:
+        assert domain == self.domain
+        return []
+
     def count_verified(self, domain: str = "s2p") -> int:
         assert domain == "s2p"
         return sum(1 for decision in self.decisions if decision.get("is_correct") is not None)
@@ -27,11 +47,16 @@ class ReadOnlyGraphStore:
         assert domain == "s2p"
         return sum(1 for decision in self.decisions if decision.get("is_correct") is True)
 
-    def add_decision(self, *_args, **_kwargs) -> None:
+    def add_decision(self, decision: dict | None = None) -> None:
         self.write_calls += 1
         raise AssertionError("audit export must not write decisions")
 
-    def link_decision_to_entity(self, *_args, **_kwargs) -> None:
+    def link_decision_to_entity(
+        self,
+        decision_id: str,
+        entity_id: str,
+        edge_type: str = "DECIDED_ON",
+    ) -> None:
         self.write_calls += 1
         raise AssertionError("audit export must not write graph links")
 

@@ -179,8 +179,24 @@ class _BlockingGraphStore:
         self._link_calls = 0
         self.link_decision_to_entity = self._link_decision_to_entity
 
-    def get_decision(self, decision_id):
+    def get_decision(self, decision_id: str, domain: str | None = None):
+        if domain is not None:
+            assert domain == "s2p"
         return self.decisions.get(decision_id)
+
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict | None = None,
+        domain: str | None = None,
+    ) -> None:
+        raise AssertionError("outcome writes are not part of this double")
+
+    def get_archived_decisions(self, domain: str):
+        assert domain == "s2p"
+        return []
 
     def get_decision_links(self, decision_id=None):
         with self._lock:

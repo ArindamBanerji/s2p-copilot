@@ -45,8 +45,28 @@ class FakeGraphStore:
             "S2P-DK-1": _decision(),
         }
 
-    def get_decision(self, decision_id: str) -> dict[str, object] | None:
+    def get_decision(
+        self,
+        decision_id: str,
+        domain: str | None = None,
+    ) -> dict[str, object] | None:
+        if domain is not None:
+            assert domain == self.domain
         return self.decisions.get(decision_id)
+
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict[str, object] | None = None,
+        domain: str | None = None,
+    ) -> None:
+        raise AssertionError("outcome writes are not part of this double")
+
+    def get_archived_decisions(self, domain: str) -> list[dict[str, object]]:
+        assert domain == self.domain
+        return []
 
 
 class FakeDKScorer:

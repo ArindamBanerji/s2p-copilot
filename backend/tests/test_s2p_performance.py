@@ -29,9 +29,18 @@ class FakeGraphStore:
             {"decision_id": "D-2", "is_correct": False},
         ]
 
-    def get_centroid_checkpoints(self, domain, **kwargs):
+    def get_centroid_checkpoints(
+        self,
+        domain: str,
+        *,
+        limit: int = 100,
+        checkpoint_time_start: str | None = None,
+        checkpoint_time_end: str | None = None,
+        decision_time_start: str | None = None,
+        decision_time_end: str | None = None,
+        category: str | None = None,
+    ):
         assert domain == self.domain
-        limit = kwargs.get("limit", 100)
         return [
             {"decision_id": "D-1", "category": "contract_gap", "centroids": {"auto_approve": [0.1]}},
             {"decision_id": "D-2", "category": "duplicate_risk", "centroids": {"hold_for_review": [0.2]}},
@@ -64,6 +73,25 @@ class FakeGraphStore:
     def get_verified_decisions(self, domain):
         assert domain == self.domain
         return list(self.verified)
+
+    def get_decision(self, decision_id: str, domain: str | None = None):
+        if domain is not None:
+            assert domain == self.domain
+        return next((row for row in self.decisions if row.get("decision_id") == decision_id), None)
+
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict | None = None,
+        domain: str | None = None,
+    ) -> None:
+        raise AssertionError("performance route must not write outcomes")
+
+    def get_archived_decisions(self, domain: str):
+        assert domain == self.domain
+        return []
 
 
 class SlowSummaryGraphStore(FakeGraphStore):

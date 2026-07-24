@@ -32,16 +32,43 @@ def reset_sdk_scorer():
     app.state.s2p_reward_function = app.state.scorer._reward_fn
 
 
+def _seed_outcome_payload(event_id: str = "S2P-OUTCOME-TEST") -> dict:
+    """Create the Decision required by the domain-scoped outcome route."""
+    score_payload = {
+        "event_id": event_id,
+        "category": "price_variance",
+        "amount": 1000.0,
+        "supplier_id": "SUP-OUTCOME",
+        "match_status": 0.9,
+        "amount_variance_ratio": 0.2,
+        "duplicate_score": 0.1,
+        "supplier_exception_history": 0.1,
+        "payment_terms_impact": 0.2,
+        "commodity_index_correlation": 0.3,
+        "tax_regulatory_compliance": 0.9,
+    }
+    score_response = client.post("/api/s2p/score", json=score_payload)
+    assert score_response.status_code == 200, score_response.text
+    score = score_response.json()
+    return {
+        **BASE,
+        "decision_id": score["decision_id"],
+        "factor_vector": score["factor_vector"],
+        "category": score["category"],
+        "predicted_action": score["action"],
+    }
+
+
 def test_outcome_endpoint_confirm_returns_200():
     reset_sdk_scorer()
-    response = client.post("/api/s2p/outcome", json=BASE)
+    response = client.post("/api/s2p/outcome", json=_seed_outcome_payload())
     assert response.status_code == 200
     assert response.json()["outcome"] == "confirm"
 
 
 def test_outcome_endpoint_override_returns_200():
     reset_sdk_scorer()
-    payload = {**BASE, "outcome": "override", "analyst_action": "hold_for_review",
+    payload = {**_seed_outcome_payload(), "outcome": "override", "analyst_action": "hold_for_review",
                "predicted_action": "auto_approve", "reason_code": "wrong_action"}
     response = client.post("/api/s2p/outcome", json=payload)
     assert response.status_code == 200
@@ -49,7 +76,7 @@ def test_outcome_endpoint_override_returns_200():
 
 def test_learning_disabled_by_default():
     reset_sdk_scorer()
-    response = client.post("/api/s2p/outcome", json=BASE)
+    response = client.post("/api/s2p/outcome", json=_seed_outcome_payload())
     assert response.json()["learning_applied"] == True
     assert "reward" in response.json()
 
@@ -80,7 +107,7 @@ def test_invalid_factor_vector_length_returns_422():
 
 def test_reason_code_accepted_on_override():
     reset_sdk_scorer()
-    payload = {**BASE, "outcome": "override", "analyst_action": "hold_for_review", "reason_code": "wrong_action"}
+    payload = {**_seed_outcome_payload(), "outcome": "override", "analyst_action": "hold_for_review", "reason_code": "wrong_action"}
     response = client.post("/api/s2p/outcome", json=payload)
     assert response.status_code == 200
     assert response.json()["reason_code"] == "wrong_action"
@@ -96,7 +123,7 @@ def test_reason_code_required_on_override():
 
 def test_reason_code_optional_on_confirm():
     reset_sdk_scorer()
-    response = client.post("/api/s2p/outcome", json=BASE)
+    response = client.post("/api/s2p/outcome", json=_seed_outcome_payload())
     assert response.status_code == 200
     assert response.json()["outcome"] == "confirm"
 

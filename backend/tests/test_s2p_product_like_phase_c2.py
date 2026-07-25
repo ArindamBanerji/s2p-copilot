@@ -114,7 +114,6 @@ def test_product_like_store_construction_uses_factory_without_live_product_conne
     [
         ({"S2P_ACTIVE_AGE_GRAPH": "random_product_graph"}, "allow-listed"),
         ({"S2P_ACTIVE_AGE_GRAPH": "protocol_v2_test_cutover"}, "S2P_ACTIVE_AGE_TEST_MODE"),
-        ({"S2P_ACTIVE_AGE_GRAPH": "soc_graph"}, "soc_graph"),
         ({"S2P_ACTIVE_AGE_GRAPH": "   "}, "S2P_ACTIVE_AGE_GRAPH"),
         ({"S2P_ACTIVE_AGE_DSN": ""}, "S2P_ACTIVE_AGE_DSN"),
     ],

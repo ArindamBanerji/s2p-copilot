@@ -13,6 +13,7 @@ import re
 
 from fastapi import APIRouter, Request
 
+from copilot_sdk.config import GraphConfig, GraphConfigError
 
 router = APIRouter(prefix="/api/s2p/graph", tags=["s2p-graph"])
 
@@ -68,6 +69,63 @@ def _generic_graph_env_present(source: Mapping[str, str]) -> bool:
     return any(source.get(key) not in (None, "") for key in _GENERIC_GRAPH_ENV_KEYS)
 
 
+_GRAPH_CONFIG_ENV_KEYS = (
+    "GRAPH_BACKEND", "GRAPH_DSN", "AGE_DSN", "GRAPH_NAME", "AGE_GRAPH_NAME",
+    "GRAPH_DOMAIN", "S2P_ACTIVE_GRAPH_BACKEND", "S2P_ACTIVE_AGE_DSN",
+    "S2P_ACTIVE_AGE_GRAPH", "S2P_ACTIVE_AGE_DOMAIN",
+    "S2P_ACTIVE_AGE_TEST_MODE", "S2P_SHADOW_AGE",
+    "S2P_SHARED_GRAPH_AUTHORIZED", "CI_ALLOW_SQLITE_FALLBACK",
+)
+
+
+def _load_s2p_graph_config(env: Mapping[str, str] | None) -> GraphConfig:
+    """Load production config fail-closed, or an isolated compatibility mapping for tests."""
+    if env is None:
+        return GraphConfig.load("s2p")
+
+    previous = {key: os.environ.get(key) for key in _GRAPH_CONFIG_ENV_KEYS}
+    try:
+        for key in _GRAPH_CONFIG_ENV_KEYS:
+            os.environ.pop(key, None)
+        os.environ.update(env)
+        profile = "production"
+        if "S2P_ACTIVE_GRAPH_BACKEND" not in env:
+            os.environ["S2P_ACTIVE_GRAPH_BACKEND"] = "sqlite"
+            os.environ["CI_ALLOW_SQLITE_FALLBACK"] = "1"
+            profile = "development"
+        if os.environ.get("S2P_ACTIVE_GRAPH_BACKEND", "").strip().lower() == "age":
+            if "S2P_ACTIVE_AGE_DOMAIN" in env and not env.get("S2P_ACTIVE_AGE_DOMAIN", "").strip():
+                raise GraphConfigError("S2P_ACTIVE_AGE_DOMAIN must not be blank")
+            if "S2P_ACTIVE_AGE_DOMAIN" in env and env.get("S2P_ACTIVE_AGE_DOMAIN", "").strip() != "s2p":
+                raise GraphConfigError("S2P_ACTIVE_AGE_DOMAIN must be 's2p' for S2P active graph")
+            if not os.environ.get("S2P_ACTIVE_AGE_DSN", "").strip():
+                raise GraphConfigError(
+                    "S2P_ACTIVE_AGE_DSN is required when S2P_ACTIVE_GRAPH_BACKEND=age"
+                )
+            if not os.environ.get("S2P_ACTIVE_AGE_GRAPH", "").strip():
+                raise GraphConfigError(
+                    "S2P_ACTIVE_AGE_GRAPH is required when S2P_ACTIVE_GRAPH_BACKEND=age"
+                )
+        return GraphConfig.load("s2p", profile=profile)
+    finally:
+        for key in _GRAPH_CONFIG_ENV_KEYS:
+            os.environ.pop(key, None)
+        for key, value in previous.items():
+            if value is not None:
+                os.environ[key] = value
+
+
+def is_live_age_configured(domain: str = "s2p") -> bool:
+    """Return whether the typed config resolves to a usable AGE backend."""
+    if domain != "s2p":
+        return False
+    try:
+        config = GraphConfig.load(domain)
+    except GraphConfigError:
+        return False
+    return config.backend == "age" and bool(config.dsn and config.graph)
+
+
 def _active_warning(age_active: bool, graph_kind: str) -> str:
     if not age_active:
         return "Phase A status only: active AGE writes are not enabled."
@@ -92,27 +150,29 @@ class S2PActiveGraphConfig:
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "S2PActiveGraphConfig":
         source = os.environ if env is None else env
-        backend = (source.get("S2P_ACTIVE_GRAPH_BACKEND") or "sqlite").strip().lower()
-        if backend not in {"sqlite", "age"}:
+        try:
+            graph_config = _load_s2p_graph_config(env)
+        except GraphConfigError as exc:
+            message = str(exc)
+            if message.startswith("invalid backend"):
+                message = "S2P_ACTIVE_GRAPH_BACKEND must be 'sqlite' or 'age'"
+            raise S2PActiveGraphConfigError(message) from exc
+        if graph_config.backend not in {"sqlite", "age"}:
             raise S2PActiveGraphConfigError(
                 "S2P_ACTIVE_GRAPH_BACKEND must be 'sqlite' or 'age'"
             )
-
-        domain = (source.get("S2P_ACTIVE_AGE_DOMAIN") or "s2p").strip()
-        if not domain:
-            raise S2PActiveGraphConfigError("S2P_ACTIVE_AGE_DOMAIN must not be blank")
-        if domain != "s2p":
-            raise S2PActiveGraphConfigError(
-                "S2P_ACTIVE_AGE_DOMAIN must be 's2p' for S2P active graph"
-            )
-
+        graph = graph_config.graph
+        if graph_config.backend == "sqlite" and "S2P_ACTIVE_AGE_GRAPH" not in source:
+            graph = None
         config = cls(
-            requested_backend=backend,
-            dsn=source.get("S2P_ACTIVE_AGE_DSN"),
-            graph=source.get("S2P_ACTIVE_AGE_GRAPH"),
-            domain=domain,
-            test_mode=_parse_bool(source.get("S2P_ACTIVE_AGE_TEST_MODE"), default=False),
-            shared_graph_authorization=source.get("S2P_SHARED_GRAPH_AUTHORIZED"),
+            requested_backend=graph_config.backend,
+            dsn=graph_config.dsn,
+            graph=graph,
+            domain=graph_config.domain,
+            test_mode=graph_config.active_test_mode,
+            shared_graph_authorization=(
+                graph_config.authorized if graph and graph.strip() == "soc_graph" else None
+            ),
             ignored_generic_graph_env=_generic_graph_env_present(source),
         )
         config.validate(source)
@@ -142,14 +202,14 @@ class S2PActiveGraphConfig:
 
         graph = self.graph.strip()
         shared_graph_authorized = (
-            (self.shared_graph_authorization or source.get("S2P_SHARED_GRAPH_AUTHORIZED", "")).strip()
+            (self.shared_graph_authorization or "").strip()
             == "s2p:soc_graph"
             and graph == "soc_graph"
         )
         if graph == "soc_graph" and not shared_graph_authorized:
             raise S2PActiveGraphConfigError(
-                "S2P active AGE on soc_graph requires "
-                "S2P_SHARED_GRAPH_AUTHORIZED=s2p:soc_graph"
+                "S2P active AGE on soc_graph authorization is derived from "
+                "the configured S2P domain and graph"
             )
         if self.test_mode:
             if not graph.startswith("protocol_v2_test"):
@@ -435,4 +495,5 @@ __all__ = [
     "initialize_s2p_active_graph_config",
     "router",
     "S2P_ALLOWED_PRODUCT_AGE_GRAPHS",
+    "is_live_age_configured",
 ]

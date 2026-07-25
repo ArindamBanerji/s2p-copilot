@@ -13,6 +13,7 @@ from app.s2p_graph_status import (  # noqa: E402
     S2PActiveGraphConfig,
     S2PActiveGraphConfigError,
 )
+from copilot_sdk.config import GraphConfigError  # noqa: E402
 from app.s2p_shadow import initialize_s2p_shadow_state  # noqa: E402
 
 
@@ -62,6 +63,32 @@ def test_active_graph_config_defaults_to_sqlite_without_age_requirements():
     assert config.dsn is None
     assert config.graph is None
     assert config.test_mode is False
+
+
+def test_production_config_fails_closed_when_age_dsn_is_missing(monkeypatch):
+    """Production resolution must surface the loader's missing-DSN error."""
+    for name in (
+        "GRAPH_CONFIG_PATH",
+        "S2P_ACTIVE_GRAPH_BACKEND",
+        "S2P_ACTIVE_AGE_DSN",
+        "S2P_ACTIVE_AGE_DOMAIN",
+        "S2P_ACTIVE_AGE_TEST_MODE",
+        "S2P_SHADOW_AGE",
+        "S2P_ACTIVE_LIVE_AGE_TEST",
+        "GRAPH_DSN",
+        "AGE_DSN",
+        "S2P_ACTIVE_AGE_GRAPH",
+        "GRAPH_NAME",
+        "AGE_GRAPH_NAME",
+        "GRAPH_DOMAIN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(S2PActiveGraphConfigError) as exc_info:
+        S2PActiveGraphConfig.from_env()
+
+    assert isinstance(exc_info.value.__cause__, GraphConfigError)
+    assert "missing AGE DSN" in str(exc_info.value)
 
 
 def test_active_graph_config_rejects_invalid_backend():
@@ -270,15 +297,15 @@ def test_product_graph_status_reports_readiness_fields_without_cutover():
     _assert_no_secret_text(body)
 
 
-def test_active_age_rejects_soc_graph():
-    with pytest.raises(S2PActiveGraphConfigError, match="soc_graph"):
-        S2PActiveGraphConfig.from_env(
-            {
-                "S2P_ACTIVE_GRAPH_BACKEND": "age",
-                "S2P_ACTIVE_AGE_DSN": "postgresql://postgres:secret@127.0.0.1/db",
-                "S2P_ACTIVE_AGE_GRAPH": "soc_graph",
-            }
-        )
+def test_active_age_derives_soc_graph_authorization():
+    config = S2PActiveGraphConfig.from_env(
+        {
+            "S2P_ACTIVE_GRAPH_BACKEND": "age",
+            "S2P_ACTIVE_AGE_DSN": "postgresql://postgres:secret@127.0.0.1/db",
+            "S2P_ACTIVE_AGE_GRAPH": "soc_graph",
+        }
+    )
+    assert config.shared_graph_authorization == "s2p:soc_graph"
 
 
 def test_active_age_protocol_v2_test_requires_test_mode():

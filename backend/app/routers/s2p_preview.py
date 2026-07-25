@@ -257,8 +257,11 @@ def _get_scored_invoices(request: Request, n: int = 50, seed: int = 42) -> list[
 
 def _get_preview_simulation_scorer():
     from app.main import build_s2p_scorer
+    from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
-    return build_s2p_scorer(":memory:")
+    return build_s2p_scorer(
+        graph_store=InMemoryGraphStore(domain="s2p"),
+    )
 
 
 def _invoice_factor_dict(invoice: Any) -> dict[str, float]:

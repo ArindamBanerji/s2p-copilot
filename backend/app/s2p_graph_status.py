@@ -86,6 +86,7 @@ class S2PActiveGraphConfig:
     graph: str | None = None
     domain: str = "s2p"
     test_mode: bool = False
+    shared_graph_authorization: str | None = None
     ignored_generic_graph_env: bool = False
 
     @classmethod
@@ -111,6 +112,7 @@ class S2PActiveGraphConfig:
             graph=source.get("S2P_ACTIVE_AGE_GRAPH"),
             domain=domain,
             test_mode=_parse_bool(source.get("S2P_ACTIVE_AGE_TEST_MODE"), default=False),
+            shared_graph_authorization=source.get("S2P_SHARED_GRAPH_AUTHORIZED"),
             ignored_generic_graph_env=_generic_graph_env_present(source),
         )
         config.validate(source)
@@ -139,8 +141,16 @@ class S2PActiveGraphConfig:
             )
 
         graph = self.graph.strip()
-        if graph == "soc_graph":
-            raise S2PActiveGraphConfigError("S2P active AGE must not target soc_graph")
+        shared_graph_authorized = (
+            (self.shared_graph_authorization or source.get("S2P_SHARED_GRAPH_AUTHORIZED", "")).strip()
+            == "s2p:soc_graph"
+            and graph == "soc_graph"
+        )
+        if graph == "soc_graph" and not shared_graph_authorized:
+            raise S2PActiveGraphConfigError(
+                "S2P active AGE on soc_graph requires "
+                "S2P_SHARED_GRAPH_AUTHORIZED=s2p:soc_graph"
+            )
         if self.test_mode:
             if not graph.startswith("protocol_v2_test"):
                 raise S2PActiveGraphConfigError(
@@ -152,7 +162,7 @@ class S2PActiveGraphConfig:
             raise S2PActiveGraphConfigError(
                 "protocol_v2_test* graphs require S2P_ACTIVE_AGE_TEST_MODE=1"
             )
-        if graph not in S2P_ALLOWED_PRODUCT_AGE_GRAPHS:
+        if graph not in S2P_ALLOWED_PRODUCT_AGE_GRAPHS and not shared_graph_authorized:
             raise S2PActiveGraphConfigError(
                 "S2P active AGE product graph must be reviewed and allow-listed"
             )
@@ -280,14 +290,17 @@ def create_s2p_active_graph_store(
         from copilot_sdk.graph.factory import create_graph_store
 
         factory = create_graph_store
-    store = factory(
-        backend="age",
-        domain=config.domain,
-        dsn=config.dsn,
-        graph_name=config.graph,
-        env={},
-        test_mode=config.test_mode,
-    )
+    factory_args = {
+        "backend": "age",
+        "domain": config.domain,
+        "dsn": config.dsn,
+        "graph_name": config.graph,
+        "env": {},
+        "test_mode": config.test_mode,
+    }
+    if config.shared_graph_authorization:
+        factory_args["shared_graph_authorization"] = config.shared_graph_authorization
+    store = factory(**factory_args)
     active_phase = "product_decision_outcome_cutover" if graph_kind == "product" else "phase_b_test_mode"
     return S2PActiveAGEGraphStore(store, active_phase=active_phase)
 

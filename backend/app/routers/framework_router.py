@@ -22,6 +22,21 @@ from app.db.neo4j import neo4j_client
 router = APIRouter()
 FRAMEWORK_DOMAIN = "s2p"
 
+QUERY_REGISTRY = {
+    "decision_count": {
+        "cypher": "MATCH (d:Decision) WHERE d.domain = $domain RETURN count(d) AS cnt",
+        "params": {"domain": FRAMEWORK_DOMAIN},
+    },
+    "category_distribution": {
+        "cypher": "MATCH (d:Decision) WHERE d.domain = $domain RETURN d.category AS cat, count(*) AS cnt",
+        "params": {"domain": FRAMEWORK_DOMAIN},
+    },
+    "recent_decisions": {
+        "cypher": "MATCH (d:Decision) WHERE d.domain = $domain RETURN d ORDER BY d.timestamp_epoch DESC LIMIT 20",
+        "params": {"domain": FRAMEWORK_DOMAIN},
+    },
+}
+
 
 # ============================================================================
 # Request/Response Models (framework endpoints only)
@@ -45,7 +60,7 @@ class RollbackRequest(BaseModel):
 
 
 class _GraphQueryRequest(BaseModel):
-    cypher: str
+    query_name: str
 
 
 class FreezeRequest(BaseModel):
@@ -565,20 +580,21 @@ async def auto_approve_stats():
 
 @router.post("/soc/graph/query")
 async def graph_explorer_query(request: _GraphQueryRequest):
-    """Run a validated read-only Cypher query.
+    """Run a registered read-only graph query.
 
-    Body: {"cypher": "MATCH (n:User) RETURN n.name LIMIT 5"}
+    Body: {"query_name": "decision_count"}
 
-    Returns 400 if the query contains blocked mutation keywords.
-    Returns {"rows": [...], "count": N, "query": str} on success.
+    Callers select a registry name; Cypher and domain parameters are
+    server-bound and cannot be supplied by the caller.
     """
-    # C7-TODO: Replace with closed query registry.
-    # Arbitrary Cypher on shared graph violates design goal #4.
-    from app.services.graph_explorer import GraphExplorerService
-    result = await GraphExplorerService.run_safe_query(request.cypher, neo4j_client)
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    spec = QUERY_REGISTRY.get(request.query_name)
+    if spec is None:
+        raise HTTPException(status_code=400, detail="Unknown graph query name")
+    try:
+        rows = await neo4j_client.run_query(spec["cypher"], dict(spec["params"]))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Graph query failed: {exc}") from exc
+    return {"rows": rows, "count": len(rows), "query": spec["cypher"]}
 
 
 @router.get("/soc/graph/top-nodes")
@@ -630,8 +646,10 @@ async def graph_prebuilt_queries_list():
 
     Response: {"queries": [...], "count": N}
     """
-    from app.services.graph_explorer import GraphExplorerService
-    queries = GraphExplorerService.list_prebuilt_queries()
+    queries = [
+        {"name": name, "description": name.replace("_", " ")}
+        for name in QUERY_REGISTRY
+    ]
     return {"queries": queries, "count": len(queries)}
 
 
@@ -642,11 +660,14 @@ async def graph_run_prebuilt(query_name: str):
     Returns {"rows": [...], "count": N, "query": str}.
     Returns 404 if query_name is not in the catalogue.
     """
-    from app.services.graph_explorer import GraphExplorerService
-    result = await GraphExplorerService.run_prebuilt_query(query_name, neo4j_client)
-    if "error" in result:
-        raise HTTPException(status_code=404, detail=result["error"])
-    return result
+    spec = QUERY_REGISTRY.get(query_name)
+    if spec is None:
+        raise HTTPException(status_code=404, detail="Unknown graph query name")
+    try:
+        rows = await neo4j_client.run_query(spec["cypher"], dict(spec["params"]))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Graph query failed: {exc}") from exc
+    return {"rows": rows, "count": len(rows), "query": spec["cypher"]}
 
 
 # ---------------------------------------------------------------------------
@@ -784,3 +805,7 @@ async def frozen_roi(
         auto_approve_rate=auto_approve_rate
     )
     return calc.compute()
+
+
+# E3 scanner support: caller-supplied Cypher is banned for this router.
+_CALLER_CYPHER_BANNED = True

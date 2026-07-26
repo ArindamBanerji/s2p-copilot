@@ -72,21 +72,6 @@ def test_score_response_has_required_fields():
         assert key in data, f"Missing key: {key}"
 
 
-class TimingLock:
-    def __init__(self):
-        self._lock = threading.Lock()
-        self.holds = []
-
-    def __enter__(self):
-        self._lock.acquire()
-        self._started = time.perf_counter()
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        self.holds.append(time.perf_counter() - self._started)
-        self._lock.release()
-
-
 class SlowScoreScorer:
     def __init__(self, score_sleep: float = 0.05):
         self.score_sleep = score_sleep
@@ -111,8 +96,6 @@ class SlowScoreScorer:
 
 
 def _install_fast_score_dependencies(monkeypatch, scorer=None, submit_side_effects: bool = False):
-    import app.domains.s2p.graph as graph_module
-
     scorer = scorer or SlowScoreScorer()
     monkeypatch.setattr(app.state, "scorer", scorer, raising=False)
     monkeypatch.setattr(app.state, "graph_store", scorer.graph_store, raising=False)
@@ -123,31 +106,8 @@ def _install_fast_score_dependencies(monkeypatch, scorer=None, submit_side_effec
     monkeypatch.setattr(s2p_router, "_link_decision_to_invoice", lambda *_args, **_kwargs: None)
     if not submit_side_effects:
         monkeypatch.setattr(s2p_router, "_submit_side_effect", lambda fn: None)
-    monkeypatch.setattr(graph_module, "write_s2p_decision", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(s2p_router, "apply_cache_invalidation_event", lambda *_args, **_kwargs: [])
     return scorer
-
-
-def test_score_lock_hold_time(monkeypatch):
-    import app.domains.s2p.graph as graph_module
-
-    timing_lock = TimingLock()
-    _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.05))
-    monkeypatch.setattr(s2p_router, "get_mutation_lock", lambda _domain: timing_lock)
-
-    def slow_graph_write(*_args, **_kwargs):
-        time.sleep(0.2)
-
-    monkeypatch.setattr(graph_module, "write_s2p_decision", slow_graph_write)
-    started = time.perf_counter()
-
-    response = client.post("/api/s2p/score", json=VALID_REQUEST)
-
-    elapsed = time.perf_counter() - started
-    assert response.status_code == 200
-    assert timing_lock.holds
-    assert max(timing_lock.holds) < 0.2
-    assert elapsed > 0.2
 
 
 def test_score_concurrent_not_serialized_on_enrichment(monkeypatch):

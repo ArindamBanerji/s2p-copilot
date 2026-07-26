@@ -1960,28 +1960,6 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         log.exception("S2P threshold decision enrichment failed")
         threshold_decision = None
 
-    try:
-        from app.db.neo4j import neo4j_client
-        from app.domains.s2p.graph import write_s2p_decision
-        write_s2p_decision(
-            neo4j_client,
-            event_id=core["event_id"],
-            category=core["category"],
-            action=core["action"],
-            action_index=core["action_index"],
-            confidence=core["confidence"],
-            factor_vector=factor_vector,
-            factor_names=S2PDomainConfig.factors,
-            supplier_id=request.supplier_id,
-            amount=request.amount,
-        )
-    except Exception as exc:
-        logging.getLogger("s2p.score").warning(
-            "Primary graph write failed for %s: %s",
-            core.get("decision_id", "?"),
-            exc,
-            exc_info=True,
-        )
     _link_decision_to_invoice(scorer.graph_store, core["decision_id"], str(lookup_id))
     if auto_approve is not None:
         _submit_side_effect(lambda: record_auto_approve_decision(dict(auto_approve)))
@@ -2218,14 +2196,6 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             conservation_before=conservation_before,
             context=outcome_context,
         )
-        try:
-            from app.db.neo4j import neo4j_client
-            from app.domains.s2p.graph import write_s2p_outcome
-            write_s2p_outcome(neo4j_client, request.decision_id,
-                request.outcome, request.analyst_action, request.analyst_id)
-        except Exception:
-            pass  # Neo4j unavailable - outcome still processed
-
         payload = _learn_with_scorer(
             scorer,
             request.decision_id,

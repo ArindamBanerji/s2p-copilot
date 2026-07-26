@@ -12,10 +12,7 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from app.domains.s2p.graph import write_s2p_decision, get_s2p_decision
-from app.domains.s2p.config import S2P_FACTORS
-
-FACTOR_VECTOR = [0.9, 0.08, 0.04, 0.05, 0.48, 0.76, 0.90]
+from app.domains.s2p.graph import get_s2p_decision
 
 
 def _make_driver(return_none=False):
@@ -35,25 +32,6 @@ def _make_driver(return_none=False):
     mock_driver = MagicMock()
     mock_driver.session.return_value = mock_session
     return mock_driver
-
-
-def test_write_s2p_decision_returns_decision_id():
-    mock_driver = _make_driver()
-    result = write_s2p_decision(
-        mock_driver, "E001", "price_variance", "auto_approve", 0, 0.85,
-        FACTOR_VECTOR, S2P_FACTORS, "SUP-001", 5000.0,
-    )
-    assert result.startswith("S2P-E001-")
-
-
-def test_decision_id_format():
-    mock_driver = _make_driver()
-    result = write_s2p_decision(
-        mock_driver, "E001", "price_variance", "auto_approve", 0, 0.85,
-        FACTOR_VECTOR, S2P_FACTORS, "SUP-001", 5000.0,
-    )
-    assert result.startswith("S2P-")
-    assert len(result) > 10
 
 
 def test_score_endpoint_includes_decision_id():

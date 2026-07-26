@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import types
 
 from fastapi.testclient import TestClient
 
@@ -263,7 +262,7 @@ def test_outcome_route_appends_evidence_receipt() -> None:
     assert rows[0]["payload_hash"]
 
 
-def test_outcome_route_receipt_failure_blocks_neo4j_outcome_write(monkeypatch) -> None:
+def test_outcome_route_receipt_failure_blocks_outcome_write(monkeypatch) -> None:
     score = _score("EVID-RCP-NEO4J-BLOCK-001")
     store = app.state.graph_store
     calls: list[str] = []
@@ -276,17 +275,8 @@ def test_outcome_route_receipt_failure_blocks_neo4j_outcome_write(monkeypatch) -
         calls.append("outbox")
         raise RuntimeError("outbox unavailable")
 
-    def neo4j_write(*_args, **_kwargs):
-        calls.append("neo4j")
-
     monkeypatch.setattr(store, "append_evidence_receipt", append_fails)
     monkeypatch.setattr(store, "enqueue_to_outbox", outbox_fails)
-    monkeypatch.setitem(sys.modules, "app.db.neo4j", types.SimpleNamespace(neo4j_client=object()))
-    monkeypatch.setitem(
-        sys.modules,
-        "app.domains.s2p.graph",
-        types.SimpleNamespace(write_s2p_outcome=neo4j_write),
-    )
 
     response = client.post(
         "/api/s2p/outcome",
@@ -294,7 +284,7 @@ def test_outcome_route_receipt_failure_blocks_neo4j_outcome_write(monkeypatch) -
             "decision_id": score["decision_id"],
             "outcome": "confirm",
             "analyst_action": score["action"],
-            "analyst_id": "neo4j-block-test",
+            "analyst_id": "receipt-block-test",
             "factor_vector": score["factor_vector"],
             "category": score["category"],
             "predicted_action": score["action"],
@@ -303,11 +293,10 @@ def test_outcome_route_receipt_failure_blocks_neo4j_outcome_write(monkeypatch) -
 
     assert response.status_code == 503
     assert calls == ["append", "outbox"]
-    assert "neo4j" not in calls
     assert _outcome_count() == 0
 
 
-def test_outcome_route_outbox_fallback_precedes_neo4j_outcome_write(monkeypatch) -> None:
+def test_outcome_route_outbox_fallback_precedes_outcome_write(monkeypatch) -> None:
     score = _score("EVID-RCP-NEO4J-OUTBOX-001")
     store = app.state.graph_store
     calls: list[str] = []
@@ -321,17 +310,8 @@ def test_outcome_route_outbox_fallback_precedes_neo4j_outcome_write(monkeypatch)
         calls.append("outbox")
         return original_enqueue(**kwargs)
 
-    def neo4j_write(*_args, **_kwargs):
-        calls.append("neo4j")
-
     monkeypatch.setattr(store, "append_evidence_receipt", append_fails)
     monkeypatch.setattr(store, "enqueue_to_outbox", enqueue_spy)
-    monkeypatch.setitem(sys.modules, "app.db.neo4j", types.SimpleNamespace(neo4j_client=object()))
-    monkeypatch.setitem(
-        sys.modules,
-        "app.domains.s2p.graph",
-        types.SimpleNamespace(write_s2p_outcome=neo4j_write),
-    )
 
     response = client.post(
         "/api/s2p/outcome",
@@ -339,7 +319,7 @@ def test_outcome_route_outbox_fallback_precedes_neo4j_outcome_write(monkeypatch)
             "decision_id": score["decision_id"],
             "outcome": "confirm",
             "analyst_action": score["action"],
-            "analyst_id": "neo4j-outbox-test",
+            "analyst_id": "receipt-outbox-test",
             "factor_vector": score["factor_vector"],
             "category": score["category"],
             "predicted_action": score["action"],
@@ -347,7 +327,7 @@ def test_outcome_route_outbox_fallback_precedes_neo4j_outcome_write(monkeypatch)
     )
 
     assert response.status_code == 200
-    assert calls[:3] == ["append", "outbox", "neo4j"]
+    assert calls[:2] == ["append", "outbox"]
     outbox = _outbox_rows()
     assert len(outbox) == 1
     assert json.loads(outbox[0]["payload_json"])["decision_id"] == score["decision_id"]

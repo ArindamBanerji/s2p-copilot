@@ -293,12 +293,6 @@ def test_strict_score_shadow_failure_logs_after_authoritative_write(caplog, monk
     fake = FakeShadowStore(fail_governed=True)
     shadow = _shadow_state(fake, strict=True)
     _reset_app_state(shadow)
-    # Keep the authoritative write successful so this test exercises the
-    # shadow failure callback rather than the legacy direct AGE write path.
-    monkeypatch.setattr(
-        "app.domains.s2p.graph.write_s2p_decision",
-        lambda *args, **kwargs: None,
-    )
 
     with caplog.at_level("WARNING"):
         response = _score(TestClient(app), "S2P-SHADOW-SCORE-STRICT")

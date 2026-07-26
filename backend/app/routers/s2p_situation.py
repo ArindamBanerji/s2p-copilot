@@ -32,7 +32,10 @@ async def get_situation(
     graph_store = _graph_store(request)
     if graph_store is None:
         raise HTTPException(status_code=503, detail="Graph store unavailable")
-    decision = _decision(graph_store, decision_id)
+    try:
+        decision = _decision(graph_store, decision_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Decision graph unavailable") from exc
     if decision is None:
         raise HTTPException(status_code=404, detail=f"decision_id not found: {decision_id}")
     category = str(decision.get("category") or "")
@@ -62,7 +65,10 @@ async def get_situation(
             "payload": {**dict(metadata), **decision},
         }
     )
-    context = analyzer.analyze_intent(intent, graph_store=graph_store, max_depth=depth)
+    try:
+        context = analyzer.analyze_intent(intent, graph_store=graph_store, max_depth=depth)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Decision graph unavailable") from exc
     template_vars = context.metadata.get("template_variables")
     variables = dict(template_vars) if isinstance(template_vars, dict) else {}
     confidence = _float(decision.get("confidence"), 0.0)
@@ -122,9 +128,11 @@ def _decision(graph_store: Any | None, decision_id: str) -> dict[str, Any] | Non
     if not callable(get_decision):
         return None
     try:
-        decision = get_decision(str(decision_id))
-    except Exception:
-        return None
+        decision = get_decision(str(decision_id), domain="s2p")
+    except Exception as exc:
+        raise RuntimeError("S2P decision graph lookup failed") from exc
+    if isinstance(decision, dict) and decision.get("domain") not in (None, "s2p"):
+        raise RuntimeError("S2P decision lookup returned a foreign domain")
     return decision if isinstance(decision, dict) else None
 
 

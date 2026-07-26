@@ -14,6 +14,7 @@ from uuid import uuid4
 import os
 import re
 
+from copilot_sdk.config import GraphConfig, GraphConfigError
 
 SHADOW_STATUSES = frozenset(
     {
@@ -70,8 +71,28 @@ class S2PShadowConfig:
         strict = _parse_bool(source.get("S2P_SHADOW_STRICT"), default=False)
         test_mode = _parse_bool(source.get("S2P_AGE_TEST_MODE"), default=False)
         domain = (source.get("S2P_AGE_DOMAIN") or "s2p").strip()
-        dsn = source.get("S2P_AGE_DSN")
-        graph = source.get("S2P_AGE_GRAPH")
+        legacy_dsn = source.get("S2P_AGE_DSN")
+        legacy_graph = source.get("S2P_AGE_GRAPH")
+        if env is None and (legacy_dsn or legacy_graph) and not os.environ.get("PYTEST_CURRENT_TEST"):
+            raise GraphConfigError(
+                "S2P_AGE_DSN/S2P_AGE_GRAPH are test-only overrides. "
+                "Production shadow must use GraphConfig. Remove these env vars "
+                "or set PYTEST_CURRENT_TEST."
+            )
+        if env is None and enabled and not (legacy_dsn or legacy_graph):
+            try:
+                graph_config = GraphConfig.load("s2p")
+            except GraphConfigError as exc:
+                raise S2PShadowConfigError(str(exc)) from exc
+            domain = graph_config.domain
+            dsn = graph_config.dsn
+            graph = graph_config.graph
+        else:
+            # Explicit mapping injection is retained for isolated tests only;
+            # production resolution always uses GraphConfig above.  The
+            # legacy names are accepted only for test-mode compatibility.
+            dsn = legacy_dsn
+            graph = legacy_graph
 
         if not domain:
             raise S2PShadowConfigError("S2P_AGE_DOMAIN must not be blank")

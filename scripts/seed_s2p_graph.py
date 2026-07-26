@@ -16,6 +16,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.graph_contract import S2P_GRAPH_CONTRACT
+from copilot_sdk.config import GraphConfig
 
 
 def load_json(path: Path, default):
@@ -332,7 +333,7 @@ async def write_seed_plan(plan: Dict[str, Any], dsn: str, graph_name: str, force
     client = AGEClient(dsn=dsn, graph_name=graph_name)
     await client.ensure_graph()
     if force:
-        await client.run_query("MATCH (n) DETACH DELETE n", None)
+        await client.run_query("MATCH (n) WHERE n.domain = 's2p' DETACH DELETE n", None)
 
     for node in plan["nodes"]:
         label = node["label"]
@@ -383,12 +384,29 @@ def default_fixture_paths() -> tuple[Path, Path]:
 
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Seed S2P AGE graph fixtures.")
-    parser.add_argument("--dsn", default=os.environ.get("GRAPH_DSN"))
-    parser.add_argument("--graph-name", default=S2P_GRAPH_CONTRACT["graph_name"])
+    parser.add_argument("--dsn")
+    parser.add_argument("--graph", required=True)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--limit", type=int)
     args = parser.parse_args(argv)
+
+    if args.graph == "soc_graph" and os.environ.get("ALLOW_PRODUCTION_SEED") != "1":
+        print("error: refusing to seed soc_graph without ALLOW_PRODUCTION_SEED=1", file=sys.stderr)
+        return 2
+
+    if args.dsn:
+        dsn = args.dsn.strip()
+    elif args.dry_run:
+        # Dry runs build and print the plan without requiring AGE connectivity.
+        dsn = ""
+    else:
+        try:
+            graph_config = GraphConfig.load("s2p")
+        except Exception as exc:
+            print(f"error: unable to load S2P GraphConfig: {exc}", file=sys.stderr)
+            return 2
+        dsn = (graph_config.dsn or "").strip()
 
     invoices_path, suppliers_path = default_fixture_paths()
     plan = build_seed_plan(
@@ -401,17 +419,17 @@ def main(argv: List[str] | None = None) -> int:
     print(
         f"{plan['summary']['node_count']} nodes, "
         f"{plan['summary']['edge_count']} edges, "
-        f"graph={args.graph_name}"
+        f"graph={args.graph}"
     )
     for warning in plan["warnings"]:
         print(f"warning: {warning}")
 
     if args.dry_run:
         return 0
-    if not args.dsn:
-        print("error: --dsn or GRAPH_DSN is required unless --dry-run is used", file=sys.stderr)
+    if not dsn:
+        print("error: --dsn or GraphConfig DSN is required unless --dry-run is used", file=sys.stderr)
         return 2
-    asyncio.run(write_seed_plan(plan, args.dsn, args.graph_name, force=args.force))
+    asyncio.run(write_seed_plan(plan, dsn, args.graph, force=args.force))
     return 0
 
 

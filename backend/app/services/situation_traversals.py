@@ -421,8 +421,12 @@ def _query_graph_context(
         return []
     try:
         rows = query_context(str(entity_id), max_depth)
-    except Exception:
-        return []
+    except Exception as exc:
+        raise RuntimeError("S2P graph context lookup failed") from exc
+    if isinstance(rows, list):
+        for row in rows:
+            if isinstance(row, dict) and row.get("domain") not in (None, "s2p"):
+                raise RuntimeError("S2P graph context returned a foreign domain")
     return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
 
 
@@ -531,8 +535,8 @@ def _read_enriched_properties(graph_store: Any, node_type: str, entity_id: str) 
             entity_id=entity_id,
             namespace=SITUATION_ENRICHMENT_NAMESPACE,
         )
-    except Exception:
-        return {}
+    except Exception as exc:
+        raise RuntimeError("S2P enrichment lookup failed") from exc
     if not isinstance(metrics, dict):
         return {}
     return {
@@ -635,9 +639,11 @@ def _get_decision(graph_store: Any, decision_id: str | None) -> dict[str, Any] |
     if not decision_id or not callable(get_decision):
         return None
     try:
-        decision = get_decision(decision_id)
-    except Exception:
-        return None
+        decision = get_decision(decision_id, domain="s2p")
+    except Exception as exc:
+        raise RuntimeError("S2P decision graph lookup failed") from exc
+    if isinstance(decision, dict) and decision.get("domain") not in (None, "s2p"):
+        raise RuntimeError("S2P decision lookup returned a foreign domain")
     return decision if isinstance(decision, dict) else None
 
 
@@ -646,9 +652,11 @@ def _similar_decision(graph_store: Any, prepared: _PreparedContext) -> dict[str,
     if callable(query_similar):
         try:
             rows = query_similar(prepared.decision_id or prepared.invoice_id, 1)
-        except Exception:
-            rows = []
+        except Exception as exc:
+            raise RuntimeError("S2P similar-decision graph lookup failed") from exc
         if rows and isinstance(rows[0], dict):
+            if rows[0].get("domain") not in (None, "s2p"):
+                raise RuntimeError("S2P similar-decision lookup returned a foreign domain")
             return rows[0]
     return None
 

@@ -1,4 +1,8 @@
-"""In-memory supplier profile accumulation for S2P verified decisions."""
+"""In-memory supplier profiles from local operational data.
+
+Supplier profile events are local operational data, not graph Decisions and
+must never be returned or used as a Decision-store substitute.
+"""
 
 from __future__ import annotations
 
@@ -56,6 +60,7 @@ class SupplierEvent:
     returned: bool = False
     lead_time_days: float | None = None
     quantity: float = 0.0
+    source: str = "local_supplier_event"
 
 
 class SupplierProfileAccumulator:

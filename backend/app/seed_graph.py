@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, cast
 
 from app.domains.s2p.config import S2P_CATEGORIES, S2P_FACTORS
+from copilot_sdk.config import GraphConfig
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -20,6 +22,9 @@ SDK_CELONIS_PATH = (
     / "backend"
     / "data"
     / "celonis_process_data.json"
+)
+SEED_CLEAN_DELETE_CYPHER = (
+    "MATCH (d:Decision) WHERE d.domain = 's2p' DETACH DELETE d"
 )
 
 
@@ -106,6 +111,28 @@ def _add_edge(
             "properties": properties or {},
         }
     )
+
+
+def _validate_seed_target(graph: str | None) -> str:
+    """Require an explicit disposable graph for any operational seed call."""
+    target = str(graph or "").strip()
+    if not target:
+        raise ValueError("--graph is required for S2P seeding")
+    if target == "soc_graph" and os.environ.get("ALLOW_PRODUCTION_SEED") != "1":
+        raise PermissionError("Refusing to seed soc_graph without ALLOW_PRODUCTION_SEED=1")
+    return target
+
+
+def seed_graph(*, graph: str | None = None, seed: int = 42) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build seed data only after validating a disposable graph target.
+
+    GraphConfig supplies the shared S2P DSN/graph configuration; this helper
+    deliberately returns data and performs no deletion or production write.
+    Any operational writer must scope cleanup to ``d.domain = 's2p'``.
+    """
+    _validate_seed_target(graph)
+    GraphConfig.load("s2p")
+    return seed_s2p_graph(seed=seed)
 
 
 def seed_s2p_graph(seed: int = 42) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

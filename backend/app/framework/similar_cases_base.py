@@ -93,7 +93,7 @@ class SimilarCasesBase(abc.ABC):
             )
         except Exception as exc:
             log.warning("[SIMILAR-CASES] Neo4j query failed for category=%r: %s", category, exc)
-            return []
+            raise RuntimeError("AGE similar-case query failed") from exc
 
         results = []
         for row in rows:

@@ -130,8 +130,7 @@ async def get_centroid_evolution(
         print(f"[SOC] centroid-evolution: returned {len(result)} records (n={n}, category={category!r})")
         return result
     except Exception as exc:
-        print(f"[SOC] centroid-evolution query failed: {exc}")
-        return []
+        raise HTTPException(status_code=503, detail="Decision graph unavailable") from exc
 
 
 # ============================================================================
@@ -182,7 +181,7 @@ async def get_convergence_calendar():
                 if factor_name in decisions_per_factor:
                     decisions_per_factor[factor_name] = int(row.get("cnt", 0))
         except Exception as exc:
-            print(f"[convergence-calendar] decisions query failed: {exc}")
+            raise HTTPException(status_code=503, detail="Decision graph unavailable") from exc
 
         # Overall decision count as fallback for factors not tagged
         total = getattr(ls, "decision_count", 0)
@@ -191,6 +190,8 @@ async def get_convergence_calendar():
             per = total // len(SOC_FACTORS)
             decisions_per_factor = {f: per for f in SOC_FACTORS}
 
+    except HTTPException:
+        raise
     except RuntimeError:
         pass  # not yet initialised — stay with defaults
     except Exception as exc:
@@ -247,7 +248,7 @@ async def get_ols_status_endpoint():
         )
         ols_history = [float(r["ols_score"]) for r in result]
     except Exception as exc:
-        print(f"[ols-status] ols_history query failed: {exc}")
+        raise HTTPException(status_code=503, detail="AGE query failed for OLS status") from exc
 
     try:
         # Read override counts per analyst
@@ -258,7 +259,7 @@ async def get_ols_status_endpoint():
         )
         analyst_overrides = {r["analyst_id"]: int(r["cnt"]) for r in result}
     except Exception as exc:
-        print(f"[ols-status] analyst_overrides query failed: {exc}")
+        raise HTTPException(status_code=503, detail="AGE query failed for OLS status") from exc
 
     try:
         # Check warm_start flag from LearningState node if present
@@ -348,8 +349,10 @@ async def get_flywheel_comparison(alert_id: str = "ALERT-001", category: str = "
         )
 
     except Exception as exc:
-        print(f"[flywheel-comparison] Neo4j error: {exc}")
-        return {"suppressed": True, "reason": "data_unavailable"}
+        raise HTTPException(
+            status_code=503,
+            detail="AGE query failed for flywheel comparison",
+        ) from exc
 
 
 # ============================================================================

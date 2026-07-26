@@ -183,6 +183,7 @@ def seed_s2p_graph(seed: int = 42) -> tuple[list[dict[str, Any]], list[dict[str,
             invoice_id,
             {
                 "decision_id": f"decision_{invoice_id}",
+                "domain": "s2p",
                 "invoice_id": invoice_id,
                 "category": category,
                 "recommended_action": invoice.get("ground_truth_action"),

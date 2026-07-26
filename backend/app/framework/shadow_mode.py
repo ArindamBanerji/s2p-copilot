@@ -33,7 +33,7 @@ class ShadowModeService:
     ) -> None:
         """Mark a Decision node as shadow_mode=True."""
         await neo4j_service.run_query(
-            "MATCH (d:Decision {id: $id}) SET d.shadow_mode = true",
+            "MATCH (d:Decision {id: $id}) WHERE d.domain = 's2p' SET d.shadow_mode = true",
             {"id": decision_id},
         )
         log.debug(
@@ -51,6 +51,7 @@ class ShadowModeService:
         Also sets d.agreement = (d.action = analyst_action) on the node."""
         await neo4j_service.run_query(
             """MATCH (d:Decision {id: $id})
+               WHERE d.domain = 's2p'
                SET d.analyst_action = $analyst_action,
                    d.agreement = (d.action = $analyst_action)""",
             {"id": decision_id, "analyst_action": analyst_action},

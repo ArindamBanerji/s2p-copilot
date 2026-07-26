@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from app.db.neo4j import neo4j_client
 
 router = APIRouter()
+FRAMEWORK_DOMAIN = "s2p"
 
 
 # ============================================================================
@@ -85,7 +86,8 @@ async def get_centroid_evolution(
         rows = await neo4j_client.run_query(
             """
             MATCH (d:Decision)
-            WHERE d.centroid_delta_norm IS NOT NULL
+            WHERE d.domain = $domain
+              AND d.centroid_delta_norm IS NOT NULL
               AND d.centroid_delta_norm > 0
               AND ($category IS NULL OR d.category = $category)
             RETURN d.id AS id,
@@ -97,7 +99,7 @@ async def get_centroid_evolution(
             ORDER BY d.verified_at ASC
             LIMIT $n
             """,
-            {"category": category, "n": n},
+            {"category": category, "n": n, "domain": FRAMEWORK_DOMAIN},
         )
         result = []
         for i, r in enumerate(rows):
@@ -155,9 +157,10 @@ async def get_convergence_calendar():
             rows = await neo4j_client.run_query(
                 """
                 MATCH (d:Decision)
-                WHERE d.primary_factor IS NOT NULL
+                WHERE d.domain = $domain AND d.primary_factor IS NOT NULL
                 RETURN d.primary_factor AS factor, count(d) AS cnt
                 """,
+                {"domain": FRAMEWORK_DOMAIN},
             )
             for row in rows:
                 factor_name = str(row.get("factor", ""))
@@ -223,9 +226,9 @@ async def get_ols_status_endpoint():
     try:
         # Read OLS history from Decision nodes (ols_score property)
         result = await neo4j_client.run_query(
-            "MATCH (d:Decision) WHERE d.ols_score IS NOT NULL "
+            "MATCH (d:Decision) WHERE d.domain = $domain AND d.ols_score IS NOT NULL "
             "RETURN d.ols_score AS ols_score ORDER BY d.decision_number ASC",
-            {},
+            {"domain": FRAMEWORK_DOMAIN},
         )
         ols_history = [float(r["ols_score"]) for r in result]
     except Exception as exc:
@@ -234,9 +237,9 @@ async def get_ols_status_endpoint():
     try:
         # Read override counts per analyst
         result = await neo4j_client.run_query(
-            "MATCH (d:Decision) WHERE d.analyst_id IS NOT NULL AND d.was_override = true "
+            "MATCH (d:Decision) WHERE d.domain = $domain AND d.analyst_id IS NOT NULL AND d.was_override = true "
             "RETURN d.analyst_id AS analyst_id, count(*) AS cnt",
-            {},
+            {"domain": FRAMEWORK_DOMAIN},
         )
         analyst_overrides = {r["analyst_id"]: int(r["cnt"]) for r in result}
     except Exception as exc:
@@ -288,9 +291,9 @@ async def get_flywheel_comparison(alert_id: str = "ALERT-001", category: str = "
         # Count TRIGGERED_EVOLUTION edges for this category
         edge_result = await neo4j_client.run_query(
             "MATCH (d:Decision)-[:TRIGGERED_EVOLUTION]->(e:EvolutionEvent) "
-            "WHERE d.category = $category "
+            "WHERE d.domain = $domain AND d.category = $category "
             "RETURN count(e) AS edge_count",
-            {"category": category},
+            {"category": category, "domain": FRAMEWORK_DOMAIN},
         )
         edge_count = int(edge_result[0]["edge_count"]) if edge_result else 0
 
@@ -306,10 +309,10 @@ async def get_flywheel_comparison(alert_id: str = "ALERT-001", category: str = "
 
         # Read latest factor_4 and confidence from most recent Decision for category
         decision_result = await neo4j_client.run_query(
-            "MATCH (d:Decision) WHERE d.category = $category "
+            "MATCH (d:Decision) WHERE d.domain = $domain AND d.category = $category "
             "RETURN d.factor_snapshot[3] AS factor_4, d.confidence AS confidence, "
             "d.action AS action ORDER BY d.decision_number DESC LIMIT 1",
-            {"category": category},
+            {"category": category, "domain": FRAMEWORK_DOMAIN},
         )
         if decision_result:
             factor_4 = float(decision_result[0].get("factor_4") or 0.40)
@@ -353,6 +356,8 @@ async def get_iks_trend_endpoint():
         "current": {"iks_v2": float, "components": dict, "interpretation": str},
     }
     """
+    # NOTE: compute_iks_v2 has no S2P implementation.
+    # Endpoint returns fallback. No Decision query to scope.
     from app.services.iks import compute_iks_v2
 
     try:
@@ -520,10 +525,12 @@ async def auto_approve_stats():
         rows = await neo4j_client.run_query(
             """
             MATCH (d:Decision)
+            WHERE d.domain = $domain
             RETURN d.category AS category,
                    count(d) AS total,
                    sum(CASE WHEN d.auto_approved = true THEN 1 ELSE 0 END) AS approved
             """,
+            {"domain": FRAMEWORK_DOMAIN},
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Neo4j query failed: {exc}")
@@ -565,6 +572,8 @@ async def graph_explorer_query(request: _GraphQueryRequest):
     Returns 400 if the query contains blocked mutation keywords.
     Returns {"rows": [...], "count": N, "query": str} on success.
     """
+    # C7-TODO: Replace with closed query registry.
+    # Arbitrary Cypher on shared graph violates design goal #4.
     from app.services.graph_explorer import GraphExplorerService
     result = await GraphExplorerService.run_safe_query(request.cypher, neo4j_client)
     if "error" in result:

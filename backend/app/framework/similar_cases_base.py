@@ -63,6 +63,7 @@ class SimilarCasesBase(abc.ABC):
         category: str,
         neo4j_client: Any,
         limit: int = SIMILAR_CASES_MAX_SCAN,
+        domain: str = "s2p",
     ) -> List[Dict[str, Any]]:
         """
         Fetch up to *limit* verified Decision nodes for *category* from Neo4j,
@@ -75,7 +76,8 @@ class SimilarCasesBase(abc.ABC):
             rows = await neo4j_client.run_query(
                 """
                 MATCH (d:Decision)
-                WHERE d.category = $category
+                WHERE d.domain = $domain
+                  AND d.category = $category
                   AND d.factor_vector IS NOT NULL
                   AND d.outcome IS NOT NULL
                 RETURN d.id            AS decision_id,
@@ -87,7 +89,7 @@ class SimilarCasesBase(abc.ABC):
                 ORDER BY d.timestamp DESC
                 LIMIT $limit
                 """,
-                {"category": category, "limit": limit},
+                {"category": category, "limit": limit, "domain": domain},
             )
         except Exception as exc:
             log.warning("[SIMILAR-CASES] Neo4j query failed for category=%r: %s", category, exc)
@@ -122,6 +124,7 @@ class SimilarCasesBase(abc.ABC):
         category: str,
         neo4j_client: Any,
         k: int = SIMILAR_CASES_K,
+        domain: str = "s2p",
     ) -> List[Dict[str, Any]]:
         """
         Return up to k similar past Decision nodes for *category*.
@@ -131,7 +134,9 @@ class SimilarCasesBase(abc.ABC):
 
         Each returned dict adds a 'similarity' key (float in [0,1]).
         """
-        decisions = await self._fetch_verified_decisions(category, neo4j_client)
+        decisions = await self._fetch_verified_decisions(
+            category, neo4j_client, domain=domain
+        )
 
         if len(decisions) < SIMILAR_CASES_MIN_PRIOR:
             log.debug(

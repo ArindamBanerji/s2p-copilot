@@ -75,7 +75,9 @@ class ShadowModeService:
             result = await neo4j_service.run_query(
                 """
                 MATCH (d:Decision)
-                WHERE d.shadow_mode = true AND d.analyst_action IS NOT NULL
+                WHERE d.domain = 's2p'
+                  AND d.shadow_mode = true
+                  AND d.analyst_action IS NOT NULL
                 RETURN d.category AS category,
                        count(d) AS total,
                        sum(CASE WHEN d.agreement = true THEN 1 ELSE 0 END) AS agreed

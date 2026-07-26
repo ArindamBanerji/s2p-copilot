@@ -418,7 +418,7 @@ def _query_graph_context(
 ) -> list[dict[str, Any]]:
     query_context = getattr(graph_store, "query_context", None)
     if not callable(query_context):
-        return []
+        raise RuntimeError("S2P graph context lookup is unavailable")
     try:
         rows = query_context(str(entity_id), max_depth)
     except Exception as exc:

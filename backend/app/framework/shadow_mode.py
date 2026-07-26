@@ -86,7 +86,7 @@ class ShadowModeService:
             )
         except Exception as exc:
             log.warning("[SHADOW] get_shadow_report query failed: %s", exc)
-            result = []
+            raise RuntimeError("Shadow mode report query failed") from exc
 
         categories: dict = {}
         total_agreed = 0

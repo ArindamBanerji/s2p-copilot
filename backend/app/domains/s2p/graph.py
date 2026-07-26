@@ -51,6 +51,7 @@ def get_s2p_decision(driver, decision_id: str) -> Optional[dict]:
     """Retrieve a decision by ID. Returns None if not found."""
     query = """
     MATCH (d:S2PDecision {decision_id: $decision_id})
+    WHERE d.domain = 's2p'
     RETURN d
     """
     def sync_get(session: Any) -> Optional[dict]:

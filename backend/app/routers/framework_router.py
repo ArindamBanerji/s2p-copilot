@@ -17,7 +17,19 @@ from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel
 
-from app.db.neo4j import neo4j_client
+from copilot_sdk.config import GraphConfig
+from ci_platform.graph.age_client import AGEClient
+
+
+_age_client = None
+
+
+def _get_age_client() -> AGEClient:
+    global _age_client
+    if _age_client is None:
+        config = GraphConfig.load("s2p")
+        _age_client = AGEClient(dsn=config.dsn, graph_name=config.graph)
+    return _age_client
 
 router = APIRouter()
 FRAMEWORK_DOMAIN = "s2p"
@@ -98,7 +110,7 @@ async def get_centroid_evolution(
     Returns [] if no Decision nodes have centroid_delta_norm set yet.
     """
     try:
-        rows = await neo4j_client.run_query(
+        rows = await _get_age_client().run_query(
             """
             MATCH (d:Decision)
             WHERE d.domain = $domain
@@ -168,7 +180,7 @@ async def get_convergence_calendar():
 
         # Decision count per factor — query Neo4j decision nodes grouped by factor
         try:
-            rows = await neo4j_client.run_query(
+            rows = await _get_age_client().run_query(
                 """
                 MATCH (d:Decision)
                 WHERE d.domain = $domain AND d.primary_factor IS NOT NULL
@@ -241,7 +253,7 @@ async def get_ols_status_endpoint():
 
     try:
         # Read OLS history from Decision nodes (ols_score property)
-        result = await neo4j_client.run_query(
+        result = await _get_age_client().run_query(
             "MATCH (d:Decision) WHERE d.domain = $domain AND d.ols_score IS NOT NULL "
             "RETURN d.ols_score AS ols_score ORDER BY d.decision_number ASC",
             {"domain": FRAMEWORK_DOMAIN},
@@ -252,7 +264,7 @@ async def get_ols_status_endpoint():
 
     try:
         # Read override counts per analyst
-        result = await neo4j_client.run_query(
+        result = await _get_age_client().run_query(
             "MATCH (d:Decision) WHERE d.domain = $domain AND d.analyst_id IS NOT NULL AND d.was_override = true "
             "RETURN d.analyst_id AS analyst_id, count(*) AS cnt",
             {"domain": FRAMEWORK_DOMAIN},
@@ -263,7 +275,7 @@ async def get_ols_status_endpoint():
 
     try:
         # Check warm_start flag from LearningState node if present
-        result = await neo4j_client.run_query(
+        result = await _get_age_client().run_query(
             "MATCH (ls:LearningState) RETURN ls.warm_start_active AS warm_start LIMIT 1",
             {},
         )
@@ -305,7 +317,7 @@ async def get_flywheel_comparison(alert_id: str = "ALERT-001", category: str = "
 
     try:
         # Count TRIGGERED_EVOLUTION edges for this category
-        edge_result = await neo4j_client.run_query(
+        edge_result = await _get_age_client().run_query(
             "MATCH (d:Decision)-[:TRIGGERED_EVOLUTION]->(e:EvolutionEvent) "
             "WHERE d.domain = $domain AND d.category = $category "
             "RETURN count(e) AS edge_count",
@@ -324,7 +336,7 @@ async def get_flywheel_comparison(alert_id: str = "ALERT-001", category: str = "
             )
 
         # Read latest factor_4 and confidence from most recent Decision for category
-        decision_result = await neo4j_client.run_query(
+        decision_result = await _get_age_client().run_query(
             "MATCH (d:Decision) WHERE d.domain = $domain AND d.category = $category "
             "RETURN d.factor_snapshot[3] AS factor_4, d.confidence AS confidence, "
             "d.action AS action ORDER BY d.decision_number DESC LIMIT 1",
@@ -379,16 +391,9 @@ async def get_iks_trend_endpoint():
     from app.services.iks import compute_iks_v2
 
     try:
-        current = await compute_iks_v2(neo4j_client)
+        current = await compute_iks_v2(_get_age_client())
     except Exception as exc:
-        print(f"[SOC] iks-trend compute failed: {exc}")
-        current = {
-            "iks_v2": 0.0,
-            "components": {},
-            "interpretation": "unavailable",
-            "total_decisions": 0,
-            "categories_active": 0,
-        }
+        raise HTTPException(status_code=503, detail="AGE query failed for IKS trend") from exc
 
     trend_point = {
         "decisions":  current.get("total_decisions", 0),
@@ -425,7 +430,7 @@ async def shadow_analyst_action(request: AnalystActionRequest):
     await ShadowModeService.record_analyst_action(
         decision_id=request.decision_id,
         analyst_action=request.analyst_action,
-        neo4j_service=neo4j_client,
+        neo4j_service=_get_age_client(),
     )
     return {"recorded": True}
 
@@ -434,7 +439,7 @@ async def shadow_analyst_action(request: AnalystActionRequest):
 async def shadow_report():
     """Return shadow mode agreement report by category."""
     from app.services.shadow_mode import ShadowModeService
-    return await ShadowModeService.get_shadow_report(neo4j_client)
+    return await ShadowModeService.get_shadow_report(_get_age_client())
 
 
 # ============================================================================
@@ -453,7 +458,7 @@ async def checkpoint_create(request: CheckpointCreateRequest):
 
     checkpoint_id = await CheckpointService.create_checkpoint(
         scorer=scorer,
-        neo4j_service=neo4j_client,
+        neo4j_service=_get_age_client(),
         reason=request.reason,
     )
     return {
@@ -467,7 +472,7 @@ async def checkpoint_create(request: CheckpointCreateRequest):
 async def checkpoint_list():
     """List all checkpoints ordered by timestamp DESC."""
     from app.services.checkpoint import CheckpointService
-    checkpoints = await CheckpointService.list_checkpoints(neo4j_client)
+    checkpoints = await CheckpointService.list_checkpoints(_get_age_client())
     return {"checkpoints": checkpoints}
 
 
@@ -484,7 +489,7 @@ async def checkpoint_rollback(request: RollbackRequest):
     result = await CheckpointService.rollback(
         checkpoint_id=request.checkpoint_id,
         scorer=scorer,
-        neo4j_service=neo4j_client,
+        neo4j_service=_get_age_client(),
     )
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
@@ -540,7 +545,7 @@ async def auto_approve_stats():
     }
     """
     try:
-        rows = await neo4j_client.run_query(
+        rows = await _get_age_client().run_query(
             """
             MATCH (d:Decision)
             WHERE d.domain = $domain
@@ -551,7 +556,7 @@ async def auto_approve_stats():
             {"domain": FRAMEWORK_DOMAIN},
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Neo4j query failed: {exc}")
+        raise HTTPException(status_code=503, detail="AGE query failed") from exc
 
     by_category: dict = {}
     grand_total    = 0
@@ -594,9 +599,9 @@ async def graph_explorer_query(request: _GraphQueryRequest):
     if spec is None:
         raise HTTPException(status_code=400, detail="Unknown graph query name")
     try:
-        rows = await neo4j_client.run_query(spec["cypher"], dict(spec["params"]))
+        rows = await _get_age_client().run_query(spec["cypher"], dict(spec["params"]))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Graph query failed: {exc}") from exc
+        raise HTTPException(status_code=503, detail="AGE query failed") from exc
     return {"rows": rows, "count": len(rows), "query": spec["cypher"]}
 
 
@@ -612,7 +617,7 @@ async def graph_top_nodes(
     """
     from app.services.graph_explorer import GraphExplorerService
     nodes = await GraphExplorerService.get_top_nodes(
-        neo4j_client, node_type=type, limit=limit
+        _get_age_client(), node_type=type, limit=limit
     )
     return {"nodes": nodes, "count": len(nodes)}
 
@@ -624,7 +629,7 @@ async def graph_node_neighbors(node_id: str):
     Response: {"node_id": str, "neighbors": [...], "total": int}
     """
     from app.services.graph_explorer import GraphExplorerService
-    return await GraphExplorerService.get_node_neighbors(node_id, neo4j_client)
+    return await GraphExplorerService.get_node_neighbors(node_id, _get_age_client())
 
 
 @router.get("/soc/graph/summary")
@@ -640,7 +645,7 @@ async def graph_summary():
     }
     """
     from app.services.graph_explorer import GraphExplorerService
-    return await GraphExplorerService.get_graph_summary(neo4j_client)
+    return await GraphExplorerService.get_graph_summary(_get_age_client())
 
 
 @router.get("/soc/graph/prebuilt-queries")
@@ -667,9 +672,9 @@ async def graph_run_prebuilt(query_name: str):
     if spec is None:
         raise HTTPException(status_code=404, detail="Unknown graph query name")
     try:
-        rows = await neo4j_client.run_query(spec["cypher"], dict(spec["params"]))
+        rows = await _get_age_client().run_query(spec["cypher"], dict(spec["params"]))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Graph query failed: {exc}") from exc
+        raise HTTPException(status_code=503, detail="AGE query failed") from exc
     return {"rows": rows, "count": len(rows), "query": spec["cypher"]}
 
 
@@ -700,7 +705,7 @@ async def learning_health():
     }
     """
     from app.services.learning_health import LearningHealthMonitor
-    return await LearningHealthMonitor.evaluate(neo4j_client)
+    return await LearningHealthMonitor.evaluate(_get_age_client())
 
 
 # ============================================================================
@@ -715,7 +720,7 @@ def _get_intervention_controls():
     from app.services.intervention_controls import InterventionControls
     scorer = get_profile_scorer()
     return InterventionControls(
-        db_client=neo4j_client,
+        db_client=_get_age_client(),
         scorer=scorer,
         checkpoint_service=checkpoint_svc,
         composite_gate=CompositeDiscriminant,

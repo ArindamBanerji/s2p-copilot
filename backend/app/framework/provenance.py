@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Any
 
 log = logging.getLogger(__name__)
+DOMAIN = "s2p"
 
 
 # ---------------------------------------------------------------------------
@@ -309,15 +310,16 @@ class ProvenanceService:
             results = await neo4j_service.run_query(
                 """
                 MATCH (d:Decision {id: $id})-[:DECIDED_ON]->(a:Alert)
+                WHERE d.domain = $domain
                 RETURN d.factor_vector AS fv,
                        d.action        AS action,
                        a.alert_type    AS alert_type
                 """,
-                {"id": decision_id},
+                {"id": decision_id, "domain": DOMAIN},
             )
         except Exception as exc:
             log.warning("[PROVENANCE] query failed for decision=%r: %s", decision_id, exc)
-            return None
+            raise
 
         if not results:
             return None

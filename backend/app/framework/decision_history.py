@@ -13,6 +13,7 @@ import logging
 from typing import Any
 
 log = logging.getLogger(__name__)
+DOMAIN = "s2p"
 
 
 class DecisionHistoryService:
@@ -38,17 +39,18 @@ class DecisionHistoryService:
             result = await neo4j_service.run_query(
                 """
                 MATCH (d:Decision)
-                WHERE d.category = $cat
+                WHERE d.domain = $domain
+                  AND d.category = $cat
                 WITH d ORDER BY d.timestamp DESC LIMIT 100
                 RETURN count(d) AS cat_count,
                        sum(CASE WHEN d.outcome = 'correct' THEN 1 ELSE 0 END) AS correct_count,
                        sum(CASE WHEN d.outcome IS NOT NULL THEN 1 ELSE 0 END) AS verified_count
                 """,
-                {"cat": category},
+                {"cat": category, "domain": DOMAIN},
             )
         except Exception as exc:
             log.warning("[DECISION-HISTORY] query failed for category=%r: %s", category, exc)
-            return {"cat_count": 0, "rolling_accuracy": 0.5, "verified_count": 0}
+            raise
 
         if not result or int(result[0].get("cat_count") or 0) == 0:
             return {"cat_count": 0, "rolling_accuracy": 0.5, "verified_count": 0}

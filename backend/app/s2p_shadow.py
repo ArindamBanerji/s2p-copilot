@@ -120,6 +120,8 @@ class S2PShadowConfig:
             raise S2PShadowConfigError("S2P_AGE_GRAPH is required when S2P_SHADOW_AGE=1")
 
         graph = self.graph.strip()
+        # Shadow uses a separate AGE graph by design (Rule #61, P29-D).
+        # This is NOT a Goal 6 violation — shadow validates before promotion.
         if graph == "soc_graph":
             raise S2PShadowConfigError("S2P AGE shadow must not target soc_graph")
         if graph.startswith("protocol_v2_test") and not self.test_mode:

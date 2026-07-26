@@ -10,6 +10,7 @@ import numpy as np
 from copilot_sdk.backend import create_conservation_router, create_measurement_state_router
 from copilot_sdk.backend.counterfactual_router import create_counterfactual_router
 from copilot_sdk.backend.transfer_router import create_transfer_router
+from copilot_sdk.config import GraphConfig
 from copilot_sdk.graph.factory import create_graph_store
 from copilot_sdk.scoring import CompoundingScorer
 from copilot_sdk.scoring.startup_restore import restore_l5_runtime_state
@@ -108,17 +109,24 @@ def build_s2p_scorer(
     resolved_profile = profile or _resolve_profile()
     if graph_store is not None:
         selected_graph_store = graph_store
+        selected_backend = type(graph_store).__name__
     else:
+        graph_config = GraphConfig.load("s2p", profile=resolved_profile)
         selected_graph_store = create_graph_store(
-            backend=os.environ.get("GRAPH_BACKEND", "sqlite"),
-            domain="s2p",
+            backend=graph_config.backend,
+            domain=graph_config.domain,
             db_path=str(effective),
             decision_id_prefix="S2P-",
+            dsn=graph_config.dsn,
+            graph_name=graph_config.graph,
+            test_mode=graph_config.active_test_mode,
+            shared_graph_authorization=graph_config.authorized,
             profile=resolved_profile,
         )
+        selected_backend = graph_config.backend
     logger.info(
         "S2P graph store initialized: backend=%s path=%s store=%s",
-        os.environ.get("GRAPH_BACKEND", "sqlite"),
+        selected_backend,
         effective,
         type(selected_graph_store).__name__,
     )

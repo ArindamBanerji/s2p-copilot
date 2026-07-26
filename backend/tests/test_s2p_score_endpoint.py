@@ -873,6 +873,7 @@ def test_conservation_status_endpoint_exists():
 
 
 def test_score_includes_process_context_when_available(monkeypatch):
+    monkeypatch.setattr(s2p_router, "_SCORE_PROCESS_CONTEXT_CACHE", None)
     monkeypatch.setattr(
         s2p_router,
         "_load_celonis_cache",
@@ -900,6 +901,7 @@ def test_score_includes_process_context_when_available(monkeypatch):
 
 
 def test_score_omits_process_context_when_unavailable(monkeypatch):
+    monkeypatch.setattr(s2p_router, "_SCORE_PROCESS_CONTEXT_CACHE", None)
     monkeypatch.setattr(s2p_router, "_load_celonis_cache", lambda: {})
 
     response = client.post("/api/s2p/score", json=VALID_REQUEST)

@@ -289,17 +289,27 @@ def test_non_strict_score_shadow_failure_keeps_sqlite_response_and_redacts_error
     assert "password=***" in event.error_message
 
 
-def test_strict_score_shadow_failure_logs_after_authoritative_write(caplog):
+def test_strict_score_shadow_failure_logs_after_authoritative_write(caplog, monkeypatch):
     fake = FakeShadowStore(fail_governed=True)
     shadow = _shadow_state(fake, strict=True)
     _reset_app_state(shadow)
+    # Keep the authoritative write successful so this test exercises the
+    # shadow failure callback rather than the legacy direct AGE write path.
+    monkeypatch.setattr(
+        "app.domains.s2p.graph.write_s2p_decision",
+        lambda *args, **kwargs: None,
+    )
 
     with caplog.at_level("WARNING"):
         response = _score(TestClient(app), "S2P-SHADOW-SCORE-STRICT")
         deadline = time.time() + 2
         while time.time() < deadline:
             events = shadow.diagnostics.events()
-            if events and events[-1].operation == "score_shadow":
+            if (
+                events
+                and events[-1].operation == "score_shadow"
+                and "S2P side effect failed" in caplog.text
+            ):
                 break
             time.sleep(0.01)
 

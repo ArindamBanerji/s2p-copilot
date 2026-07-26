@@ -1,5 +1,6 @@
 import os
 import logging
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -86,10 +87,25 @@ def _cors_origins() -> list[str]:
     ]
 
 
-def build_s2p_scorer(db_path: str | None = None, graph_store=None) -> CompoundingScorer:
+def _resolve_profile() -> str:
+    """Select an explicit scorer/store profile for runtime versus pytest."""
+    if os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
+        return "test"
+    if os.environ.get("CI_ALLOW_SQLITE_FALLBACK") == "1":
+        return "development"
+    return "production"
+
+
+def build_s2p_scorer(
+    db_path: str | None = None,
+    graph_store=None,
+    *,
+    profile: str | None = None,
+) -> CompoundingScorer:
     effective = db_path if db_path is not None else ":memory:"
     if effective != ":memory:":
         effective = str(Path(effective).expanduser().resolve())
+    resolved_profile = profile or _resolve_profile()
     if graph_store is not None:
         selected_graph_store = graph_store
     else:
@@ -98,6 +114,7 @@ def build_s2p_scorer(db_path: str | None = None, graph_store=None) -> Compoundin
             domain="s2p",
             db_path=str(effective),
             decision_id_prefix="S2P-",
+            profile=resolved_profile,
         )
     logger.info(
         "S2P graph store initialized: backend=%s path=%s store=%s",
@@ -109,6 +126,7 @@ def build_s2p_scorer(db_path: str | None = None, graph_store=None) -> Compoundin
         "s2p",
         graph_store=selected_graph_store,
         reward_function=S2PRewardFunction(),
+        profile=resolved_profile,
     )
     _migrate_s2p_scorer_runtime(scorer)
     return scorer
@@ -135,6 +153,7 @@ app.state.s2p_active_graph_config = initialize_s2p_active_graph_config()
 app.state.scorer = build_s2p_scorer(
     str(DATA_DIR / "s2p.db"),
     graph_store=create_s2p_active_graph_store(app.state.s2p_active_graph_config),
+    profile=_resolve_profile(),
 )
 app.state.graph_store = app.state.scorer.graph_store
 # Enrichment remains SQLite-owned during the split-read migration.  The

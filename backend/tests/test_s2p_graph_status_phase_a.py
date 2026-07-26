@@ -69,6 +69,7 @@ def test_production_config_fails_closed_when_age_dsn_is_missing(monkeypatch):
     """Production resolution must surface the loader's missing-DSN error."""
     for name in (
         "GRAPH_CONFIG_PATH",
+        "GRAPH_BACKEND",
         "S2P_ACTIVE_GRAPH_BACKEND",
         "S2P_ACTIVE_AGE_DSN",
         "S2P_ACTIVE_AGE_DOMAIN",

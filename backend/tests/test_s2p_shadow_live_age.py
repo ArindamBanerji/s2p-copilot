@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -34,7 +35,19 @@ def _reset_app_with_live_shadow(s2p_age_test_env):
     assert shadow.config.graph != "soc_graph"
     assert str(shadow.config.graph).startswith("protocol_v2_test")
     assert shadow.config.test_mode is True
-    app.state.scorer = build_s2p_scorer()
+    # The fixture isolates module-level app construction on SQLite.  Resolve
+    # the scorer against the same disposable AGE graph as the shadow store.
+    active_keys = tuple(s2p_age_test_env.active)
+    previous = {key: os.environ.get(key) for key in active_keys}
+    try:
+        os.environ.update(s2p_age_test_env.active)
+        app.state.scorer = build_s2p_scorer()
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
     app.state.graph_store = app.state.scorer.graph_store
     app.state.s2p_reward_function = app.state.scorer._reward_fn
     app.state.s2p_shadow = shadow
@@ -42,14 +55,29 @@ def _reset_app_with_live_shadow(s2p_age_test_env):
     return shadow
 
 
-def _score(client: TestClient, suffix: str):
-    return client.post(
+def _wait_for_shadow_event(shadow, operation: str, operation_id: str) -> None:
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        if any(
+            event.operation == operation and event.operation_id == operation_id
+            for event in shadow.diagnostics.events()
+        ):
+            return
+        time.sleep(0.01)
+    raise AssertionError(f"missing {operation} diagnostic event for {operation_id}")
+
+
+def _score(client: TestClient, suffix: str, shadow=None):
+    response = client.post(
         "/api/s2p/score",
         json={
             **BASE_SCORE_BODY,
             "event_id": f"S2P-SHADOW-LIVE-{suffix}-{uuid4()}",
         },
     )
+    if shadow and response.status_code == 200:
+        _wait_for_shadow_event(shadow, "score_shadow", response.json()["decision_id"])
+    return response
 
 
 def _latest_event(shadow, operation: str):
@@ -90,7 +118,7 @@ def test_live_age_shadow_score_non_strict_success(s2p_age_test_env):
     shadow = _reset_app_with_live_shadow(s2p_age_test_env)
     client = TestClient(app)
 
-    response = _score(client, "SCORE")
+    response = _score(client, "SCORE", shadow)
 
     assert response.status_code == 200
     body = response.json()
@@ -117,7 +145,7 @@ def test_live_age_shadow_outcome_non_strict_success(s2p_age_test_env):
     shadow = _reset_app_with_live_shadow(s2p_age_test_env)
     client = TestClient(app)
     verified_before = shadow.store.count_verified_decisions("s2p")
-    score_response = _score(client, "OUTCOME")
+    score_response = _score(client, "OUTCOME", shadow)
     score = score_response.json()
 
     response = client.post(
@@ -171,7 +199,7 @@ def test_live_age_shadow_learn_non_strict_success(s2p_age_test_env):
     shadow = _reset_app_with_live_shadow(s2p_age_test_env)
     client = TestClient(app)
     verified_before = shadow.store.count_verified_decisions("s2p")
-    score_response = _score(client, "LEARN")
+    score_response = _score(client, "LEARN", shadow)
     score = score_response.json()
 
     response = client.post(

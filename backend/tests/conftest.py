@@ -7,13 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from copilot_sdk.testing import age_available
+from copilot_sdk.testing.fixtures import age_available
 
 
 # Module-level app construction happens while pytest imports test modules. Keep
 # that construction on an explicit local backend; tests that exercise active
 # AGE override these values with their own scoped environment setup.
 os.environ["GRAPH_BACKEND"] = "sqlite"
+_ORIGINAL_GRAPH_DSN = os.environ.get("GRAPH_DSN", "")
 os.environ.pop("GRAPH_DSN", None)
 os.environ.pop("GRAPH_NAME", None)
 os.environ["S2P_ACTIVE_GRAPH_BACKEND"] = "sqlite"
@@ -38,6 +39,7 @@ graph = \"soc_graph\"
     encoding="utf-8",
 )
 os.environ["GRAPH_CONFIG_PATH"] = str(_config_path)
+age_available.cache_clear()
 
 
 @dataclass(frozen=True)
@@ -49,34 +51,40 @@ class S2PAgeTestEnvironment:
 @pytest.fixture(scope="session")
 def s2p_age_test_env() -> S2PAgeTestEnvironment:
     """Provide one disposable AGE graph for S2P live integration tests."""
-    if not age_available():
-        pytest.skip("AGE not reachable (no test DSN configured or connection failed)")
-
-    dsn = os.environ.get("AGE_TEST_DSN", "").strip()
+    dsn = os.environ.get("AGE_TEST_DSN", "").strip() or _ORIGINAL_GRAPH_DSN.strip()
     if not dsn:
-        pytest.skip("AGE is reachable but AGE_TEST_DSN is required for disposable S2P graph setup")
+        pytest.skip("AGE not available")
 
     import psycopg
     from uuid import uuid4
 
-    graph_name = f"protocol_v2_test_s2p_{uuid4().hex[:12]}"
+    try:
+        conn = psycopg.connect(dsn, connect_timeout=3, autocommit=True)
+        conn.execute("LOAD 'age'")
+        conn.close()
+    except Exception:
+        pytest.skip("AGE not reachable")
+
+    active_graph_name = f"protocol_v2_test_s2p_active_{uuid4().hex[:12]}"
+    shadow_graph_name = f"protocol_v2_test_s2p_shadow_{uuid4().hex[:12]}"
     with psycopg.connect(dsn, connect_timeout=3, autocommit=True) as conn:
         conn.execute("LOAD 'age'")
         conn.execute('SET search_path = ag_catalog, "$user", public')
-        conn.execute(f"SELECT create_graph('{graph_name}')")
+        conn.execute(f"SELECT create_graph('{active_graph_name}')")
+        conn.execute(f"SELECT create_graph('{shadow_graph_name}')")
 
     environment = S2PAgeTestEnvironment(
         active={
             "S2P_ACTIVE_GRAPH_BACKEND": "age",
             "S2P_ACTIVE_AGE_DSN": dsn,
-            "S2P_ACTIVE_AGE_GRAPH": graph_name,
+            "S2P_ACTIVE_AGE_GRAPH": active_graph_name,
             "S2P_ACTIVE_AGE_DOMAIN": "s2p",
             "S2P_ACTIVE_AGE_TEST_MODE": "1",
         },
         shadow={
             "S2P_SHADOW_AGE": "1",
             "S2P_AGE_DSN": dsn,
-            "S2P_AGE_GRAPH": graph_name,
+            "S2P_AGE_GRAPH": shadow_graph_name,
             "S2P_AGE_TEST_MODE": "1",
         },
     )
@@ -86,4 +94,5 @@ def s2p_age_test_env() -> S2PAgeTestEnvironment:
         with psycopg.connect(dsn, connect_timeout=3, autocommit=True) as conn:
             conn.execute("LOAD 'age'")
             conn.execute('SET search_path = ag_catalog, "$user", public')
-            conn.execute(f"SELECT drop_graph('{graph_name}', true)")
+            conn.execute(f"SELECT drop_graph('{active_graph_name}', true)")
+            conn.execute(f"SELECT drop_graph('{shadow_graph_name}', true)")

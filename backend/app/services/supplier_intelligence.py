@@ -11,6 +11,7 @@ from typing import Any
 from copilot_sdk.graph.enrichment import ProvenancedValue
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.routers.s2p_data_helpers import load_invoices, load_suppliers
 from app.services.s2p_enrichment import (
     DOMAIN as S2P_ENRICHMENT_DOMAIN,
@@ -59,12 +60,14 @@ class SupplierIntelligenceComposer:
         self,
         *,
         graph_store: Any | None = None,
+        reader: S2PGraphReader | None = None,
         accumulator: Any = default_accumulator,
         suppliers: list[dict[str, Any]] | None = None,
         invoices: list[dict[str, Any]] | None = None,
         weekly_decision_rate: float = 5.0,
     ) -> None:
         self.graph_store = graph_store
+        self.reader = reader or (S2PGraphReader(store=graph_store) if graph_store is not None else None)
         self.accumulator = accumulator
         self.suppliers = suppliers if suppliers is not None else load_suppliers()
         self.invoices = invoices if invoices is not None else load_invoices()
@@ -371,12 +374,9 @@ class SupplierIntelligenceComposer:
         return value if isinstance(value, dict) else {}
 
     def _verified_decisions_for_supplier(self, supplier_id: str) -> list[dict[str, Any]]:
-        if self.graph_store is None or not hasattr(self.graph_store, "get_verified_decisions"):
+        if self.reader is None:
             return []
-        try:
-            decisions = self.graph_store.get_verified_decisions("s2p")
-        except (AttributeError, NotImplementedError, TypeError, ValueError):
-            return []
+        decisions = self.reader.get_verified_decisions()
         if not isinstance(decisions, list):
             return []
         return [

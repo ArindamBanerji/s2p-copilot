@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from app.domains.s2p.config import PENALTY_RATIO, S2PDomainConfig
 from app.framework import audit
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
 from app.services.receipt_store import get_receipt_store
 
@@ -36,36 +37,21 @@ def _sdk_scorer(request: Request) -> Any:
     return scorer
 
 
-def _graph_domain(graph_store: Any | None = None) -> str:
-    return str(getattr(graph_store, "domain", None) or "s2p")
+def _graph_reader(request: Request) -> S2PGraphReader:
+    state = getattr(request.app, "state", None)
+    scorer = getattr(state, "scorer", None)
+    graph_store = getattr(scorer, "graph_store", None)
+    reader = getattr(state, "s2p_graph_reader", None)
+    if isinstance(reader, S2PGraphReader) and reader.store is graph_store:
+        return reader
+    if graph_store is None:
+        raise HTTPException(status_code=503, detail="S2P graph reader unavailable")
+    return S2PGraphReader(store=graph_store)
 
 
-def _call_count(method: Any, graph_store: Any | None) -> int | None:
-    if not callable(method):
-        return None
-    for args in ((_graph_domain(graph_store),), ()):
-        try:
-            return int(method(*args) or 0)
-        except TypeError:
-            continue
-        except Exception:
-            return None
-    return None
-
-
-def _all_graph_decisions(graph_store: Any | None) -> list[dict[str, Any]]:
-    get_all_decisions = getattr(graph_store, "get_all_decisions", None)
-    if not callable(get_all_decisions):
-        return []
-    for args in ((_graph_domain(graph_store),), ()):
-        try:
-            rows = get_all_decisions(*args)
-            return [dict(row) for row in rows if isinstance(row, dict)]
-        except TypeError:
-            continue
-        except Exception:
-            return []
-    return []
+def _all_graph_decisions(reader: S2PGraphReader) -> list[dict[str, Any]]:
+    rows = reader.get_all_decisions()
+    return [dict(row) for row in rows if isinstance(row, dict)]
 
 
 def _decision_metadata(decision: dict[str, Any]) -> dict[str, Any]:
@@ -103,9 +89,9 @@ def _bool_or_none(value: Any) -> bool | None:
     return None
 
 
-def _get_conservation_status(graph_store: Any | None, scorer: Any) -> dict[str, Any]:
-    verified = _call_count(getattr(graph_store, "count_verified", None), graph_store)
-    correct = _call_count(getattr(graph_store, "count_correct", None), graph_store)
+def _get_conservation_status(reader: S2PGraphReader, scorer: Any) -> dict[str, Any]:
+    verified = reader.count_verified()
+    correct = reader.count_correct()
     status = "UNKNOWN"
     try:
         phase = scorer.get_phase()
@@ -277,14 +263,14 @@ def _decision_chain() -> dict[str, Any]:
 
 
 def _export_payload(request: Request) -> dict[str, Any]:
-    graph_store = _graph_store(request)
     scorer = _sdk_scorer(request)
-    graph_decisions = _all_graph_decisions(graph_store)
+    reader = _graph_reader(request)
+    graph_decisions = _all_graph_decisions(reader)
     audit_decisions = audit.get_decisions()
     decisions = graph_decisions if graph_decisions else audit_decisions
-    verified_decisions = _call_count(getattr(graph_store, "count_verified", None), graph_store)
-    correct_decisions = _call_count(getattr(graph_store, "count_correct", None), graph_store)
-    conservation = _get_conservation_status(graph_store, scorer)
+    verified_decisions = reader.count_verified()
+    correct_decisions = reader.count_correct()
+    conservation = _get_conservation_status(reader, scorer)
     override_rate = _compute_override_rate(decisions)
     conservation["override_rate"] = override_rate
     chain = _decision_chain()
@@ -328,13 +314,18 @@ def _csv_row(decision: dict[str, Any]) -> list[Any]:
 
 @router.get("/export", response_model=GenericResponse)
 def export_audit_package(request: Request) -> dict[str, Any]:
-    return _export_payload(request)
+    try:
+        return _export_payload(request)
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P graph unavailable for audit export") from exc
 
 
 @router.get("/export/csv", response_model=GenericResponse)
 def export_audit_csv(request: Request) -> dict[str, Any]:
-    graph_store = _graph_store(request)
-    decisions = _all_graph_decisions(graph_store)
+    try:
+        decisions = _all_graph_decisions(_graph_reader(request))
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P graph unavailable for audit export") from exc
     if not decisions:
         decisions = audit.get_decisions()
     capped = decisions[:CSV_ROW_LIMIT]

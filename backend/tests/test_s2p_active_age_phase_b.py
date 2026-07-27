@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.main import app, build_s2p_scorer  # noqa: E402
+from app.graph.s2p_graph_reader import S2PGraphReader  # noqa: E402
 from app.routers import s2p as s2p_router  # noqa: E402
 from app.s2p_graph_status import (  # noqa: E402
     S2PActiveAGEGraphStore,
@@ -197,14 +198,14 @@ class FakeAGEStore:
         assert domain == self.domain
         return [dict(decision) for decision in getattr(self, "_archive", [])]
 
-    def get_all_decisions(self, domain: str) -> list[dict[str, Any]]:
+    def get_all_decisions(self, domain: str | None = None) -> list[dict[str, Any]]:
         return [
             dict(decision)
             for decision in self.decisions.values()
-            if decision.get("domain") == domain
+            if domain is None or decision.get("domain") == domain
         ]
 
-    def get_verified_decisions(self, domain: str) -> list[dict[str, Any]]:
+    def get_verified_decisions(self, domain: str | None = None) -> list[dict[str, Any]]:
         return [
             dict(decision)
             for decision in self.get_all_decisions(domain)
@@ -276,12 +277,23 @@ class FakeAGEStore:
             }
         )
 
-    def get_decision_links(self, decision_id: str | None = None) -> list[dict[str, Any]]:
+    def get_decision_links(
+        self,
+        decision_id: str | None = None,
+        domain: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if domain is not None:
+            assert domain == self.domain
         if decision_id is None:
-            return list(self.links)
-        return [link for link in self.links if link["decision_id"] == decision_id]
+            links = list(self.links)
+        else:
+            links = [link for link in self.links if link["decision_id"] == decision_id]
+        return links[:limit] if limit is not None else links
 
-    def query_context(self, entity_id: str, hops: int = 2) -> list[dict[str, Any]]:
+    def query_context(
+        self, entity_id: str, hops: int = 2, domain: str | None = None
+    ) -> list[dict[str, Any]]:
         return []
 
     def close(self) -> None:
@@ -316,6 +328,7 @@ def _reset_app_state(*, active_store: Any | None = None, active_config: S2PActiv
     app.state.s2p_active_graph_config = active_config or S2PActiveGraphConfig.from_env({})
     app.state.scorer = build_s2p_scorer(graph_store=active_store)
     app.state.graph_store = app.state.scorer.graph_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=app.state.scorer.graph_store)
     app.state.s2p_reward_function = app.state.scorer._reward_fn
     app.state.s2p_shadow = initialize_s2p_shadow_state(env={})
     s2p_router._clear_score_conservation_status_cache()

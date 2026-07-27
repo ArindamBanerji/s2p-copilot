@@ -7,6 +7,8 @@ from typing import Any
 
 from copilot_sdk.graph.enrichment import EnrichmentSourceSet, ProvenancedValue
 
+from app.graph.s2p_graph_reader import S2PGraphReader
+
 DOMAIN = "s2p"
 NAMESPACE = "s2p_situation_context"
 COMPUTATION_VERSION = "p39_s2p_situation_context_v1"
@@ -60,8 +62,13 @@ class S2PSituationEnricher:
     """Writes context nodes using GraphStore.write_entity_enrichment()."""
 
     graph_store: Any
+    reader: S2PGraphReader | None = None
     linked: bool = False
     warning: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.reader is None:
+            self.reader = S2PGraphReader(store=self.graph_store)
 
     def enrich_invoice_context(self, invoice_id: str, context: dict[str, Any]) -> int:
         """Write context nodes for an invoice. Returns count of newly written nodes."""
@@ -80,7 +87,7 @@ class S2PSituationEnricher:
             existed = bool(self._read(entity_type, entity_id))
             self._write(entity_type, entity_id, properties, invoice_id)
             self._link_invoice_decisions(invoice_id, entity_id, str(config["edge_type"]))
-            linked_any = linked_any or _has_entity_link(self.graph_store, entity_id, str(config["edge_type"]))
+            linked_any = linked_any or _has_entity_link(self.reader, entity_id, str(config["edge_type"]))
             if not existed:
                 written += 1
         self.linked = linked_any
@@ -122,7 +129,7 @@ class S2PSituationEnricher:
         linker = getattr(self.graph_store, "link_decision_to_entity", None)
         if not callable(linker):
             return
-        existing_links = _decision_links(self.graph_store)
+        existing_links = _decision_links(self.reader)
         decision_ids = sorted(
             {
                 str(link.get("decision_id"))
@@ -130,7 +137,7 @@ class S2PSituationEnricher:
                 if str(link.get("entity_id")) == str(invoice_id) and link.get("decision_id")
             }
         )
-        if not decision_ids and _has_decision(self.graph_store, invoice_id):
+        if not decision_ids and _has_decision(self.reader, invoice_id):
             decision_ids = [str(invoice_id)]
         for decision_id in decision_ids:
             if any(
@@ -175,32 +182,20 @@ def _metrics(properties: dict[str, Any]) -> dict[str, ProvenancedValue]:
     }
 
 
-def _decision_links(graph_store: Any) -> list[dict[str, Any]]:
-    reader = getattr(graph_store, "get_decision_links", None)
-    if not callable(reader):
-        return []
-    try:
-        rows = reader(limit=1000)
-    except TypeError:
-        rows = reader()
+def _decision_links(reader: S2PGraphReader) -> list[dict[str, Any]]:
+    rows = reader.get_decision_links(limit=1000)
     return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
 
 
-def _has_decision(graph_store: Any, decision_id: str) -> bool:
-    getter = getattr(graph_store, "get_decision", None)
-    if not callable(getter):
-        return False
-    try:
-        return isinstance(getter(str(decision_id)), dict)
-    except Exception:
-        return False
+def _has_decision(reader: S2PGraphReader, decision_id: str) -> bool:
+    return isinstance(reader.get_decision(str(decision_id)), dict)
 
 
-def _has_entity_link(graph_store: Any, entity_id: str, edge_type: str) -> bool:
+def _has_entity_link(reader: S2PGraphReader, entity_id: str, edge_type: str) -> bool:
     return any(
         str(link.get("entity_id")) == str(entity_id)
         and str(link.get("edge_type")) == str(edge_type)
-        for link in _decision_links(graph_store)
+        for link in _decision_links(reader)
     )
 
 

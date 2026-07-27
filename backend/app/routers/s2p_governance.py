@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 
 from app.models.responses import GenericResponse
+from app.graph.s2p_graph_reader import GraphUnavailableError
 from app.routers.s2p_data_helpers import load_suppliers
 from app.services.receipt_store import get_receipt_store
 
@@ -16,28 +17,24 @@ from app.services.receipt_store import get_receipt_store
 router = APIRouter(prefix="/api/s2p/governance", tags=["s2p-governance"])
 
 
-def _graph_domain(graph_store: Any | None = None) -> str:
-    return str(getattr(graph_store, "domain", None) or "s2p")
-
-
 def _safe_conservation_snapshot(request: Request) -> dict[str, Any]:
     try:
         from app.routers.s2p import (
             _current_conservation_status,
-            _graph_store_from_request,
             _graph_verified_counts,
+            _s2p_graph_reader,
         )
 
         verified_count, correct_count = _graph_verified_counts(request)
-        graph_store = _graph_store_from_request(request)
-        get_all_decisions = getattr(graph_store, "get_all_decisions", None)
-        total_decisions = len(get_all_decisions(_graph_domain(graph_store))) if callable(get_all_decisions) else verified_count
+        total_decisions = len(_s2p_graph_reader(request).get_all_decisions())
         return {
             "state": _current_conservation_status(request),
             "verified_count": verified_count,
             "correct_count": correct_count,
             "total_decisions": max(int(total_decisions), 0),
         }
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P graph unavailable for governance") from exc
     except Exception:
         return {
             "state": "UNKNOWN",

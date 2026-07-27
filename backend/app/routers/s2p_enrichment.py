@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.services.s2p_enrichment import NAMESPACE, S2PSupplierEnrichmentService
 
 router = APIRouter(prefix="/api/s2p/enrichment", tags=["s2p-enrichment"])
@@ -94,7 +95,14 @@ def _service(request: Request) -> S2PSupplierEnrichmentService:
         graph_store = getattr(scorer, "graph_store", None)
     if graph_store is None:
         raise HTTPException(status_code=503, detail="GraphStore unavailable for S2P enrichment")
-    return S2PSupplierEnrichmentService(graph_store=graph_store)
+    scorer = getattr(state, "scorer", None)
+    scorer_store = getattr(scorer, "graph_store", None)
+    reader = getattr(state, "s2p_graph_reader", None)
+    if not isinstance(reader, S2PGraphReader) or reader.store is not scorer_store:
+        if scorer_store is None:
+            raise HTTPException(status_code=503, detail="S2P graph reader unavailable")
+        reader = S2PGraphReader(store=scorer_store)
+    return S2PSupplierEnrichmentService(graph_store=graph_store, reader=reader)
 
 
 __all__ = [

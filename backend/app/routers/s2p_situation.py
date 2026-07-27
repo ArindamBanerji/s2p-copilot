@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -9,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from copilot_sdk.situation import NLRenderer, SituationAnalyzer
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.services.situation_traversals import (
     SITUATION_NL_TEMPLATES,
     S2P_TRAVERSAL_PATTERNS,
@@ -33,8 +35,8 @@ async def get_situation(
     if graph_store is None:
         raise HTTPException(status_code=503, detail="Graph store unavailable")
     try:
-        decision = _decision(graph_store, decision_id)
-    except RuntimeError as exc:
+        decision = _decision(_graph_reader(request), decision_id)
+    except GraphUnavailableError as exc:
         raise HTTPException(status_code=503, detail="Decision graph unavailable") from exc
     if decision is None:
         raise HTTPException(status_code=404, detail=f"decision_id not found: {decision_id}")
@@ -45,8 +47,9 @@ async def get_situation(
         raise HTTPException(status_code=400, detail=f"no traversal pattern for category: {category}")
 
     metadata = decision.get("metadata") if isinstance(decision.get("metadata"), dict) else {}
+    reader = _graph_reader(request)
     analyzer = SituationAnalyzer(
-        S2P_TRAVERSAL_PATTERNS,
+        [replace(pattern, reader=reader) for pattern in S2P_TRAVERSAL_PATTERNS],
         default_max_depth=3,
         max_allowed_depth=3,
     )
@@ -123,16 +126,22 @@ def _graph_store(request: Request) -> Any | None:
     return getattr(scorer, "graph_store", None)
 
 
-def _decision(graph_store: Any | None, decision_id: str) -> dict[str, Any] | None:
-    get_decision = getattr(graph_store, "get_decision", None)
-    if not callable(get_decision):
-        return None
-    try:
-        decision = get_decision(str(decision_id), domain="s2p")
-    except Exception as exc:
-        raise RuntimeError("S2P decision graph lookup failed") from exc
+def _graph_reader(request: Request) -> S2PGraphReader:
+    state = getattr(request.app, "state", None)
+    scorer = getattr(state, "scorer", None)
+    graph_store = getattr(scorer, "graph_store", None)
+    reader = getattr(state, "s2p_graph_reader", None)
+    if isinstance(reader, S2PGraphReader) and reader.store is graph_store:
+        return reader
+    if graph_store is None:
+        raise GraphUnavailableError("S2P graph reader unavailable")
+    return S2PGraphReader(store=graph_store)
+
+
+def _decision(reader: S2PGraphReader, decision_id: str) -> dict[str, Any] | None:
+    decision = reader.get_decision(str(decision_id))
     if isinstance(decision, dict) and decision.get("domain") not in (None, "s2p"):
-        raise RuntimeError("S2P decision lookup returned a foreign domain")
+        raise GraphUnavailableError("S2P decision lookup returned a foreign domain")
     return decision if isinstance(decision, dict) else None
 
 

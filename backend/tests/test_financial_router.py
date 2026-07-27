@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.domains.s2p.config import S2PDomainConfig
-from app.main import app
+from app.graph.s2p_graph_reader import S2PGraphReader
+from app.main import app, build_s2p_scorer
 from app.routers import financial_router
 from app.services.financial_impact import FinancialSummary
 
@@ -13,15 +15,28 @@ from app.services.financial_impact import FinancialSummary
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def reset_financial_app_state():
+    yield
+    scorer = build_s2p_scorer()
+    app.state.scorer = scorer
+    app.state.graph_store = scorer.graph_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=scorer.graph_store)
+    financial_router.reset_financial_snapshots()
+
+
 class FakeGraphStore:
     domain = "s2p"
 
-    def __init__(self, decisions: list[dict] | None = None):
+    def __init__(self, decisions: list[dict] | None = None, *, fail_reads: bool = False):
         self.decisions = list(decisions or [])
         self.calls: list[tuple] = []
+        self.fail_reads = fail_reads
 
-    def get_all_decisions(self, domain: str):
+    def get_all_decisions(self, domain: str | None = None):
         self.calls.append((domain,))
+        if self.fail_reads:
+            raise RuntimeError("AGE unavailable")
         return list(self.decisions)
 
     def get_decision(self, decision_id: str, domain: str | None = None):
@@ -52,8 +67,14 @@ class FakeReceiptStore:
         return list(self.receipts)[-limit:]
 
 
-def _set_financial_state(monkeypatch, decisions: list[dict], receipts: list[dict] | None = None) -> None:
-    graph_store = FakeGraphStore(decisions)
+def _set_financial_state(
+    monkeypatch,
+    decisions: list[dict],
+    receipts: list[dict] | None = None,
+    *,
+    fail_reads: bool = False,
+) -> None:
+    graph_store = FakeGraphStore(decisions, fail_reads=fail_reads)
     app.state.graph_store = graph_store
     app.state.scorer = SimpleNamespace(graph_store=graph_store)
     monkeypatch.setattr(financial_router, "get_receipt_store", lambda: FakeReceiptStore(receipts or []))
@@ -108,6 +129,22 @@ def test_financial_impact_empty_data_returns_zero_values(monkeypatch):
     assert data["verified_decisions"] == 0
     assert data["total_recovered"] == 0.0
     assert data["by_category"] == {}
+
+
+def test_financial_impact_graph_failure_returns_503(monkeypatch):
+    original_graph = getattr(app.state, "graph_store", None)
+    original_scorer = getattr(app.state, "scorer", None)
+    original_reader = getattr(app.state, "s2p_graph_reader", None)
+    _set_financial_state(monkeypatch, [], fail_reads=True)
+    try:
+        response = client.get("/api/s2p/financial-impact")
+    finally:
+        app.state.graph_store = original_graph
+        app.state.scorer = original_scorer
+        app.state.s2p_graph_reader = original_reader
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "S2P graph unavailable for financial impact"
 
 
 def test_financial_impact_trend_returns_points_array(monkeypatch):

@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 import numpy as np
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import ExplorerCentroidResponse, GenericResponse
 
 
@@ -27,6 +28,17 @@ def _get_scorer(http_request: Request) -> Any:
 
 def _get_config() -> type[S2PDomainConfig]:
     return S2PDomainConfig
+
+
+def _get_graph_reader(http_request: Request, scorer: Any) -> S2PGraphReader:
+    state = getattr(http_request.app, "state", None)
+    reader = getattr(state, "s2p_graph_reader", None)
+    graph_store = getattr(scorer, "graph_store", None)
+    if isinstance(reader, S2PGraphReader) and reader.store is graph_store:
+        return reader
+    if graph_store is None:
+        raise HTTPException(status_code=503, detail="S2P graph reader unavailable")
+    return S2PGraphReader(store=graph_store)
 
 
 def _gae_scorer_from_scorer(scorer: Any) -> Any:
@@ -166,21 +178,11 @@ def _current_conservation_status(http_request: Request) -> str:
         from gae.calibration import conservation_status
 
         state = getattr(http_request.app, "state", None)
-        graph_store = getattr(state, "graph_store", None)
-        if graph_store is None:
-            scorer = getattr(state, "scorer", None)
-            graph_store = getattr(scorer, "graph_store", None)
-        domain = _graph_domain(graph_store)
-        count_verified = getattr(graph_store, "count_verified", None)
-        count_correct = getattr(graph_store, "count_correct", None)
-        count_verified_decisions = getattr(graph_store, "count_verified_decisions", None)
-        verified_count = int(count_verified(domain)) if callable(count_verified) else 0
-        correct_count = int(count_correct(domain)) if callable(count_correct) else 0
-        total_decisions = (
-            int(count_verified_decisions(domain))
-            if callable(count_verified_decisions)
-            else verified_count
-        )
+        scorer = getattr(state, "scorer", None)
+        reader = _get_graph_reader(http_request, scorer)
+        verified_count = int(reader.count_verified())
+        correct_count = int(reader.count_correct())
+        total_decisions = int(reader.count_verified_decisions())
         check = conservation_status(
             verified_count=max(verified_count, 0),
             correct_count=max(correct_count, 0),
@@ -188,6 +190,8 @@ def _current_conservation_status(http_request: Request) -> str:
             penalty_ratio=float(getattr(_get_config(), "penalty_ratio", 5.0)),
         )
         return str(check.status).upper()
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P graph query failed") from exc
     except Exception:
         return "UNKNOWN"
 
@@ -328,18 +332,15 @@ def _graph_domain(graph_store: Any | None = None) -> str:
     return str(getattr(graph_store, "domain", None) or "s2p")
 
 
-def _find_scored_decision(scorer: Any, invoice_id: str) -> dict[str, Any] | None:
-    graph_store = getattr(scorer, "graph_store", None)
-    get_decision = getattr(graph_store, "get_decision", None)
-    if callable(get_decision):
-        decision = get_decision(invoice_id)
-        if isinstance(decision, dict):
-            return decision
+def _find_scored_decision(
+    reader: S2PGraphReader,
+    invoice_id: str,
+) -> dict[str, Any] | None:
+    decision = reader.get_decision(invoice_id)
+    if isinstance(decision, dict):
+        return decision
 
-    get_all_decisions = getattr(graph_store, "get_all_decisions", None)
-    if not callable(get_all_decisions):
-        return None
-    for decision in get_all_decisions(_graph_domain(graph_store)):
+    for decision in reader.get_all_decisions():
         if not isinstance(decision, dict):
             continue
         if _decision_invoice_id(decision) == invoice_id:
@@ -562,7 +563,11 @@ def factor_ranking(http_request: Request) -> dict[str, Any]:
 def contribution(invoice_id: str, http_request: Request) -> dict[str, Any]:
     scorer = _get_scorer(http_request)
     config = _get_config()
-    decision = _find_scored_decision(scorer, invoice_id)
+    reader = _get_graph_reader(http_request, scorer)
+    try:
+        decision = _find_scored_decision(reader, invoice_id)
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P graph query failed") from exc
     if decision is None:
         raise HTTPException(
             status_code=404,

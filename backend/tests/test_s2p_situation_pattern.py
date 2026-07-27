@@ -40,16 +40,42 @@ class FakeStore:
             assert domain == self.domain
         return self.decisions.get(decision_id)
 
-    def get_decision_links(self, decision_id: str | None = None):
+    def get_decision_links(
+        self,
+        decision_id: str | None = None,
+        domain: str | None = None,
+        limit: int | None = None,
+    ):
+        if domain is not None:
+            assert domain == self.domain
+        links = list(self.links)
         if decision_id is None:
-            return list(self.links)
-        return [link for link in self.links if link["decision_id"] == decision_id]
+            return links[:limit] if limit is not None else links
+        links = [link for link in links if link["decision_id"] == decision_id]
+        return links[:limit] if limit is not None else links
 
-    def get_all_decisions(self, domain: str):
-        assert domain == "s2p"
+    def get_all_decisions(self, domain: str | None = None):
+        if domain is not None:
+            assert domain == "s2p"
         return list(self.decisions.values())
 
-    def query_context(self, invoice_id: str, max_depth: int):
+    def get_decisions(
+        self,
+        domain: str,
+        category: str | None = None,
+        limit: int = 400,
+    ):
+        assert domain == "s2p"
+        rows = [
+            decision
+            for decision in self.decisions.values()
+            if category is None or decision.get("category") == category
+        ]
+        return rows[:limit]
+
+    def query_context(
+        self, invoice_id: str, max_depth: int, domain: str | None = None
+    ):
         return {"neighbors": [{"node": {"invoice_id": invoice_id}, "max_depth": max_depth}]}
 
     def write_decision(

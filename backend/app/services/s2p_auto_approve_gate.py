@@ -13,6 +13,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.services.novelty_tracker import get_novelty_tracker
 
 
@@ -180,10 +181,11 @@ class AutoApproveGate:
         self,
         *,
         graph_store: Any | None,
+        reader: S2PGraphReader | None = None,
         conservation_status: str,
         p39_evidence: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        verified_rows, warnings = self._verified_decisions(graph_store)
+        verified_rows, warnings = self._verified_decisions(graph_store, reader)
         category_states = {
             category: self._category_state(
                 category,
@@ -214,13 +216,14 @@ class AutoApproveGate:
         confidence: float,
         recommended_action: str,
         graph_store: Any | None,
+        reader: S2PGraphReader | None = None,
         conservation_status: str,
         decision_id: str | None = None,
         invoice_id: str | None = None,
         supplier_id: str | None = None,
         p39_evidence: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        verified_rows, warnings = self._verified_decisions(graph_store)
+        verified_rows, warnings = self._verified_decisions(graph_store, reader)
         state = self._category_state(
             category,
             verified_rows=verified_rows,
@@ -389,16 +392,19 @@ class AutoApproveGate:
             state.spot_checked_count += 1
         return event
 
-    def _verified_decisions(self, graph_store: Any | None) -> tuple[list[dict[str, Any]], list[str]]:
-        if graph_store is None:
+    def _verified_decisions(
+        self,
+        graph_store: Any | None,
+        reader: S2PGraphReader | None = None,
+    ) -> tuple[list[dict[str, Any]], list[str]]:
+        active_reader = reader
+        if active_reader is None and graph_store is not None:
+            active_reader = S2PGraphReader(store=graph_store)
+        if active_reader is None:
             return [], ["GraphStore unavailable; derived category readiness is blocked."]
-        get_verified = getattr(graph_store, "get_verified_decisions", None)
-        if not callable(get_verified):
-            return [], ["GraphStore verified-decision read API unavailable; derived category readiness is blocked."]
-        domain = str(getattr(graph_store, "domain", DOMAIN) or DOMAIN)
         try:
-            rows = get_verified(domain)
-        except Exception as exc:
+            rows = active_reader.get_verified_decisions()
+        except GraphUnavailableError as exc:
             return [], [f"GraphStore verified-decision read failed: {exc}"]
         return [dict(row) for row in rows if isinstance(row, dict)], []
 

@@ -13,6 +13,7 @@ from copilot_sdk.situation import (
 )
 
 from app.routers.s2p_data_helpers import find_invoice
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.services.receipt_store import get_receipt_store
 from app.services.s2p_context_builder import S2PContextBuilder
 from app.services.s2p_evidence_templates import evidence_context_from_record
@@ -26,6 +27,7 @@ class S2PInvoiceTraversalPattern:
     name: str = "s2p_invoice_context"
     default_max_depth: int = 3
     scorer: Any = None
+    reader: S2PGraphReader | None = None
 
     def supports(self, intent: TypedIntent) -> bool:
         if intent.domain != self.domain:
@@ -65,15 +67,19 @@ class S2PInvoiceTraversalPattern:
         intent: TypedIntent,
         *,
         graph_store: Any = None,
+        reader: S2PGraphReader | None = None,
         max_depth: int = 3,
     ) -> SituationContext:
         max_depth = max(int(max_depth), 0)
         warnings: list[str] = []
+        active_reader = reader or self.reader
+        if active_reader is None and graph_store is not None:
+            active_reader = S2PGraphReader(store=graph_store)
         context = _intent_context(intent)
         invoice_id = _first(context, "invoice_id", "event_id", "source_invoice_id", "source_event_id")
         decision_id = _first(context, "decision_id") or intent.decision_id
         invoice = find_invoice(str(invoice_id)) if invoice_id else None
-        decision = _find_decision(graph_store, decision_id, invoice_id)
+        decision = _find_decision(active_reader, decision_id, invoice_id)
         if invoice is None and decision is not None:
             invoice_id = _decision_value(decision, "invoice_id", "source_invoice_id", "entity_id")
             invoice = find_invoice(str(invoice_id)) if invoice_id else None
@@ -85,7 +91,11 @@ class S2PInvoiceTraversalPattern:
             base_record.update(invoice)
         base_record.update({key: value for key, value in context.items() if value is not None})
 
-        builder = S2PContextBuilder(scorer=self.scorer, graph_store=graph_store)
+        builder = S2PContextBuilder(
+            scorer=self.scorer,
+            graph_store=graph_store,
+            reader=active_reader,
+        )
         built = builder.build_invoice_context(
             invoice_id=str(invoice_id or base_record.get("invoice_id")) if invoice_id or base_record.get("invoice_id") else None,
             category=str(base_record.get("category")) if base_record.get("category") else None,
@@ -122,57 +132,37 @@ class S2PInvoiceTraversalPattern:
         )
 
 
-def _find_decision(graph_store: Any, decision_id: Any, invoice_id: Any) -> dict[str, Any] | None:
-    if graph_store is None:
+def _find_decision(
+    reader: S2PGraphReader | None,
+    decision_id: Any,
+    invoice_id: Any,
+) -> dict[str, Any] | None:
+    if reader is None:
         return None
-    get_decision = getattr(graph_store, "get_decision", None)
-    if callable(get_decision) and decision_id:
-        try:
-            decision = get_decision(str(decision_id))
-            if isinstance(decision, dict):
-                return decision
-        except Exception:
-            return None
-    for decision in _linked_decisions(graph_store, invoice_id):
+    if decision_id:
+        decision = reader.get_decision(str(decision_id))
+        if isinstance(decision, dict):
+            return decision
+    for decision in _linked_decisions(reader, invoice_id):
         return cast(dict[str, Any], decision)
-    get_all = getattr(graph_store, "get_all_decisions", None)
-    if not callable(get_all):
-        return None
-    for args in ((getattr(graph_store, "domain", "s2p"),), ()):
-        try:
-            rows = get_all(*args)
-        except TypeError:
-            continue
-        except Exception:
-            return None
-        for row in rows:
-            if isinstance(row, dict) and invoice_id and _matches_invoice(row, str(invoice_id)):
-                return cast(dict[str, Any], row)
-        break
+    rows = reader.get_all_decisions()
+    for row in rows:
+        if isinstance(row, dict) and invoice_id and _matches_invoice(row, str(invoice_id)):
+            return cast(dict[str, Any], row)
     return None
 
 
-def _linked_decisions(graph_store: Any, invoice_id: Any) -> list[dict[str, Any]]:
+def _linked_decisions(reader: S2PGraphReader, invoice_id: Any) -> list[dict[str, Any]]:
     if not invoice_id:
         return []
-    get_links = getattr(graph_store, "get_decision_links", None)
-    get_decision = getattr(graph_store, "get_decision", None)
-    if not callable(get_links) or not callable(get_decision):
-        return []
-    try:
-        links = get_links()
-    except Exception:
-        return []
+    links = reader.get_decision_links()
     decisions: list[dict[str, Any]] = []
     for link in links:
         if not isinstance(link, dict):
             continue
         if link.get("edge_type") != "DECIDED_ON" or str(link.get("entity_id")) != str(invoice_id):
             continue
-        try:
-            decision = get_decision(str(link.get("decision_id")))
-        except Exception:
-            continue
+        decision = reader.get_decision(str(link.get("decision_id")))
         if isinstance(decision, dict):
             decisions.append(decision)
     return decisions

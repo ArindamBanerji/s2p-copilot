@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.models.responses import CollectionResponse, GenericResponse
 from app.routers.s2p_data_helpers import load_invoices, load_suppliers
 from app.services.supplier_intelligence import SupplierIntelligenceComposer
@@ -132,6 +133,18 @@ def _graph_store_from_request(request: Request) -> Any | None:
         return graph_store
     scorer = getattr(request.app.state, "scorer", None)
     return getattr(scorer, "graph_store", None)
+
+
+def _graph_reader_from_request(request: Request) -> S2PGraphReader | None:
+    state = getattr(request.app, "state", None)
+    scorer = getattr(state, "scorer", None)
+    scorer_store = getattr(scorer, "graph_store", None)
+    reader = getattr(state, "s2p_graph_reader", None)
+    if isinstance(reader, S2PGraphReader) and reader.store is scorer_store:
+        return reader
+    if scorer_store is None:
+        return None
+    return S2PGraphReader(store=scorer_store)
 
 
 def _cluster_name(summary: dict[str, Any]) -> str:
@@ -355,6 +368,7 @@ def profile(supplier_id: str, request: Request) -> dict[str, Any]:
     response = _profile_detail(supplier_profile)
     response["intelligence"] = SupplierIntelligenceComposer(
         graph_store=_graph_store_from_request(request),
+        reader=_graph_reader_from_request(request),
         accumulator=accumulator,
     ).compose_profile(supplier_id)
     return response

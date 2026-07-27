@@ -2,12 +2,14 @@ import os
 import sys
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
 
 from app.main import app, build_s2p_scorer
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.routers import s2p_evidence
 from app.domains.s2p.config import S2PDomainConfig
 from app.services.s2p_evidence_templates import S2P_TEMPLATES
@@ -30,9 +32,24 @@ class FakeGraphStore:
             }
         ]
 
-    def get_all_decisions(self, domain):
-        assert domain == self.domain
+    def get_all_decisions(self, domain: str | None = None):
+        if domain is not None:
+            assert domain == self.domain
         return list(self.decisions)
+
+    def get_decisions(
+        self,
+        domain: str,
+        category: str | None = None,
+        limit: int = 400,
+    ) -> list[dict]:
+        assert domain == self.domain
+        rows = [
+            decision
+            for decision in self.decisions
+            if category is None or decision.get("category") == category
+        ]
+        return rows[:limit]
 
     def get_decision(self, decision_id: str, domain: str | None = None):
         if domain is not None:
@@ -54,6 +71,16 @@ class FakeGraphStore:
 
     def get_archived_decisions(self, domain: str) -> list[dict]:
         assert domain == self.domain
+        return []
+
+    def get_decision_links(
+        self,
+        decision_id: str | None = None,
+        domain: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        if domain is not None:
+            assert domain == self.domain
         return []
 
 
@@ -79,6 +106,7 @@ class FakeTrustScorer:
 def reset_sdk_scorer():
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=app.state.scorer.graph_store)
     app.state.s2p_reward_function = app.state.scorer._reward_fn
 
 
@@ -370,6 +398,8 @@ def test_template_situation_context_evidence_chain_has_provenance():
 
 def test_template_similarity_criteria_visible_when_graph_store_has_history():
     original = app.state.graph_store
+    original_scorer = app.state.scorer
+    original_reader = app.state.s2p_graph_reader
     graph_store = FakeGraphStore()
     graph_store.decisions.extend(
         [
@@ -392,6 +422,8 @@ def test_template_similarity_criteria_visible_when_graph_store_has_history():
         ]
     )
     app.state.graph_store = graph_store
+    app.state.scorer = SimpleNamespace(graph_store=graph_store)
+    app.state.s2p_graph_reader = S2PGraphReader(store=graph_store)
     try:
         response = client.get(
             "/api/s2p/evidence/template",
@@ -399,6 +431,8 @@ def test_template_similarity_criteria_visible_when_graph_store_has_history():
         )
     finally:
         app.state.graph_store = original
+        app.state.scorer = original_scorer
+        app.state.s2p_graph_reader = original_reader
 
     assert response.status_code == 200
     context = response.json()["situation_context"]
@@ -501,11 +535,17 @@ def test_evidence_template_missing_variable_renders_na(monkeypatch):
 
 def test_audit_trail_returns_decision_chain():
     original = app.state.graph_store
+    original_scorer = app.state.scorer
+    original_reader = app.state.s2p_graph_reader
     app.state.graph_store = FakeGraphStore()
+    app.state.scorer = SimpleNamespace(graph_store=app.state.graph_store)
+    app.state.s2p_graph_reader = S2PGraphReader(store=app.state.graph_store)
     try:
         response = client.get("/api/s2p/evidence/audit-trail/S2P-INV-0001")
     finally:
         app.state.graph_store = original
+        app.state.scorer = original_scorer
+        app.state.s2p_graph_reader = original_reader
 
     assert response.status_code == 200
     data = response.json()
@@ -515,11 +555,17 @@ def test_audit_trail_returns_decision_chain():
 
 def test_audit_trail_returns_chain():
     original = app.state.graph_store
+    original_scorer = app.state.scorer
+    original_reader = app.state.s2p_graph_reader
     app.state.graph_store = FakeGraphStore()
+    app.state.scorer = SimpleNamespace(graph_store=app.state.graph_store)
+    app.state.s2p_graph_reader = S2PGraphReader(store=app.state.graph_store)
     try:
         response = client.get("/api/s2p/evidence/audit-trail/S2P-INV-0001")
     finally:
         app.state.graph_store = original
+        app.state.scorer = original_scorer
+        app.state.s2p_graph_reader = original_reader
 
     assert response.status_code == 200
     assert response.json()["count"] == 1
@@ -527,11 +573,17 @@ def test_audit_trail_returns_chain():
 
 def test_audit_trail_unknown_invoice_empty():
     original = app.state.graph_store
+    original_scorer = app.state.scorer
+    original_reader = app.state.s2p_graph_reader
     app.state.graph_store = FakeGraphStore()
+    app.state.scorer = SimpleNamespace(graph_store=app.state.graph_store)
+    app.state.s2p_graph_reader = S2PGraphReader(store=app.state.graph_store)
     try:
         response = client.get("/api/s2p/evidence/audit-trail/UNKNOWN")
     finally:
         app.state.graph_store = original
+        app.state.scorer = original_scorer
+        app.state.s2p_graph_reader = original_reader
 
     assert response.status_code == 200
     assert response.json()["decisions"] == []

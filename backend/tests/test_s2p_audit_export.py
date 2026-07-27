@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.main import app, build_s2p_scorer
 
 
@@ -15,8 +18,9 @@ class ReadOnlyGraphStore:
         self.decisions = decisions or []
         self.write_calls = 0
 
-    def get_all_decisions(self, domain: str = "s2p") -> list[dict]:
-        assert domain == "s2p"
+    def get_all_decisions(self, domain: str | None = None) -> list[dict]:
+        if domain is not None:
+            assert domain == "s2p"
         return list(self.decisions)
 
     def get_decision(self, decision_id: str, domain: str | None = None):
@@ -64,6 +68,7 @@ class ReadOnlyGraphStore:
 def reset_sdk_scorer() -> None:
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=app.state.scorer.graph_store)
     app.state.s2p_reward_function = app.state.scorer._reward_fn
 
 
@@ -150,6 +155,8 @@ def test_audit_export_handles_fresh_state_without_crashing() -> None:
 
 def test_audit_export_does_not_write_to_graph_store() -> None:
     original_graph = app.state.graph_store
+    original_scorer = app.state.scorer
+    original_reader = app.state.s2p_graph_reader
     fake_graph = ReadOnlyGraphStore(
         [
             {
@@ -166,13 +173,40 @@ def test_audit_export_does_not_write_to_graph_store() -> None:
         ]
     )
     app.state.graph_store = fake_graph
+    app.state.scorer = SimpleNamespace(graph_store=fake_graph, get_phase=lambda: "GREEN", trajectory=lambda: {})
+    app.state.s2p_graph_reader = S2PGraphReader(store=fake_graph)
     try:
         assert client.get("/api/s2p/audit/export").status_code == 200
         assert client.get("/api/s2p/audit/export/csv").status_code == 200
     finally:
         app.state.graph_store = original_graph
+        app.state.scorer = original_scorer
+        app.state.s2p_graph_reader = original_reader
 
     assert fake_graph.write_calls == 0
+
+
+def test_audit_export_graph_failure_returns_503() -> None:
+    original_graph = app.state.graph_store
+    original_scorer = app.state.scorer
+    original_reader = app.state.s2p_graph_reader
+
+    class FailingGraphStore(ReadOnlyGraphStore):
+        def get_all_decisions(self, domain: str | None = None) -> list[dict]:
+            raise RuntimeError("AGE unavailable")
+
+    fake_graph = FailingGraphStore()
+    app.state.graph_store = fake_graph
+    app.state.scorer = SimpleNamespace(graph_store=fake_graph)
+    app.state.s2p_graph_reader = S2PGraphReader(store=fake_graph)
+    try:
+        response = client.get("/api/s2p/audit/export")
+    finally:
+        app.state.graph_store = original_graph
+        app.state.scorer = original_scorer
+        app.state.s2p_graph_reader = original_reader
+
+    assert response.status_code == 503
 
 
 def test_audit_export_routes_are_mounted() -> None:

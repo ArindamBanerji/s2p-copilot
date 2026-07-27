@@ -13,6 +13,8 @@ from copilot_sdk.substantiation.cohort_day_zero import (
     evaluate_v7_gate as _sdk_evaluate_v7_gate,
 )
 
+from app.graph.s2p_graph_reader import S2PGraphReader
+
 
 STATE_VALUES = frozenset(STATES)
 REAL_PROVENANCE = "real"
@@ -62,10 +64,14 @@ class S2PCohortStatus(BaseCohortDayZeroState):
     def __init__(
         self,
         graph_store: Any | None = None,
+        reader: S2PGraphReader | None = None,
         oracle_artifact_path: str | Path | None = None,
         decision_records: list[dict[str, Any]] | None = None,
     ) -> None:
         self._graph_store = graph_store
+        self._reader = reader or (
+            S2PGraphReader(store=graph_store) if graph_store is not None else None
+        )
         self._decision_records = decision_records
         self._oracle_artifact_path = (
             Path(oracle_artifact_path)
@@ -148,19 +154,9 @@ class S2PCohortStatus(BaseCohortDayZeroState):
     def _read_decisions(self) -> list[dict[str, Any]]:
         if self._decision_records is not None:
             return [dict(record) for record in self._decision_records]
-        if self._graph_store is None:
+        if self._reader is None:
             return []
-        for method_name in ("get_verified_decisions", "get_all_decisions", "get_decisions"):
-            method = getattr(self._graph_store, method_name, None)
-            if method is None:
-                continue
-            try:
-                if method_name == "get_decisions":
-                    return list(method(self.DOMAIN, limit=10000))
-                return list(method(self.DOMAIN))
-            except Exception:
-                continue
-        return []
+        return [dict(record) for record in self._reader.get_verified_decisions()]
 
 
 def _extract_experiments(data: Any) -> list[dict[str, Any]]:

@@ -114,7 +114,9 @@ def _client_without_store() -> TestClient:
 
 
 class GraphRichStore(InMemoryGraphStore):
-    def query_context(self, entity_id: str, max_depth: int):
+    def query_context(
+        self, entity_id: str, max_depth: int, domain: str | None = None
+    ):
         return [
             {
                 "node": "commodity_index",
@@ -126,7 +128,9 @@ class GraphRichStore(InMemoryGraphStore):
 
 
 class GraphCompleteStore(InMemoryGraphStore):
-    def query_context(self, entity_id: str, max_depth: int):
+    def query_context(
+        self, entity_id: str, max_depth: int, domain: str | None = None
+    ):
         return [
             {
                 "node": "commodity_index",

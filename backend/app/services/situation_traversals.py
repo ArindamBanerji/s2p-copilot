@@ -14,6 +14,7 @@ from copilot_sdk.situation import (
 )
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.routers.s2p_data_helpers import find_invoice
 from app.services.s2p_evidence_templates import S2P_FACTOR_MAP, evidence_context_from_record
 from app.services.s2p_situation_pattern import _intent_context
@@ -51,6 +52,7 @@ class S2PTraversalPatternBase:
     name: str = "s2p_category_context"
     category: str = ""
     default_max_depth: int = 3
+    reader: S2PGraphReader | None = None
 
     def supports(self, intent: TypedIntent) -> bool:
         if intent.domain != self.domain:
@@ -69,11 +71,15 @@ class S2PTraversalPatternBase:
         intent: TypedIntent,
         *,
         graph_store: Any = None,
+        reader: S2PGraphReader | None = None,
         max_depth: int = 3,
     ) -> SituationContext:
         depth = _bounded_depth(max_depth)
-        prepared = _prepare_context(intent, graph_store, self.category)
-        prepared.graph_context = _query_graph_context(graph_store, prepared.invoice_id, min(3, depth + 1))
+        active_reader = reader or self.reader
+        if active_reader is None and graph_store is not None:
+            active_reader = S2PGraphReader(store=graph_store)
+        prepared = _prepare_context(intent, graph_store, self.category, active_reader)
+        prepared.graph_context = _query_graph_context(active_reader, prepared.invoice_id, min(3, depth + 1))
         nodes, edges, warnings, available = self._traversal(prepared, depth, graph_store)
         variables = self._variables(prepared, graph_store)
         variables.setdefault("action", prepared.action)
@@ -357,10 +363,15 @@ class _PreparedContext:
     graph_context: list[dict[str, Any]] | None = None
 
 
-def _prepare_context(intent: TypedIntent, graph_store: Any, category: str) -> _PreparedContext:
+def _prepare_context(
+    intent: TypedIntent,
+    graph_store: Any,
+    category: str,
+    reader: S2PGraphReader | None = None,
+) -> _PreparedContext:
     intent_context = _intent_context(intent)
     decision_id = str(_first(intent_context, "decision_id") or intent.decision_id or "") or None
-    decision = _get_decision(graph_store, decision_id)
+    decision = _get_decision(reader, decision_id)
     flat_decision = _flatten(decision or {})
     invoice_id = str(
         _first(intent_context, "invoice_id", "event_id", "source_invoice_id", "source_event_id")
@@ -412,17 +423,13 @@ def _add_aliases(variables: dict[str, Any]) -> None:
 
 
 def _query_graph_context(
-    graph_store: Any,
+    reader: S2PGraphReader | None,
     entity_id: str,
     max_depth: int,
 ) -> list[dict[str, Any]]:
-    query_context = getattr(graph_store, "query_context", None)
-    if not callable(query_context):
+    if reader is None:
         raise RuntimeError("S2P graph context lookup is unavailable")
-    try:
-        rows = query_context(str(entity_id), max_depth)
-    except Exception as exc:
-        raise RuntimeError("S2P graph context lookup failed") from exc
+    rows = reader.query_context(str(entity_id), max_depth)
     if isinstance(rows, list):
         for row in rows:
             if isinstance(row, dict) and row.get("domain") not in (None, "s2p"):
@@ -634,14 +641,10 @@ def _edge(source: TraversalNode, target: TraversalNode, edge_type: str, depth: i
     )
 
 
-def _get_decision(graph_store: Any, decision_id: str | None) -> dict[str, Any] | None:
-    get_decision = getattr(graph_store, "get_decision", None)
-    if not decision_id or not callable(get_decision):
+def _get_decision(reader: S2PGraphReader | None, decision_id: str | None) -> dict[str, Any] | None:
+    if reader is None or not decision_id:
         return None
-    try:
-        decision = get_decision(decision_id, domain="s2p")
-    except Exception as exc:
-        raise RuntimeError("S2P decision graph lookup failed") from exc
+    decision = reader.get_decision(decision_id)
     if isinstance(decision, dict) and decision.get("domain") not in (None, "s2p"):
         raise RuntimeError("S2P decision lookup returned a foreign domain")
     return decision if isinstance(decision, dict) else None

@@ -10,9 +10,15 @@ from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 
+# Non-Decision topology client. Decision operations use GraphStore.
+# Retained for Alert/Asset/AttackPattern reads only.
 
 class Neo4jClient:
-    """Neo4j Aura client with connection pooling"""
+    """Neo4j Aura client with connection pooling.
+
+    # Non-Decision topology client. Decision operations use GraphStore.
+    # Retained for Alert/Asset/AttackPattern reads only.
+    """
 
     def __init__(self):
         self.uri = os.getenv("NEO4J_URI")

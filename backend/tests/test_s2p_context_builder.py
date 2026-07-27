@@ -54,9 +54,24 @@ class FakeGraphStore:
             },
         ]
 
-    def get_all_decisions(self, domain: str):
-        assert domain == "s2p"
+    def get_all_decisions(self, domain: str | None = None):
+        if domain is not None:
+            assert domain == "s2p"
         return list(self.decisions)
+
+    def get_decisions(
+        self,
+        domain: str,
+        category: str | None = None,
+        limit: int = 400,
+    ):
+        assert domain == "s2p"
+        rows = [
+            decision
+            for decision in self.decisions
+            if category is None or decision.get("category") == category
+        ]
+        return rows[:limit]
 
     def get_decision(self, decision_id: str, domain: str | None = None):
         if domain is not None:
@@ -99,7 +114,8 @@ class MissingDecisionGraphStore(FakeGraphStore):
 
 
 class NoGetDecisionGraphStore(FakeGraphStore):
-    get_decision = None
+    def get_decision(self, decision_id: str, domain: str | None = None):
+        return None
 
 
 class VerifiedDecisionGraphStore(FakeGraphStore):

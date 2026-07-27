@@ -12,6 +12,7 @@ from copilot_sdk.state.cached_static import cached_static
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import load_invoices
 from app.services.receipt_store import get_receipt_store
@@ -50,8 +51,16 @@ def _scorer(request: Request) -> Any | None:
     return getattr(state, "scorer", None)
 
 
-def _graph_domain(graph_store: Any | None = None) -> str:
-    return str(getattr(graph_store, "domain", None) or "s2p")
+def _graph_reader(request: Request) -> S2PGraphReader:
+    state = getattr(request.app, "state", None)
+    scorer = getattr(state, "scorer", None)
+    graph_store = getattr(scorer, "graph_store", None)
+    reader = getattr(state, "s2p_graph_reader", None)
+    if isinstance(reader, S2PGraphReader) and reader.store is graph_store:
+        return reader
+    if graph_store is None:
+        raise HTTPException(status_code=503, detail="S2P graph reader unavailable")
+    return S2PGraphReader(store=graph_store)
 
 
 def _trust_explanation_payload(
@@ -66,7 +75,7 @@ def _trust_explanation_payload(
     category_index = _category_index(category)
     weights = _call_or_none(getattr(scorer, "get_dk_weights", None))
     phase = _call_or_none(getattr(scorer, "get_category_phase", None), category)
-    verified_count = _call_or_none(getattr(scorer, "get_verified_count", None))
+    verified_count = _call_or_none(_scorer_method(scorer, "get_verified_count"))
     centroid = _call_or_none(getattr(scorer, "get_centroid", None), category, action)
     if centroid is None:
         centroid = (
@@ -123,6 +132,10 @@ def _call_or_none(fn: Any, *args: Any) -> Any | None:
         return None
 
 
+def _scorer_method(scorer: Any, name: str) -> Any:
+    return getattr(scorer, name, None) if scorer is not None else None
+
+
 def _provenance(source: str, label: str) -> dict[str, Any]:
     if source == "scorer":
         return {
@@ -160,16 +173,15 @@ def _conservation_snapshot(request: Request) -> dict[str, Any]:
 
     try:
         verified_count, correct_count = _graph_verified_counts(request)
-        graph_store = _graph_store(request)
-        domain = _graph_domain(graph_store)
-        get_all_decisions = getattr(graph_store, "get_all_decisions", None)
-        total_decisions = len(get_all_decisions(domain)) if callable(get_all_decisions) else verified_count
+        total_decisions = len(_graph_reader(request).get_all_decisions())
         return {
             "status": _current_conservation_status(request),
             "verified_count": verified_count,
             "correct_count": correct_count,
             "total_decisions": max(total_decisions, 0),
         }
+    except GraphUnavailableError:
+        raise
     except Exception:
         return {}
 
@@ -215,15 +227,8 @@ def _enrich_decision_invoice_metadata(decision: dict[str, Any]) -> dict[str, Any
     return enriched
 
 
-def _graph_linked_decisions(graph_store: Any, invoice_id: str) -> list[dict[str, Any]]:
-    get_decision_links = getattr(graph_store, "get_decision_links", None)
-    get_decision = getattr(graph_store, "get_decision", None)
-    if not callable(get_decision_links) or not callable(get_decision):
-        return []
-    try:
-        links = get_decision_links()
-    except Exception:
-        return []
+def _graph_linked_decisions(reader: S2PGraphReader, invoice_id: str) -> list[dict[str, Any]]:
+    links = reader.get_decision_links()
 
     linked_decision_ids: list[str] = []
     seen: set[str] = set()
@@ -239,10 +244,7 @@ def _graph_linked_decisions(graph_store: Any, invoice_id: str) -> list[dict[str,
 
     decisions: list[dict[str, Any]] = []
     for decision_id in linked_decision_ids:
-        try:
-            decision = get_decision(decision_id)
-        except Exception:
-            continue
+        decision = reader.get_decision(decision_id)
         if isinstance(decision, dict):
             decisions.append(_enrich_decision_invoice_metadata(decision))
     return decisions
@@ -250,27 +252,17 @@ def _graph_linked_decisions(graph_store: Any, invoice_id: str) -> list[dict[str,
 
 @router.get("/audit-trail/{invoice_id}", response_model=GenericResponse)
 def audit_trail(invoice_id: str, request: Request) -> dict[str, Any]:
-    graph_store = _graph_store(request)
-    decisions: list[dict[str, Any]] = []
-    if graph_store is not None:
-        decisions = _graph_linked_decisions(graph_store, invoice_id)
-    if graph_store is not None and hasattr(graph_store, "get_all_decisions"):
-        try:
-            if not decisions:
-                decisions = [
-                    _enrich_decision_invoice_metadata(decision)
-                    for decision in graph_store.get_all_decisions(_graph_domain(graph_store))
-                    if isinstance(decision, dict) and _decision_matches_invoice(decision, invoice_id)
-                ]
-        except Exception:
-            decisions = []
-    if not decisions and graph_store is not None and hasattr(graph_store, "get_decision"):
-        try:
-            decision = graph_store.get_decision(invoice_id)
-        except Exception:
-            decision = None
-        if isinstance(decision, dict):
-            decisions = [_enrich_decision_invoice_metadata(decision)]
+    reader = _graph_reader(request)
+    try:
+        decisions = _graph_linked_decisions(reader, invoice_id)
+        if not decisions:
+            decisions = [
+                _enrich_decision_invoice_metadata(decision)
+                for decision in reader.get_all_decisions()
+                if isinstance(decision, dict) and _decision_matches_invoice(decision, invoice_id)
+            ]
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P graph unavailable for evidence") from exc
     return {"invoice_id": invoice_id, "decisions": decisions, "count": len(decisions)}
 
 
@@ -306,19 +298,22 @@ def chain_integrity() -> dict[str, Any]:
 
 @router.get("/audit-pack", response_model=GenericResponse)
 def audit_pack(request: Request, limit: int = 100) -> dict[str, Any]:
-    store = get_receipt_store()
-    receipts_payload = store.get_chain(limit=limit)
-    stats = store.stats
-    return {
-        "export_timestamp": datetime.now(timezone.utc).isoformat(),
-        "receipt_count": stats["total_receipts"],
-        "chain_integrity": store.verify_chain(),
-        "conservation_state": _conservation_snapshot(request),
-        "override_distribution": _override_distribution(receipts_payload),
-        "override_count": stats["overrides"],
-        "confirm_count": stats["confirms"],
-        "receipts": receipts_payload,
-    }
+    try:
+        store = get_receipt_store()
+        receipts_payload = store.get_chain(limit=limit)
+        stats = store.stats
+        return {
+            "export_timestamp": datetime.now(timezone.utc).isoformat(),
+            "receipt_count": stats["total_receipts"],
+            "chain_integrity": store.verify_chain(),
+            "conservation_state": _conservation_snapshot(request),
+            "override_distribution": _override_distribution(receipts_payload),
+            "override_count": stats["overrides"],
+            "confirm_count": stats["confirms"],
+            "receipts": receipts_payload,
+        }
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P graph unavailable for evidence") from exc
 
 
 @router.get("/template", response_model=GenericResponse)
@@ -337,8 +332,18 @@ def evidence_template(
         if invoice_id:
             invoice.update({"invoice_id": invoice_id, "event_id": invoice_id})
     graph_store = _graph_store(request)
+    try:
+        reader = _graph_reader(request)
+    except HTTPException:
+        reader = None
+        graph_store = None
     analyzer = SituationAnalyzer(
-        [S2PInvoiceTraversalPattern(scorer=_scorer(request))],
+        [
+            S2PInvoiceTraversalPattern(
+                scorer=_scorer(request),
+                reader=reader,
+            )
+        ],
         default_max_depth=3,
         max_allowed_depth=5,
     )

@@ -8,6 +8,7 @@ from typing import Any, cast
 from copilot_sdk.situation import TraversalEdge, TraversalNode
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.routers.s2p_data_helpers import find_invoice, load_suppliers
 from app.services.s2p_evidence_templates import evidence_context_from_record
 from app.services.s2p_enrichment import DOMAIN as S2P_ENRICHMENT_DOMAIN
@@ -72,10 +73,12 @@ class S2PContextBuilder:
         *,
         scorer: Any = None,
         graph_store: Any = None,
+        reader: S2PGraphReader | None = None,
         fixtures: dict[str, Any] | None = None,
     ) -> None:
         self.scorer = scorer
         self.graph_store = graph_store
+        self.reader = reader or (S2PGraphReader(store=graph_store) if graph_store is not None else None)
         self.fixtures = dict(fixtures or {})
 
     def build_invoice_context(
@@ -151,7 +154,7 @@ class S2PContextBuilder:
         decision_id: str | None = None,
         max_results: int = 3,
     ) -> list[dict[str, Any]]:
-        if self.graph_store is None or not supplier_id or not category:
+        if self.reader is None or not supplier_id or not category:
             return []
         rows = self._decision_rows(str(category))
         matches: list[dict[str, Any]] = []
@@ -521,13 +524,9 @@ class S2PContextBuilder:
             )
 
     def _verified_decision(self, decision_id: str) -> dict[str, Any] | None:
-        get_decision = getattr(self.graph_store, "get_decision", None)
-        if not callable(get_decision):
+        if self.reader is None:
             return None
-        try:
-            decision = get_decision(str(decision_id))
-        except Exception:
-            return None
+        decision = self.reader.get_decision(str(decision_id))
         if not isinstance(decision, dict):
             return None
         flat = _flatten(decision)
@@ -591,29 +590,9 @@ class S2PContextBuilder:
         )
 
     def _decision_rows(self, category: str) -> list[dict[str, Any]]:
-        get_decisions = getattr(self.graph_store, "get_decisions", None)
-        if callable(get_decisions):
-            for args in (("s2p", category, 400), ("s2p", category), ("s2p",)):
-                try:
-                    rows = get_decisions(*args)
-                    if isinstance(rows, list):
-                        return rows
-                except TypeError:
-                    continue
-                except Exception:
-                    return []
-        get_all = getattr(self.graph_store, "get_all_decisions", None)
-        if callable(get_all):
-            for args in (("s2p",), ()):
-                try:
-                    rows = get_all(*args)
-                    if isinstance(rows, list):
-                        return rows
-                except TypeError:
-                    continue
-                except Exception:
-                    return []
-        return []
+        if self.reader is None:
+            return []
+        return self.reader.get_decisions(category=category, limit=400)
 
     def _invoice(self, invoice_id: str | None) -> dict[str, Any] | None:
         if not invoice_id:

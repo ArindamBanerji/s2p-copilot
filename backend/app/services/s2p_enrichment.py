@@ -15,6 +15,7 @@ from copilot_sdk.graph.enrichment import (
 )
 
 from app.routers.s2p_data_helpers import load_invoices, load_suppliers
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.services.lead_time import compute_lead_time_result
 
 DOMAIN = "s2p"
@@ -31,10 +32,12 @@ class S2PSupplierEnrichmentService:
         self,
         *,
         graph_store: Any,
+        reader: S2PGraphReader | None = None,
         suppliers: list[dict[str, Any]] | None = None,
         invoices: list[dict[str, Any]] | None = None,
     ) -> None:
         self.graph_store = graph_store
+        self.reader = reader or S2PGraphReader(store=graph_store)
         self.suppliers = list(suppliers) if suppliers is not None else load_suppliers()
         self.invoices = list(invoices) if invoices is not None else load_invoices()
 
@@ -346,33 +349,12 @@ class S2PSupplierEnrichmentService:
         )
 
     def _verified_decisions(self) -> list[dict[str, Any]]:
-        read = getattr(self.graph_store, "get_verified_decisions", None)
-        if not callable(read):
-            return []
-        try:
-            rows = read(DOMAIN)
-        except Exception:
-            return []
+        rows = self.reader.get_verified_decisions()
         return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
 
     def _all_decisions(self) -> list[dict[str, Any]]:
-        read = getattr(self.graph_store, "get_all_decisions", None)
-        if callable(read):
-            try:
-                rows = read(DOMAIN)
-                if isinstance(rows, list):
-                    return [row for row in rows if isinstance(row, dict)]
-            except Exception:
-                return []
-        read_decisions = getattr(self.graph_store, "get_decisions", None)
-        if callable(read_decisions):
-            try:
-                rows = read_decisions(DOMAIN)
-                if isinstance(rows, list):
-                    return [row for row in rows if isinstance(row, dict)]
-            except Exception:
-                return []
-        return []
+        rows = self.reader.get_all_decisions()
+        return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
 
     def _supplier_ids(
         self,

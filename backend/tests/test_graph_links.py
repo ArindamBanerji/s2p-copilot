@@ -16,6 +16,9 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 def _reset_scorer() -> None:
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
+    from app.graph.s2p_graph_reader import S2PGraphReader
+
+    app.state.s2p_graph_reader = S2PGraphReader(store=app.state.scorer.graph_store)
     app.state.s2p_reward_function = app.state.scorer._reward_fn
 
 
@@ -198,12 +201,16 @@ class _BlockingGraphStore:
         assert domain == "s2p"
         return []
 
-    def get_decision_links(self, decision_id=None):
+    def get_decision_links(self, decision_id=None, domain=None, limit=None):
+        if domain is not None:
+            assert domain == "s2p"
         with self._lock:
             links = list(self.links)
         if decision_id is None:
-            return links
-        return [link for link in links if link["decision_id"] == decision_id]
+            filtered = links
+        else:
+            filtered = [link for link in links if link["decision_id"] == decision_id]
+        return filtered[:limit] if limit is not None else filtered
 
     def _link_decision_to_entity(self, decision_id, entity_id, edge_type="DECIDED_ON"):
         with self._lock:

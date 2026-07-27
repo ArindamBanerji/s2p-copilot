@@ -3,7 +3,7 @@ import logging
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 
@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 from app.domains.s2p.evolution import S2PEvolutionService
 from app.domains.s2p.reward import S2PRewardFunction
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.routers.s2p import (
     cached_conservation_state_provider,
     learn_router,
@@ -164,6 +165,10 @@ app.state.scorer = build_s2p_scorer(
     profile=_resolve_profile(),
 )
 app.state.graph_store = app.state.scorer.graph_store
+app.state.s2p_graph_reader = S2PGraphReader(
+    store=app.state.scorer.graph_store,
+    domain="s2p",
+)
 # Enrichment remains SQLite-owned during the split-read migration.  The
 # canonical DualWriteStore exposes its primary as ``primary``; support the
 # legacy private spelling as well for compatible wrappers.
@@ -171,7 +176,7 @@ enrichment_store = getattr(app.state.scorer.graph_store, "primary", None)
 if enrichment_store is None:
     enrichment_store = getattr(app.state.scorer.graph_store, "_primary", app.state.graph_store)
 app.state.enrichment_store = enrichment_store
-if enrichment_store is not app.state.graph_store and os.environ.get("GRAPH_BACKEND", "sqlite").strip().lower() == "dual_write":
+if enrichment_store is not app.state.graph_store and GraphConfig.load("s2p", profile=_resolve_profile()).backend == "dual_write":
     # The enrichment router resolves its store from app.state.graph_store.
     # Keep that dependency pointed at the SQLite primary; scorer writes still
     # use the DualWriteStore held by app.state.scorer.
@@ -192,6 +197,15 @@ app.state.s2p_reward_function = app.state.scorer._reward_fn
 app.state.s2p_evolution = S2PEvolutionService(app.state.scorer)
 app.state.s2p_shadow = initialize_s2p_shadow_state()
 app.state.s2p_tab_state_cache = create_s2p_tab_state_cache(app.state)
+
+
+def get_s2p_graph_reader(request: Request) -> S2PGraphReader:
+    reader = getattr(request.app.state, "s2p_graph_reader", None)
+    if reader is None:
+        raise HTTPException(status_code=503, detail="S2P graph reader unavailable")
+    return reader
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),

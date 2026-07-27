@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.main import app, build_s2p_scorer
 from app.services.centroid_explorer import (
     CentroidExplorerError,
@@ -434,3 +435,43 @@ def test_drift_uses_real_centroid_checkpoints_when_present():
     assert response.supported is True
     assert len(response.points) == 1
     assert response.points[0]["centroid_vector"] == BASE_VECTOR
+
+
+def test_centroid_explorer_uses_domain_bound_reader():
+    store = FakeGraphStore(_decision())
+    calls: list[str] = []
+
+    class Reader(S2PGraphReader):
+        def get_decision(self, decision_id: str):
+            calls.append(decision_id)
+            return store.get_decision(decision_id, domain="s2p")
+
+    reader = Reader(store=store)
+    service = S2PCentroidExplorerService(
+        scorer=FakeScorer(),
+        graph_store=store,
+        reader=reader,
+    )
+
+    result = service.explain_decision("D-1")
+
+    assert result.decision_id == "D-1"
+    assert calls == ["D-1"]
+    assert service.reader is reader
+
+
+def test_centroid_explorer_propagates_graph_unavailable_error():
+    store = FakeGraphStore(_decision())
+
+    class FailingReader(S2PGraphReader):
+        def get_decision(self, _decision_id: str):
+            raise GraphUnavailableError("graph unavailable")
+
+    service = S2PCentroidExplorerService(
+        scorer=FakeScorer(),
+        graph_store=store,
+        reader=FailingReader(store=store),
+    )
+
+    with pytest.raises(GraphUnavailableError):
+        service.explain_decision("D-1")

@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.services.financial_impact import FinancialSummary, compute_financial_impact
 from app.services.receipt_store import get_receipt_store
 
@@ -90,26 +91,23 @@ def _graph_domain(graph_store: Any | None) -> str:
     return str(getattr(graph_store, "domain", None) or "s2p")
 
 
-def _all_graph_decisions(graph_store: Any | None) -> list[dict[str, Any]]:
-    get_all_decisions = getattr(graph_store, "get_all_decisions", None)
-    if not callable(get_all_decisions):
-        return []
+def _graph_reader(request: Request) -> S2PGraphReader:
+    state = getattr(request.app, "state", None)
+    scorer = getattr(state, "scorer", None)
+    graph_store = getattr(scorer, "graph_store", None)
+    reader = getattr(state, "s2p_graph_reader", None)
+    if isinstance(reader, S2PGraphReader) and reader.store is graph_store:
+        return reader
+    if graph_store is None:
+        raise HTTPException(status_code=503, detail="S2P graph reader unavailable")
+    return S2PGraphReader(store=graph_store)
 
-    for args in ((_graph_domain(graph_store),), ()):
-        try:
-            rows = get_all_decisions(*args)
-            if not isinstance(rows, Iterable) or isinstance(rows, (str, bytes, dict)):
-                return []
-            return [dict(row) for row in rows if isinstance(row, dict)]
-        except TypeError:
-            continue
-        except Exception as exc:
-            log.exception("Failed to read S2P financial decisions")
-            raise HTTPException(
-                status_code=500,
-                detail="Unable to read financial impact decisions",
-            ) from exc
-    return []
+
+def _all_graph_decisions(reader: S2PGraphReader) -> list[dict[str, Any]]:
+    rows = reader.get_all_decisions()
+    if not isinstance(rows, Iterable) or isinstance(rows, (str, bytes, dict)):
+        return []
+    return [dict(row) for row in rows if isinstance(row, dict)]
 
 
 def _receipt_rows(limit: int = 10000) -> list[dict[str, Any]]:
@@ -307,6 +305,7 @@ def _trend_response(
 def warm_financial_snapshots(
     graph_store: Any | None,
     max_decisions: int | None = None,
+    reader: S2PGraphReader | None = None,
 ) -> None:
     """Materialize financial responses after seeded state is available."""
     global _FINANCIAL_SNAPSHOT
@@ -314,7 +313,7 @@ def warm_financial_snapshots(
     global _FINANCIAL_CATEGORY_SNAPSHOTS
     global _FINANCIAL_SNAPSHOT_GRAPH_STORE
 
-    decisions = _all_graph_decisions(graph_store)
+    decisions = _all_graph_decisions(reader or S2PGraphReader(store=graph_store))
     receipts = _receipt_rows()
     allowed_categories = list(S2PDomainConfig.categories)
     _FINANCIAL_SNAPSHOT = _summary_response(
@@ -359,7 +358,18 @@ def reset_financial_snapshots() -> None:
 def _ensure_financial_snapshots(request: Request) -> None:
     graph_store = _graph_store(request)
     if _FINANCIAL_SNAPSHOT is None or _FINANCIAL_SNAPSHOT_GRAPH_STORE is not graph_store:
-        warm_financial_snapshots(graph_store, max_decisions=500)
+        try:
+            warm_financial_snapshots(
+                graph_store,
+                max_decisions=500,
+                reader=_graph_reader(request),
+            )
+        except GraphUnavailableError as exc:
+            log.exception("Failed to read S2P financial decisions")
+            raise HTTPException(
+                status_code=503,
+                detail="S2P graph unavailable for financial impact",
+            ) from exc
 
 
 @router.get("", response_model=FinancialImpactSummaryResponse)

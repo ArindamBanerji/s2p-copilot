@@ -7,7 +7,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from fastapi.testclient import TestClient
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.main import app, build_s2p_scorer
+from app.routers.s2p_explorer import _find_scored_decision
 
 
 client = TestClient(app)
@@ -51,6 +53,7 @@ def assert_dict_response(response):
 def reset_sdk_scorer():
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=app.state.scorer.graph_store)
     app.state.s2p_reward_function = app.state.scorer._reward_fn
 
 
@@ -157,3 +160,50 @@ def test_explorer_contribution_requires_invoice_id_query_param():
     assert isinstance(data, dict)
     assert_json_safe(data)
     assert "detail" in data
+
+
+def test_explorer_reader_receives_decision_id_without_domain():
+    class Reader:
+        def __init__(self):
+            self.decision_ids = []
+
+        def get_decision(self, decision_id):
+            self.decision_ids.append(decision_id)
+            return None
+
+        def get_all_decisions(self):
+            return []
+
+    reader = Reader()
+    assert _find_scored_decision(reader, "EMPTY-INVOICE") is None
+    assert reader.decision_ids == ["EMPTY-INVOICE"]
+
+
+def test_explorer_graph_failure_maps_to_503():
+    reset_sdk_scorer()
+
+    class FailingReader(S2PGraphReader):
+        def get_decision(self, _decision_id):
+            raise GraphUnavailableError("graph down")
+
+    app.state.s2p_graph_reader = FailingReader(store=app.state.scorer.graph_store)
+    response = client.get("/api/s2p/explorer/contribution", params={"invoice_id": "ANY"})
+
+    assert response.status_code == 503
+
+
+def test_explorer_empty_reader_result_is_not_graph_failure():
+    reset_sdk_scorer()
+
+    class EmptyReader(S2PGraphReader):
+        def get_decision(self, _decision_id):
+            return None
+
+        def get_all_decisions(self):
+            return []
+
+    app.state.s2p_graph_reader = EmptyReader(store=app.state.scorer.graph_store)
+    response = client.get("/api/s2p/explorer/contribution", params={"invoice_id": "EMPTY"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No score result for invoice_id. Score the invoice first."

@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.services.centroid_explorer import CentroidExplorerError, S2PCentroidExplorerService
 
 
@@ -64,4 +65,8 @@ def _service(request: Request) -> S2PCentroidExplorerService:
     if scorer is None:
         raise HTTPException(status_code=503, detail="S2P scorer is not configured")
     graph_store = getattr(state, "graph_store", None) or getattr(scorer, "graph_store", None)
-    return S2PCentroidExplorerService(scorer=scorer, graph_store=graph_store)
+    canonical_store = getattr(scorer, "graph_store", None) or graph_store
+    reader = getattr(state, "s2p_graph_reader", None)
+    if not isinstance(reader, S2PGraphReader) or reader.store is not canonical_store:
+        reader = S2PGraphReader(store=canonical_store)
+    return S2PCentroidExplorerService(scorer=scorer, graph_store=graph_store, reader=reader)

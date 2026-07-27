@@ -7,6 +7,7 @@ import math
 from typing import Any, cast
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import S2PGraphReader
 
 
 DOMAIN = "s2p"
@@ -95,10 +96,12 @@ class S2PCentroidExplorerService:
         *,
         scorer: Any,
         graph_store: Any | None = None,
+        reader: S2PGraphReader | None = None,
         preset: type[S2PDomainConfig] = S2PDomainConfig,
     ) -> None:
         self.scorer = scorer
         self.graph_store = graph_store or getattr(scorer, "graph_store", None)
+        self.reader = reader or S2PGraphReader(store=self.graph_store)
         self.preset = preset
 
     def get_all_centroid_cells(self) -> list[CentroidCell]:
@@ -184,12 +187,8 @@ class S2PCentroidExplorerService:
         return DriftResponse(category=category, action=action, supported=True, reason="", points=points)
 
     def _get_decision(self, decision_id: str) -> dict[str, Any] | None:
-        reader = getattr(self.graph_store, "get_decision", None)
-        if callable(reader):
-            result = reader(str(decision_id))
-            if isinstance(result, dict):
-                return result
-        return None
+        result = self.reader.get_decision(str(decision_id))
+        return result if isinstance(result, dict) else None
 
     def _p39_evidence(self, decision: dict[str, Any]) -> dict[str, Any]:
         supplier_id = _supplier_id(decision)

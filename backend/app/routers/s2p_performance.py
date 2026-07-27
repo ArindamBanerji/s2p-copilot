@@ -6,9 +6,10 @@ import threading
 import time
 from typing import Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from gae.calibration import compute_theta_min
 
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
 
 router = APIRouter(prefix="/api/s2p/performance", tags=["s2p-performance"])
@@ -29,12 +30,8 @@ def _graph_store(request: Request) -> Any | None:
     return getattr(scorer, "graph_store", None)
 
 
-def _graph_domain(graph_store: Any | None = None) -> str:
-    return str(getattr(graph_store, "domain", None) or "s2p")
-
-
 def _summary_cache_key(graph_store: Any | None, domain: str | None = None) -> str:
-    return f"{id(graph_store)}:{domain or _graph_domain(graph_store)}"
+    return f"{id(graph_store)}:{domain or 's2p'}"
 
 
 def clear_summary_cache() -> None:
@@ -42,13 +39,19 @@ def clear_summary_cache() -> None:
         _SUMMARY_CACHE.clear()
 
 
-def _safe_call(target: Any, name: str, default: Any, *args: Any, **kwargs: Any) -> Any:
-    if target is None or not hasattr(target, name):
-        return default
-    try:
-        return getattr(target, name)(*args, **kwargs)
-    except Exception:
-        return default
+def _graph_reader(request: Request) -> S2PGraphReader:
+    state = getattr(request.app, "state", None)
+    scorer = getattr(state, "scorer", None)
+    graph_store = getattr(scorer, "graph_store", None)
+    state_graph_store = getattr(state, "graph_store", None)
+    reader = getattr(state, "s2p_graph_reader", None)
+    if isinstance(reader, S2PGraphReader) and (
+        reader.store is graph_store or reader.store is state_graph_store
+    ):
+        return reader
+    if graph_store is None:
+        raise GraphUnavailableError("S2P graph reader unavailable")
+    return S2PGraphReader(store=graph_store)
 
 
 def _json_safe(value: Any) -> Any:
@@ -69,69 +72,31 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
-def _count_verified(graph_store: Any) -> int:
-    return int(_safe_call(graph_store, "count_verified", 0, _graph_domain(graph_store)) or 0)
+def _count_verified(reader: S2PGraphReader) -> int:
+    return int(reader.count_verified())
 
 
-def _count_correct(graph_store: Any) -> int:
-    return int(_safe_call(graph_store, "count_correct", 0, _graph_domain(graph_store)) or 0)
+def _count_correct(reader: S2PGraphReader) -> int:
+    return int(reader.count_correct())
 
 
-def _count_decisions(graph_store: Any, domain: str) -> int:
-    count_decisions = getattr(graph_store, "count_decisions", None)
-    if callable(count_decisions):
-        try:
-            return int(count_decisions(domain))
-        except Exception:
-            pass
-    decisions = _safe_call(graph_store, "get_all_decisions", [], domain)
-    return len(decisions) if isinstance(decisions, list) else 0
+def _count_decisions(reader: S2PGraphReader) -> int:
+    return int(reader.count_decisions())
 
 
-def _count_recommended_action(graph_store: Any, domain: str, action: str) -> int:
-    count_action = getattr(graph_store, "count_recommended_action", None)
-    if callable(count_action):
-        try:
-            return int(count_action(domain, action))
-        except Exception:
-            pass
-
-    connection = getattr(graph_store, "connection", None)
-    if connection is not None:
-        try:
-            row = connection.execute(
-                """
-                SELECT COUNT(*) AS n
-                FROM decisions
-                WHERE domain = ? AND recommended_action = ?
-                """,
-                (str(domain), str(action)),
-            ).fetchone()
-            if row is not None:
-                return int(row["n"] if hasattr(row, "keys") and "n" in row.keys() else row[0])
-        except Exception:
-            pass
-
-    decisions = _safe_call(graph_store, "get_all_decisions", [], domain)
-    if not isinstance(decisions, list):
-        return 0
-    return sum(
-        1
-        for decision in decisions
-        if (decision.get("recommended_action") or decision.get("action")) == action
-    )
+def _count_recommended_action(reader: S2PGraphReader, action: str) -> int:
+    return int(reader.count_recommended_action(action))
 
 
-def _current_q(graph_store: Any) -> float:
-    verified = _count_verified(graph_store)
+def _current_q(reader: S2PGraphReader) -> float:
+    verified = _count_verified(reader)
     if verified <= 0:
         return 0.0
-    return round(_count_correct(graph_store) / verified, 4)
+    return round(_count_correct(reader) / verified, 4)
 
 
-def _verified_decisions(graph_store: Any) -> list[dict[str, Any]]:
-    decisions = _safe_call(graph_store, "get_verified_decisions", [], _graph_domain(graph_store))
-    return decisions if isinstance(decisions, list) else []
+def _verified_decisions(reader: S2PGraphReader) -> list[dict[str, Any]]:
+    return reader.get_verified_decisions()
 
 
 def _is_override_decision(decision: dict[str, Any]) -> bool:
@@ -141,11 +106,11 @@ def _is_override_decision(decision: dict[str, Any]) -> bool:
     return decision.get("is_correct") is False
 
 
-def _build_summary(graph_store: Any, domain: str) -> dict[str, Any]:
-    total = _count_decisions(graph_store, domain)
-    verified = _count_verified(graph_store)
-    correct = _count_correct(graph_store)
-    auto_approvals = _count_recommended_action(graph_store, domain, "auto_approve")
+def _build_summary(reader: S2PGraphReader) -> dict[str, Any]:
+    total = _count_decisions(reader)
+    verified = _count_verified(reader)
+    correct = _count_correct(reader)
+    auto_approvals = _count_recommended_action(reader, "auto_approve")
     auto_rate = round(auto_approvals / total, 4) if total else 0.0
     accuracy = round(correct / verified, 4) if verified else 0.0
     return {
@@ -159,9 +124,9 @@ def _build_summary(graph_store: Any, domain: str) -> dict[str, Any]:
     }
 
 
-def _cached_summary(graph_store: Any, domain: str) -> dict[str, Any]:
+def _cached_summary(reader: S2PGraphReader) -> dict[str, Any]:
     now = time.monotonic()
-    key = _summary_cache_key(graph_store, domain)
+    key = _summary_cache_key(reader.store)
     with _SUMMARY_CACHE_LOCK:
         cached = _SUMMARY_CACHE.get(key)
         if cached is not None:
@@ -169,19 +134,19 @@ def _cached_summary(graph_store: Any, domain: str) -> dict[str, Any]:
             if now - timestamp <= SUMMARY_CACHE_TTL_SECONDS:
                 return dict(payload)
 
-        payload = _build_summary(graph_store, domain)
+        payload = _build_summary(reader)
         _SUMMARY_CACHE[key] = (time.monotonic(), dict(payload))
         return dict(payload)
 
 
 def _projected_theta_min(
-    graph_store: Any,
+    reader: S2PGraphReader,
     new_verified: int,
     additional_incorrect: int,
 ) -> float:
     if new_verified <= 0:
         return 1.0
-    current_overrides = sum(1 for decision in _verified_decisions(graph_store) if _is_override_decision(decision))
+    current_overrides = sum(1 for decision in _verified_decisions(reader) if _is_override_decision(decision))
     projected_override_rate = (current_overrides + additional_incorrect) / new_verified
     if projected_override_rate <= 0:
         return 1.0
@@ -193,20 +158,21 @@ def _projected_theta_min(
 
 @router.get("/trajectory", response_model=GenericResponse)
 def trajectory(request: Request) -> dict[str, Any]:
-    graph_store = _graph_store(request)
-    checkpoints = _safe_call(
-        graph_store,
-        "get_centroid_checkpoints",
-        [],
-        _graph_domain(graph_store),
-        limit=100,
-    )
+    reader = _graph_reader(request)
+    try:
+        checkpoints = reader.store.get_centroid_checkpoints("s2p", limit=100)
+        verified = _count_verified(reader)
+        current_q = _current_q(reader)
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P graph unavailable for performance") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="S2P graph unavailable for performance") from exc
     points = _json_safe(checkpoints) if isinstance(checkpoints, list) else []
     return {
         "points": points,
         "total_checkpoints": len(points),
-        "verified": _count_verified(graph_store),
-        "current_q": _current_q(graph_store),
+        "verified": verified,
+        "current_q": current_q,
     }
 
 
@@ -216,18 +182,22 @@ def what_if(
     additional_correct: int = Query(10, ge=0, le=100),
     additional_incorrect: int = Query(0, ge=0, le=100),
 ) -> dict[str, Any]:
-    graph_store = _graph_store(request)
-    verified = _count_verified(graph_store)
-    correct = _count_correct(graph_store)
+    reader = _graph_reader(request)
+    try:
+        verified = _count_verified(reader)
+        correct = _count_correct(reader)
+        current_q = _current_q(reader)
+        theta_min = _projected_theta_min(reader, verified + additional_correct + additional_incorrect, additional_incorrect)
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P graph unavailable for performance") from exc
     new_verified = verified + additional_correct + additional_incorrect
     new_correct = correct + additional_correct
     projected_q = round(new_correct / new_verified, 4) if new_verified else 0.0
-    theta_min = _projected_theta_min(graph_store, new_verified, additional_incorrect)
     return {
         "current": {
             "verified": verified,
             "correct": correct,
-            "q": _current_q(graph_store),
+            "q": current_q,
         },
         "additional": {
             "correct": additional_correct,
@@ -246,6 +216,7 @@ def what_if(
 
 @router.get("/summary", response_model=GenericResponse)
 def summary(request: Request) -> dict[str, Any]:
-    graph_store = _graph_store(request)
-    domain = _graph_domain(graph_store)
-    return _cached_summary(graph_store, domain)
+    try:
+        return _cached_summary(_graph_reader(request))
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P graph unavailable for performance") from exc

@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.services.situation_graph_enrichment import S2PSituationEnricher
 
 router = APIRouter(prefix="/api/s2p", tags=["s2p-situation-enrichment"])
@@ -31,7 +32,11 @@ def enrich_context(invoice_id: str, payload: EnrichContextRequest, request: Requ
         raise HTTPException(status_code=503, detail="GraphStore unavailable for S2P context enrichment")
     if not payload.node_type.strip() or not isinstance(payload.properties, dict):
         raise HTTPException(status_code=400, detail="node_type and properties are required")
-    service = S2PSituationEnricher(graph_store)
+    state = getattr(request.app, "state", None)
+    reader = getattr(state, "s2p_graph_reader", None)
+    if not isinstance(reader, S2PGraphReader):
+        reader = S2PGraphReader(store=graph_store)
+    service = S2PSituationEnricher(graph_store, reader=reader)
     try:
         nodes_written = service.enrich_invoice_context(
             invoice_id,

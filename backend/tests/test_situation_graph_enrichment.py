@@ -4,10 +4,12 @@ import inspect
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import pytest
 
 from copilot_sdk.graph import InMemoryGraphStore
 
 from app.graph_contract import S2P_GRAPH_CONTRACT
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.routers.s2p_enrichment_context import router as enrichment_context_router
 from app.routers.s2p_situation import router as situation_router
 from app.services import situation_graph_enrichment
@@ -333,3 +335,72 @@ def test_enrichment_does_not_modify_decisions() -> None:
 
     assert response.status_code == 200
     assert store.count_decisions("s2p") == before
+
+
+def test_situation_enricher_uses_reader_for_decision_links_and_reads():
+    store, decision_id = _price_store()
+    reader = S2PGraphReader(store=store)
+    enricher = S2PSituationEnricher(store, reader=reader)
+
+    enricher.enrich_invoice_context(
+        "S2P-INV-0001",
+        {"node_type": "commodity_index", "properties": {"commodity": "Copper"}},
+    )
+
+    assert enricher.reader is reader
+    assert any(link["decision_id"] == decision_id for link in store.get_decision_links(domain="s2p"))
+
+
+def test_situation_enricher_has_no_typeerror_signature_retry():
+    source = inspect.getsource(situation_graph_enrichment)
+
+    assert "except TypeError" not in source
+
+
+def test_situation_enricher_propagates_graph_unavailable_error():
+    store, _decision_id = _price_store()
+
+    class FailingReader(S2PGraphReader):
+        def get_decision_links(self, decision_id=None, limit=None):
+            raise GraphUnavailableError("graph unavailable")
+
+    enricher = S2PSituationEnricher(store, reader=FailingReader(store=store))
+
+    with pytest.raises(GraphUnavailableError):
+        enricher.enrich_invoice_context(
+            "S2P-INV-0001",
+            {"node_type": "commodity_index", "properties": {"commodity": "Copper"}},
+        )
+
+
+def test_reader_filters_cross_domain_decision_links():
+    class CrossDomainStore:
+        def __init__(self):
+            self.decisions = [
+                {"decision_id": "D-1", "domain": "soc"},
+                {"decision_id": "D-1", "domain": "s2p"},
+            ]
+            self.links = [
+                {"decision_id": "D-1", "domain": "soc", "entity_id": "INV-1"},
+                {"decision_id": "D-1", "domain": "s2p", "entity_id": "INV-1"},
+            ]
+
+        def get_decision(self, decision_id, domain=None):
+            return next(
+                (dict(row) for row in self.decisions if row["decision_id"] == decision_id and row["domain"] == domain),
+                None,
+            )
+
+        def get_decision_links(self, decision_id=None, domain=None, limit=None):
+            rows = [
+                dict(row)
+                for row in self.links
+                if row["domain"] == domain
+                and (decision_id is None or row["decision_id"] == decision_id)
+            ]
+            return rows if limit is None else rows[:limit]
+
+    reader = S2PGraphReader(CrossDomainStore())
+
+    assert reader.get_decision("D-1")["domain"] == "s2p"
+    assert [row["domain"] for row in reader.get_decision_links("D-1")] == ["s2p"]

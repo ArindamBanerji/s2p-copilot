@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
 from app.routers.s2p_explorer import _decision_factor_vector, _graph_domain, _read_dk_weights
 from app.services.factor_proposer import FactorProposer
@@ -42,6 +43,8 @@ def factor_recommendations(request: Request) -> dict[str, Any]:
 def propose_factor(payload: FactorProposalRequest, request: Request) -> dict[str, Any]:
     try:
         return _proposer(request).propose_replacement(payload.factor, payload.candidates)
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P graph unavailable for factor analysis") from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -82,11 +85,11 @@ def _factor_stats(scorer: Any, factors: list[str]) -> dict[str, dict[str, float]
 
 def _live_factor_stats(scorer: Any, factors: list[str]) -> dict[str, dict[str, float]]:
     graph_store = getattr(scorer, "graph_store", None)
-    get_all_decisions = getattr(graph_store, "get_all_decisions", None)
-    if not callable(get_all_decisions):
-        return {}
+    if graph_store is None:
+        raise GraphUnavailableError("S2P graph reader unavailable")
+    reader = S2PGraphReader(store=graph_store)
     rows = limit_recent_decisions(
-        row for row in get_all_decisions(_graph_domain(graph_store)) if isinstance(row, dict)
+        row for row in reader.get_all_decisions() if isinstance(row, dict)
     )
     vectors: list[list[float]] = []
     outcomes: list[float] = []
@@ -143,7 +146,10 @@ def reset_factor_snapshots() -> None:
 def _ensure_factor_snapshots(request: Request) -> None:
     scorer = getattr(request.app.state, "scorer", None)
     if _FACTOR_ANALYSIS_SNAPSHOT is None or _FACTOR_SNAPSHOT_SCORER is not scorer:
-        warm_factor_snapshots(scorer)
+        try:
+            warm_factor_snapshots(scorer)
+        except GraphUnavailableError as exc:
+            raise HTTPException(status_code=503, detail="S2P graph unavailable for factor analysis") from exc
 
 
 def _fallback_factor_stats() -> dict[str, dict[str, float]]:

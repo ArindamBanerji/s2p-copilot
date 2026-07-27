@@ -40,6 +40,7 @@ from app.domains.s2p.auto_approve import (
 )
 from app.domains.s2p.config import PENALTY_RATIO, S2PDomainConfig
 from app.domains.s2p.factors import S2PEvent, compute_all_factors
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse, LearningGateResponse, S2PScoreResponse
 from app.routers.s2p_data_helpers import find_invoice, load_invoices
 from app.routers.s2p_preview import _load_celonis_cache
@@ -101,16 +102,27 @@ def _submit_side_effect(fn):
     future.add_done_callback(_log_side_effect_failure)
     return future
 
-def _resolve_graph_context(invoice_id: str, http_request: Request):
+def _s2p_graph_reader(http_request: Request) -> S2PGraphReader:
     state = getattr(http_request.app, "state", None)
-    graph_store = getattr(state, "graph_store", None)
+    scorer = getattr(state, "scorer", None)
+    graph_store = getattr(scorer, "graph_store", None)
+    reader = getattr(state, "s2p_graph_reader", None)
+    if isinstance(reader, S2PGraphReader) and reader.store is graph_store:
+        return reader
     if graph_store is None:
-        scorer = getattr(state, "scorer", None)
-        graph_store = getattr(scorer, "graph_store", None)
-    if graph_store is None or not hasattr(graph_store, "query_context"):
-        raise HTTPException(status_code=503, detail="S2P graph context unavailable")
+        raise HTTPException(status_code=503, detail="S2P graph reader unavailable")
+    return S2PGraphReader(store=graph_store)
+
+
+def _resolve_graph_context(invoice_id: str, http_request: Request):
+    reader = _s2p_graph_reader(http_request)
     try:
-        context_raw = graph_store.query_context(invoice_id, 2)
+        context_raw = reader.query_context(invoice_id, max_depth=2)
+    except GraphUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="S2P graph context lookup failed",
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=503,
@@ -763,6 +775,7 @@ def _link_decision_to_invoice(
     graph_store: Any,
     decision_id: str | None,
     invoice_id: str | None,
+    reader: S2PGraphReader | None = None,
 ) -> None:
     if not decision_id or not invoice_id:
         return
@@ -770,36 +783,37 @@ def _link_decision_to_invoice(
     if not callable(link):
         return
     try:
-        get_links = getattr(graph_store, "get_decision_links", None)
-        if callable(get_links):
-            existing = get_links(decision_id)
-            if any(
-                item.get("entity_id") == invoice_id
-                and item.get("edge_type") == "DECIDED_ON"
-                for item in existing
-                if isinstance(item, dict)
-            ):
-                return
+        existing = (reader or S2PGraphReader(store=graph_store)).get_decision_links(decision_id)
+        if any(
+            item.get("entity_id") == invoice_id
+            and item.get("edge_type") == "DECIDED_ON"
+            for item in existing
+            if isinstance(item, dict)
+        ):
+            return
         link(decision_id, invoice_id, "DECIDED_ON")
+    except GraphUnavailableError:
+        raise
     except Exception:
         log.exception("S2P graph invoice link skipped for decision %s", decision_id)
 
 
-def _has_decision_invoice_link(graph_store: Any, decision_id: str | None, invoice_id: str | None) -> bool:
+def _has_decision_invoice_link(
+    reader: S2PGraphReader,
+    decision_id: str | None,
+    invoice_id: str | None,
+) -> bool:
     if not decision_id or not invoice_id:
-        return False
-    get_links = getattr(graph_store, "get_decision_links", None)
-    if not callable(get_links):
         return False
     try:
         return any(
             str(item.get("entity_id")) == str(invoice_id)
             and item.get("edge_type") == "DECIDED_ON"
-            for item in get_links(decision_id)
+            for item in reader.get_decision_links(decision_id)
             if isinstance(item, dict)
         )
-    except Exception:
-        return False
+    except GraphUnavailableError:
+        raise
 
 
 def _graph_verified_counts(http_request: Request) -> tuple[int, int]:
@@ -818,17 +832,10 @@ def _read_conservation_counts(
     graph_store: Any | None,
     domain: str | None = None,
 ) -> dict[str, float | int]:
-    selected_domain = domain or _graph_domain(graph_store)
-    count_verified = getattr(graph_store, "count_verified", None)
-    count_correct = getattr(graph_store, "count_correct", None)
-    verified_count = int(count_verified(selected_domain)) if callable(count_verified) else 0
-    correct_count = int(count_correct(selected_domain)) if callable(count_correct) else 0
-    # Conservation V is verified decisions only; pending decisions are excluded.
-    count_verified_decisions = getattr(graph_store, "count_verified_decisions", None)
-    if callable(count_verified_decisions):
-        total_decisions = int(count_verified_decisions(selected_domain))
-    else:
-        total_decisions = verified_count
+    reader = S2PGraphReader(store=graph_store, domain=domain or "s2p")
+    verified_count = int(reader.count_verified())
+    correct_count = int(reader.count_correct())
+    total_decisions = int(reader.count_verified_decisions())
     return {
         "verified_count": max(verified_count, 0),
         "correct_count": max(correct_count, 0),
@@ -1559,12 +1566,13 @@ def _learn_with_scorer(
     outcome: str,
     context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    reader = S2PGraphReader(store=scorer.graph_store)
     try:
-        decision = scorer.graph_store.get_decision(decision_id)
-    except Exception:
-        decision = None
+        decision = reader.get_decision(decision_id)
+    except GraphUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="S2P decision lookup failed") from exc
     invoice_id_before = _decision_invoice_id(decision) if isinstance(decision, dict) else ""
-    had_invoice_link = _has_decision_invoice_link(scorer.graph_store, decision_id, invoice_id_before)
+    had_invoice_link = _has_decision_invoice_link(reader, decision_id, invoice_id_before)
     learn_context = _decision_context(decision, context)
     with _GRAPH_LINK_ADVISORY_LOCK:
         original_link = getattr(scorer.graph_store, "link_decision_to_entity", None)
@@ -1607,12 +1615,16 @@ def _learn_with_scorer(
         if invoice_id:
             payload.setdefault("invoice_id", invoice_id)
             if not had_invoice_link:
-                _link_decision_to_invoice(scorer.graph_store, decision_id, invoice_id)
+                _link_decision_to_invoice(scorer.graph_store, decision_id, invoice_id, reader)
     return cast(dict[str, Any], payload)
 
 
-def _ensure_outcome_decision(scorer: Any, request: "OutcomeRequest") -> None:
-    decision = scorer.graph_store.get_decision(request.decision_id, domain="s2p")
+def _ensure_outcome_decision(
+    scorer: Any,
+    request: "OutcomeRequest",
+    reader: S2PGraphReader | None = None,
+) -> None:
+    decision = (reader or S2PGraphReader(store=scorer.graph_store)).get_decision(request.decision_id)
     if decision is None:
         raise HTTPException(
             status_code=404,
@@ -1963,7 +1975,12 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         log.exception("S2P threshold decision enrichment failed")
         threshold_decision = None
 
-    _link_decision_to_invoice(scorer.graph_store, core["decision_id"], str(lookup_id))
+    _link_decision_to_invoice(
+        scorer.graph_store,
+        core["decision_id"],
+        str(lookup_id),
+        _s2p_graph_reader(http_request),
+    )
     if auto_approve is not None:
         _submit_side_effect(lambda: record_auto_approve_decision(dict(auto_approve)))
     _submit_side_effect(
@@ -2058,12 +2075,13 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
     if request.reason_code:
         context["reason_code"] = request.reason_code
     scorer = _sdk_scorer(http_request)
+    reader = _s2p_graph_reader(http_request)
 
     with get_mutation_lock("s2p"):
         try:
-            decision = scorer.graph_store.get_decision(request.decision_id)
-        except Exception:
-            decision = None
+            decision = reader.get_decision(request.decision_id)
+        except GraphUnavailableError as exc:
+            raise HTTPException(status_code=503, detail="S2P decision lookup failed") from exc
         category = _decision_category(decision)
         pre_centroid = _read_centroid_for_l5(
             scorer,
@@ -2166,6 +2184,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             detail=f"factor_vector must contain {S2PDomainConfig.n_factors} values")
 
     scorer = _sdk_scorer(http_request)
+    reader = _s2p_graph_reader(http_request)
     outcome_context = {
         "amount": request.amount,
         "at_risk": request.at_risk,
@@ -2174,11 +2193,14 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
     }
 
     with get_mutation_lock("s2p"):
-        _ensure_outcome_decision(scorer, request)
         try:
-            decision = scorer.graph_store.get_decision(request.decision_id, domain="s2p")
-        except Exception:
-            decision = None
+            _ensure_outcome_decision(scorer, request, reader)
+        except GraphUnavailableError as exc:
+            raise HTTPException(status_code=503, detail="S2P decision lookup failed") from exc
+        try:
+            decision = reader.get_decision(request.decision_id)
+        except GraphUnavailableError as exc:
+            raise HTTPException(status_code=503, detail="S2P decision lookup failed") from exc
         category = _decision_category(decision) or request.category
         pre_centroid = _read_centroid_for_l5(
             scorer,

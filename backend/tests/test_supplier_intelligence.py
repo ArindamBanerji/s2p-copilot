@@ -29,8 +29,9 @@ class FakeGraphStore:
     def read_entity_enrichment(self, **kwargs):
         return self.enrichment.get(kwargs["entity_id"], {})
 
-    def get_verified_decisions(self, domain):
-        assert domain == "s2p"
+    def get_verified_decisions(self, domain: str | None = None):
+        if domain is not None:
+            assert domain == "s2p"
         return list(self.decisions)
 
     def write_entity_enrichment(self, **kwargs):

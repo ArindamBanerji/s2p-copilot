@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from fastapi.testclient import TestClient
 from app.main import app, build_s2p_scorer
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.routers import s2p as s2p_router
 from app.services.s2p_evolver import get_evolution_summary, reset_s2p_evolver
 from app.services.supplier_profile_accumulator import accumulator as supplier_profile_accumulator
@@ -45,11 +46,32 @@ VALID_REQUEST = {
 def reset_sdk_scorer():
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=app.state.scorer.graph_store)
     app.state.s2p_reward_function = app.state.scorer._reward_fn
     s2p_router._clear_score_conservation_status_cache()
     reset_s2p_evolver()
     supplier_profile_accumulator.reset()
     return app.state.scorer
+
+
+class GraphContextStore:
+    """Complete graph-store overlay used by context-specific endpoint tests."""
+
+    domain = "s2p"
+
+    def __init__(self, delegate, result=None, failure: Exception | None = None):
+        self._delegate = delegate
+        self._result = result
+        self._failure = failure
+
+    def query_context(self, entity_id, hops, domain: str | None = None):
+        assert domain == self.domain
+        if self._failure is not None:
+            raise self._failure
+        return list(self._result or [])
+
+    def __getattr__(self, name):
+        return getattr(self._delegate, name)
 
 
 def score_for_learn(action_payload=None):
@@ -349,7 +371,7 @@ def test_read_conservation_counts_uses_verified_decision_count_for_conservation_
             assert domain == "s2p"
             return 7
 
-        def get_all_decisions(self, domain):
+        def get_all_decisions(self, domain: str | None = None):
             raise AssertionError("get_all_decisions should not be used for conservation V")
 
         def get_decision(self, decision_id: str, domain: str | None = None):
@@ -388,10 +410,14 @@ def test_read_conservation_counts_falls_back_to_verified_count_not_all_rows():
             assert domain == "s2p"
             return 1
 
+        def count_verified_decisions(self, domain):
+            assert domain == "s2p"
+            return 2
+
         def count_decisions(self, domain):
             raise AssertionError("all-row count_decisions must not define conservation V")
 
-        def get_all_decisions(self, domain):
+        def get_all_decisions(self, domain: str | None = None):
             raise AssertionError("all-row get_all_decisions must not define conservation V")
 
         def get_decision(self, decision_id: str, domain: str | None = None):
@@ -516,22 +542,30 @@ def test_score_endpoint_uses_compute_all_factors(monkeypatch):
 def test_score_endpoint_uses_graph_context_when_available(monkeypatch):
     calls = []
 
-    class FakeGraphStore:
-        def query_context(self, invoice_id, hops):
-            assert invoice_id == VALID_REQUEST["event_id"]
-            assert hops == 2
-            return [{"node": {"_label": "PurchaseOrder", "po_id": "PO-1"}}]
-
     def fake_compute_all_factors(invoice, context=None):
         calls.append(context)
         return {name: 0.2 for name in S2PDomainConfig.factors}
 
-    app.state.graph_store = FakeGraphStore()
+    original_scorer = app.state.scorer
+    original_store = original_scorer.graph_store
+    original_graph_store = getattr(app.state, "graph_store", None)
+    fake_store = GraphContextStore(
+        original_store,
+        result=[{"node": {"_label": "PurchaseOrder", "po_id": "PO-1"}}],
+    )
+    app.state.scorer = build_s2p_scorer(graph_store=fake_store)
+    app.state.graph_store = fake_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=fake_store)
     monkeypatch.setattr(s2p_router, "compute_all_factors", fake_compute_all_factors)
     try:
         response = client.post("/api/s2p/score", json=VALID_REQUEST)
     finally:
-        del app.state.graph_store
+        app.state.scorer = original_scorer
+        if original_graph_store is None:
+            del app.state.graph_store
+        else:
+            app.state.graph_store = original_graph_store
+        app.state.s2p_graph_reader = S2PGraphReader(store=original_store)
 
     assert response.status_code == 200
     assert calls == [{"neighbors": [{"node": {"_label": "PurchaseOrder", "po_id": "PO-1"}}]}]
@@ -540,20 +574,27 @@ def test_score_endpoint_uses_graph_context_when_available(monkeypatch):
 def test_score_endpoint_graph_context_failure_returns_503(monkeypatch):
     calls = []
 
-    class FailingGraphStore:
-        def query_context(self, invoice_id, hops):
-            raise RuntimeError("graph unavailable")
-
     def fake_compute_all_factors(invoice, context=None):
         calls.append(context)
         return {name: 0.3 for name in S2PDomainConfig.factors}
 
-    app.state.graph_store = FailingGraphStore()
+    original_scorer = app.state.scorer
+    original_store = original_scorer.graph_store
+    original_graph_store = getattr(app.state, "graph_store", None)
+    fake_store = GraphContextStore(original_store, failure=RuntimeError("graph unavailable"))
+    app.state.scorer = build_s2p_scorer(graph_store=fake_store)
+    app.state.graph_store = fake_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=fake_store)
     monkeypatch.setattr(s2p_router, "compute_all_factors", fake_compute_all_factors)
     try:
         response = client.post("/api/s2p/score", json=VALID_REQUEST)
     finally:
-        del app.state.graph_store
+        app.state.scorer = original_scorer
+        if original_graph_store is None:
+            del app.state.graph_store
+        else:
+            app.state.graph_store = original_graph_store
+        app.state.s2p_graph_reader = S2PGraphReader(store=original_store)
 
     assert response.status_code == 503
     assert calls == []
@@ -580,12 +621,20 @@ def test_score_endpoint_graph_lookup_uses_fixture_invoice_id(monkeypatch):
     invoice = json.loads((DATA_DIR / "synthetic_invoices.json").read_text(encoding="utf-8"))[0]
     seen = []
 
-    class FakeGraphStore:
-        def query_context(self, invoice_id, hops):
-            seen.append((invoice_id, hops))
-            return []
+    original_scorer = app.state.scorer
+    original_store = original_scorer.graph_store
+    original_graph_store = getattr(app.state, "graph_store", None)
+    fake_store = GraphContextStore(original_store, result=[])
+    original_query_context = fake_store.query_context
 
-    app.state.graph_store = FakeGraphStore()
+    def recording_query_context(invoice_id, hops, domain=None):
+        seen.append((invoice_id, hops))
+        return original_query_context(invoice_id, hops, domain)
+
+    fake_store.query_context = recording_query_context
+    app.state.scorer = build_s2p_scorer(graph_store=fake_store)
+    app.state.graph_store = fake_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=fake_store)
     try:
         response = client.post(
             "/api/s2p/score",
@@ -597,7 +646,12 @@ def test_score_endpoint_graph_lookup_uses_fixture_invoice_id(monkeypatch):
             },
         )
     finally:
-        del app.state.graph_store
+        app.state.scorer = original_scorer
+        if original_graph_store is None:
+            del app.state.graph_store
+        else:
+            app.state.graph_store = original_graph_store
+        app.state.s2p_graph_reader = S2PGraphReader(store=original_store)
 
     assert response.status_code == 200
     assert seen == [(invoice["invoice_id"], 2)]
@@ -1068,6 +1122,15 @@ def test_learn_with_scorer_uses_context_without_mutating_reward_function():
                 "recommended_action": "auto_approve",
                 "metadata": {"invoice_id": "S2P-INV-TEST"},
             }
+
+        def get_decision_links(
+            self,
+            decision_id: str | None = None,
+            domain: str | None = None,
+            limit: int | None = None,
+        ) -> list[dict]:
+            assert domain == "s2p"
+            return []
 
         def write_outcome(
             self,

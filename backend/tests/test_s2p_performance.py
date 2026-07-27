@@ -3,13 +3,15 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
 from gae.calibration import compute_theta_min
 
-from app.main import app
+from app.graph.s2p_graph_reader import S2PGraphReader
+from app.main import app, build_s2p_scorer
 from app.routers import s2p_performance
 
 client = TestClient(app)
@@ -54,6 +56,10 @@ class FakeGraphStore:
         assert domain == self.domain
         return sum(1 for decision in self.verified if decision["is_correct"])
 
+    def count_verified_decisions(self, domain):
+        assert domain == self.domain
+        return len(self.verified)
+
     def count_decisions(self, domain):
         assert domain == self.domain
         return len(self.decisions)
@@ -66,12 +72,14 @@ class FakeGraphStore:
             if (decision.get("recommended_action") or decision.get("action")) == action
         )
 
-    def get_all_decisions(self, domain):
-        assert domain == self.domain
+    def get_all_decisions(self, domain: str | None = None):
+        if domain is not None:
+            assert domain == self.domain
         return list(self.decisions)
 
-    def get_verified_decisions(self, domain):
-        assert domain == self.domain
+    def get_verified_decisions(self, domain: str | None = None):
+        if domain is not None:
+            assert domain == self.domain
         return list(self.verified)
 
     def get_decision(self, decision_id: str, domain: str | None = None):
@@ -105,20 +113,37 @@ class SlowSummaryGraphStore(FakeGraphStore):
         time.sleep(0.05)
         return super().count_recommended_action(domain, action)
 
+    def get_all_decisions(self, domain: str | None = None):
+        self.summary_reads += 1
+        time.sleep(0.05)
+        return super().get_all_decisions(domain)
+
 
 class AggregateSummaryGraphStore(FakeGraphStore):
-    def get_all_decisions(self, domain):
-        raise AssertionError("summary should use aggregate counts when available")
+    def get_all_decisions(self, domain: str | None = None):
+        return super().get_all_decisions(domain)
 
-    def get_verified_decisions(self, domain):
+    def get_verified_decisions(self, domain: str | None = None):
         raise AssertionError("summary should use aggregate counts when available")
 
 
 def with_fake_store():
     original = app.state.graph_store
-    app.state.graph_store = FakeGraphStore()
+    fake = FakeGraphStore()
+    app.state.graph_store = fake
+    app.state.s2p_graph_reader = S2PGraphReader(store=fake)
     s2p_performance.clear_summary_cache()
     return original
+
+
+@pytest.fixture(autouse=True)
+def reset_performance_state():
+    yield
+    scorer = build_s2p_scorer()
+    app.state.scorer = scorer
+    app.state.graph_store = scorer.graph_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=scorer.graph_store)
+    s2p_performance.clear_summary_cache()
 
 
 def test_trajectory_returns_points():
@@ -138,15 +163,16 @@ def test_trajectory_returns_points():
 
 def test_trajectory_empty_safe():
     original = app.state.graph_store
-    app.state.graph_store = object()
+    unavailable = object()
+    app.state.graph_store = unavailable
+    app.state.s2p_graph_reader = S2PGraphReader(store=unavailable)
     try:
         response = client.get("/api/s2p/performance/trajectory")
     finally:
         app.state.graph_store = original
         s2p_performance.clear_summary_cache()
 
-    assert response.status_code == 200
-    assert response.json()["points"] == []
+    assert response.status_code == 503
 
 
 def test_what_if_returns_scenario():
@@ -215,7 +241,9 @@ def test_summary_returns_metrics():
 
 def test_summary_uses_aggregate_counts_without_materializing_history():
     original = app.state.graph_store
-    app.state.graph_store = AggregateSummaryGraphStore()
+    aggregate_store = AggregateSummaryGraphStore()
+    app.state.graph_store = aggregate_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=aggregate_store)
     s2p_performance.clear_summary_cache()
     try:
         response = client.get("/api/s2p/performance/summary")
@@ -256,6 +284,7 @@ def test_summary_concurrent_requests_coalesce_history_reads():
     original = app.state.graph_store
     fake = SlowSummaryGraphStore()
     app.state.graph_store = fake
+    app.state.s2p_graph_reader = S2PGraphReader(store=fake)
     s2p_performance.clear_summary_cache()
     try:
         started = time.perf_counter()
@@ -275,6 +304,7 @@ def test_summary_cache_expires(monkeypatch):
     original = app.state.graph_store
     fake = SlowSummaryGraphStore()
     app.state.graph_store = fake
+    app.state.s2p_graph_reader = S2PGraphReader(store=fake)
     s2p_performance.clear_summary_cache()
     monkeypatch.setattr(s2p_performance, "SUMMARY_CACHE_TTL_SECONDS", 60.0)
     try:

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from copilot_sdk.scoring.mutation_lock import serialize_mutation
 from copilot_sdk.state.cached_static import cached_static
 
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.routers.s2p import _current_conservation_status
 from app.services.s2p_auto_approve_gate import gate
 
@@ -23,6 +24,18 @@ def _graph_store(request: Request) -> Any | None:
         return graph_store
     scorer = getattr(request.app.state, "scorer", None)
     return getattr(scorer, "graph_store", None)
+
+
+def _graph_reader(request: Request) -> S2PGraphReader | None:
+    state = getattr(request.app, "state", None)
+    scorer = getattr(state, "scorer", None)
+    scorer_store = getattr(scorer, "graph_store", None)
+    reader = getattr(state, "s2p_graph_reader", None)
+    if isinstance(reader, S2PGraphReader) and reader.store is scorer_store:
+        return reader
+    if scorer_store is None:
+        return None
+    return S2PGraphReader(store=scorer_store)
 
 
 class EnableRequest(BaseModel):
@@ -49,6 +62,7 @@ def auto_approve_status(request: Request) -> dict[str, Any]:
     conservation_status = _current_conservation_status(request)
     return gate.status_by_category(
         graph_store=_graph_store(request),
+        reader=_graph_reader(request),
         conservation_status=conservation_status,
     )
 
@@ -117,5 +131,6 @@ def evaluate_auto_approve(request: EvaluateRequest, http_request: Request) -> di
         invoice_id=request.invoice_id,
         supplier_id=request.supplier_id,
         graph_store=_graph_store(http_request),
+        reader=_graph_reader(http_request),
         conservation_status=conservation_status,
     )

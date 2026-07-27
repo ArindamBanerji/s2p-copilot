@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.domains.s2p.config import S2PDomainConfig
-from app.main import app
+from app.graph.s2p_graph_reader import S2PGraphReader
+from app.main import app, build_s2p_scorer
 from app.services.financial_impact import MAX_FINANCIAL_DECISIONS, compute_financial_impact
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def reset_financial_impact_app_state():
+    scorer = build_s2p_scorer()
+    app.state.scorer = scorer
+    app.state.graph_store = scorer.graph_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=scorer.graph_store)
+    yield
 
 
 def test_financial_impact_endpoint_contract():

@@ -13,15 +13,6 @@ from app.routers import s2p as s2p_router  # noqa: E402
 from app.s2p_shadow import initialize_s2p_shadow_state  # noqa: E402
 
 
-LIVE_ENV_KEYS = (
-    "S2P_SHADOW_LIVE_AGE_TEST",
-    "S2P_SHADOW_AGE",
-    "S2P_AGE_DSN",
-    "S2P_AGE_GRAPH",
-    "S2P_AGE_TEST_MODE",
-)
-
-
 BASE_SCORE_BODY = {
     "category": "price_variance",
     "amount": 5000.0,
@@ -36,20 +27,8 @@ BASE_SCORE_BODY = {
 }
 
 
-def _live_age_env_present() -> bool:
-    if os.environ.get("S2P_SHADOW_LIVE_AGE_TEST") != "1":
-        return False
-    return all(os.environ.get(key) for key in LIVE_ENV_KEYS[1:])
-
-
-pytestmark = pytest.mark.skipif(
-    not _live_age_env_present(),
-    reason="set S2P_SHADOW_LIVE_AGE_TEST=1 and S2P AGE env vars for live AGE shadow tests",
-)
-
-
-def _reset_app_with_live_shadow():
-    shadow = initialize_s2p_shadow_state()
+def _reset_app_with_live_shadow(s2p_age_test_env):
+    shadow = initialize_s2p_shadow_state(env=s2p_age_test_env.shadow)
     assert shadow.config.enabled is True
     assert shadow.config.strict is False
     assert shadow.config.graph != "soc_graph"
@@ -107,8 +86,8 @@ def _verified_decision(shadow, decision_id: str) -> dict:
     return linked[-1]
 
 
-def test_live_age_shadow_score_non_strict_success():
-    shadow = _reset_app_with_live_shadow()
+def test_live_age_shadow_score_non_strict_success(s2p_age_test_env):
+    shadow = _reset_app_with_live_shadow(s2p_age_test_env)
     client = TestClient(app)
 
     response = _score(client, "SCORE")
@@ -134,8 +113,8 @@ def test_live_age_shadow_score_non_strict_success():
     _assert_no_secret_text(event.__dict__)
 
 
-def test_live_age_shadow_outcome_non_strict_success():
-    shadow = _reset_app_with_live_shadow()
+def test_live_age_shadow_outcome_non_strict_success(s2p_age_test_env):
+    shadow = _reset_app_with_live_shadow(s2p_age_test_env)
     client = TestClient(app)
     verified_before = shadow.store.count_verified_decisions("s2p")
     score_response = _score(client, "OUTCOME")
@@ -188,8 +167,8 @@ def test_live_age_shadow_outcome_non_strict_success():
     assert duplicate.status_code != 200
 
 
-def test_live_age_shadow_learn_non_strict_success():
-    shadow = _reset_app_with_live_shadow()
+def test_live_age_shadow_learn_non_strict_success(s2p_age_test_env):
+    shadow = _reset_app_with_live_shadow(s2p_age_test_env)
     client = TestClient(app)
     verified_before = shadow.store.count_verified_decisions("s2p")
     score_response = _score(client, "LEARN")
@@ -233,8 +212,8 @@ def test_live_age_shadow_learn_non_strict_success():
     assert duplicate.status_code != 200
 
 
-def test_live_age_shadow_preview_no_decision_write():
-    shadow = _reset_app_with_live_shadow()
+def test_live_age_shadow_preview_no_decision_write(s2p_age_test_env):
+    shadow = _reset_app_with_live_shadow(s2p_age_test_env)
     client = TestClient(app)
     count_before = shadow.store.count_decisions("s2p")
 

@@ -2,7 +2,12 @@
 
 import os
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
+
+import pytest
+
+from copilot_sdk.testing import age_available
 
 
 # Module-level app construction happens while pytest imports test modules. Keep
@@ -33,3 +38,52 @@ graph = \"soc_graph\"
     encoding="utf-8",
 )
 os.environ["GRAPH_CONFIG_PATH"] = str(_config_path)
+
+
+@dataclass(frozen=True)
+class S2PAgeTestEnvironment:
+    active: dict[str, str]
+    shadow: dict[str, str]
+
+
+@pytest.fixture(scope="session")
+def s2p_age_test_env() -> S2PAgeTestEnvironment:
+    """Provide one disposable AGE graph for S2P live integration tests."""
+    if not age_available():
+        pytest.skip("AGE not reachable (no test DSN configured or connection failed)")
+
+    dsn = os.environ.get("AGE_TEST_DSN", "").strip()
+    if not dsn:
+        pytest.skip("AGE is reachable but AGE_TEST_DSN is required for disposable S2P graph setup")
+
+    import psycopg
+    from uuid import uuid4
+
+    graph_name = f"protocol_v2_test_s2p_{uuid4().hex[:12]}"
+    with psycopg.connect(dsn, connect_timeout=3, autocommit=True) as conn:
+        conn.execute("LOAD 'age'")
+        conn.execute('SET search_path = ag_catalog, "$user", public')
+        conn.execute(f"SELECT create_graph('{graph_name}')")
+
+    environment = S2PAgeTestEnvironment(
+        active={
+            "S2P_ACTIVE_GRAPH_BACKEND": "age",
+            "S2P_ACTIVE_AGE_DSN": dsn,
+            "S2P_ACTIVE_AGE_GRAPH": graph_name,
+            "S2P_ACTIVE_AGE_DOMAIN": "s2p",
+            "S2P_ACTIVE_AGE_TEST_MODE": "1",
+        },
+        shadow={
+            "S2P_SHADOW_AGE": "1",
+            "S2P_AGE_DSN": dsn,
+            "S2P_AGE_GRAPH": graph_name,
+            "S2P_AGE_TEST_MODE": "1",
+        },
+    )
+    try:
+        yield environment
+    finally:
+        with psycopg.connect(dsn, connect_timeout=3, autocommit=True) as conn:
+            conn.execute("LOAD 'age'")
+            conn.execute('SET search_path = ag_catalog, "$user", public')
+            conn.execute(f"SELECT drop_graph('{graph_name}', true)")

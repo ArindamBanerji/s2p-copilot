@@ -18,15 +18,6 @@ from app.s2p_graph_status import (  # noqa: E402
 from app.s2p_shadow import initialize_s2p_shadow_state  # noqa: E402
 
 
-PARALLEL_ENV_KEYS = (
-    "S2P_ACTIVE_PARALLEL_AGE_TEST",
-    "S2P_ACTIVE_GRAPH_BACKEND",
-    "S2P_ACTIVE_AGE_DSN",
-    "S2P_ACTIVE_AGE_GRAPH",
-    "S2P_ACTIVE_AGE_DOMAIN",
-    "S2P_ACTIVE_AGE_TEST_MODE",
-)
-
 BASE_SCORE_BODY = {
     "category": "price_variance",
     "amount": 5000.0,
@@ -40,20 +31,8 @@ BASE_SCORE_BODY = {
 }
 
 
-def _parallel_age_env_present() -> bool:
-    if os.environ.get("S2P_ACTIVE_PARALLEL_AGE_TEST") != "1":
-        return False
-    return all(os.environ.get(key) for key in PARALLEL_ENV_KEYS[1:])
-
-
-pytestmark = pytest.mark.skipif(
-    not _parallel_age_env_present(),
-    reason="set S2P_ACTIVE_PARALLEL_AGE_TEST=1 and S2P active AGE env vars",
-)
-
-
-def _reset_app_with_parallel_active_age() -> S2PActiveAGEGraphStore:
-    config = S2PActiveGraphConfig.from_env()
+def _reset_app_with_parallel_active_age(s2p_age_test_env) -> S2PActiveAGEGraphStore:
+    config = S2PActiveGraphConfig.from_env(s2p_age_test_env.active)
     assert config.requested_backend == "age"
     assert config.domain == "s2p"
     assert config.graph != "soc_graph"
@@ -117,8 +96,8 @@ def _run_parallel_flow(index: int, mode: str) -> dict:
     }
 
 
-def test_parallel_active_age_score_outcome_and_learn_gate():
-    active_store = _reset_app_with_parallel_active_age()
+def test_parallel_active_age_score_outcome_and_learn_gate(s2p_age_test_env):
+    active_store = _reset_app_with_parallel_active_age(s2p_age_test_env)
     client = TestClient(app)
     before_preview_count = active_store.count_decisions("s2p")
 

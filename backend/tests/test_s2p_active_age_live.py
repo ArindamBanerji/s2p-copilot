@@ -17,16 +17,6 @@ from app.s2p_graph_status import (  # noqa: E402
 from app.s2p_shadow import initialize_s2p_shadow_state  # noqa: E402
 
 
-LIVE_ENV_KEYS = (
-    "S2P_ACTIVE_LIVE_AGE_TEST",
-    "S2P_ACTIVE_GRAPH_BACKEND",
-    "S2P_ACTIVE_AGE_DSN",
-    "S2P_ACTIVE_AGE_GRAPH",
-    "S2P_ACTIVE_AGE_DOMAIN",
-    "S2P_ACTIVE_AGE_TEST_MODE",
-)
-
-
 BASE_SCORE_BODY = {
     "category": "price_variance",
     "amount": 5000.0,
@@ -41,20 +31,8 @@ BASE_SCORE_BODY = {
 }
 
 
-def _live_age_env_present() -> bool:
-    if os.environ.get("S2P_ACTIVE_LIVE_AGE_TEST") != "1":
-        return False
-    return all(os.environ.get(key) for key in LIVE_ENV_KEYS[1:])
-
-
-pytestmark = pytest.mark.skipif(
-    not _live_age_env_present(),
-    reason="set S2P_ACTIVE_LIVE_AGE_TEST=1 and S2P active AGE env vars",
-)
-
-
-def _reset_app_with_live_active_age() -> S2PActiveAGEGraphStore:
-    config = S2PActiveGraphConfig.from_env()
+def _reset_app_with_live_active_age(s2p_age_test_env) -> S2PActiveAGEGraphStore:
+    config = S2PActiveGraphConfig.from_env(s2p_age_test_env.active)
     assert config.requested_backend == "age"
     assert config.domain == "s2p"
     assert config.graph != "soc_graph"
@@ -90,8 +68,8 @@ def _score(client: TestClient, suffix: str):
     )
 
 
-def test_live_active_age_score_test_mode_success():
-    active_store = _reset_app_with_live_active_age()
+def test_live_active_age_score_test_mode_success(s2p_age_test_env):
+    active_store = _reset_app_with_live_active_age(s2p_age_test_env)
     client = TestClient(app)
 
     response = _score(client, "SCORE")
@@ -111,8 +89,8 @@ def test_live_active_age_score_test_mode_success():
     assert "postgres:postgres@" not in str(status)
 
 
-def test_live_active_age_outcome_test_mode_success_and_invariant():
-    active_store = _reset_app_with_live_active_age()
+def test_live_active_age_outcome_test_mode_success_and_invariant(s2p_age_test_env):
+    active_store = _reset_app_with_live_active_age(s2p_age_test_env)
     client = TestClient(app)
     score = _score(client, "OUTCOME").json()
 
@@ -154,8 +132,8 @@ def test_live_active_age_outcome_test_mode_success_and_invariant():
     assert duplicate.status_code != 200
 
 
-def test_live_active_age_learn_test_mode_success_and_invariant():
-    active_store = _reset_app_with_live_active_age()
+def test_live_active_age_learn_test_mode_success_and_invariant(s2p_age_test_env):
+    active_store = _reset_app_with_live_active_age(s2p_age_test_env)
     client = TestClient(app)
     score = _score(client, "LEARN").json()
 
@@ -196,8 +174,8 @@ def test_live_active_age_learn_test_mode_success_and_invariant():
     assert duplicate.status_code != 200
 
 
-def test_live_active_age_preview_no_decision_write():
-    active_store = _reset_app_with_live_active_age()
+def test_live_active_age_preview_no_decision_write(s2p_age_test_env):
+    active_store = _reset_app_with_live_active_age(s2p_age_test_env)
     client = TestClient(app)
     before = active_store.count_decisions("s2p")
 
@@ -207,8 +185,8 @@ def test_live_active_age_preview_no_decision_write():
     assert active_store.count_decisions("s2p") == before
 
 
-def test_live_active_age_rollback_to_sqlite():
-    active_store = _reset_app_with_live_active_age()
+def test_live_active_age_rollback_to_sqlite(s2p_age_test_env):
+    active_store = _reset_app_with_live_active_age(s2p_age_test_env)
     client = TestClient(app)
     response = _score(client, "ROLLBACK-ACTIVE")
     assert response.status_code == 200

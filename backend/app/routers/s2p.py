@@ -108,11 +108,14 @@ def _resolve_graph_context(invoice_id: str, http_request: Request):
         scorer = getattr(state, "scorer", None)
         graph_store = getattr(scorer, "graph_store", None)
     if graph_store is None or not hasattr(graph_store, "query_context"):
-        return None
+        raise HTTPException(status_code=503, detail="S2P graph context unavailable")
     try:
         context_raw = graph_store.query_context(invoice_id, 2)
-    except Exception:
-        return None
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="S2P graph context lookup failed",
+        ) from exc
     if isinstance(context_raw, list):
         if not any(
             isinstance(row, dict) and _graph_context_row_is_domain_specific(row)

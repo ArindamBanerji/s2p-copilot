@@ -537,7 +537,7 @@ def test_score_endpoint_uses_graph_context_when_available(monkeypatch):
     assert calls == [{"neighbors": [{"node": {"_label": "PurchaseOrder", "po_id": "PO-1"}}]}]
 
 
-def test_score_endpoint_graph_context_failure_falls_back(monkeypatch):
+def test_score_endpoint_graph_context_failure_returns_503(monkeypatch):
     calls = []
 
     class FailingGraphStore:
@@ -555,8 +555,8 @@ def test_score_endpoint_graph_context_failure_falls_back(monkeypatch):
     finally:
         del app.state.graph_store
 
-    assert response.status_code == 200
-    assert calls == [None]
+    assert response.status_code == 503
+    assert calls == []
 
 
 def test_score_endpoint_uses_fixture_invoice_factors_when_no_graph():

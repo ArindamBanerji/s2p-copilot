@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from typing import Any, Optional, cast
 
 from copilot_sdk.backend.conservation_utils import compute_conservation_metrics
+from copilot_sdk.graph.protocol import ProtocolV2GraphStore
 from copilot_sdk.scoring.mutation_lock import get_mutation_lock, serialize_mutation
 from copilot_sdk.scoring.dk_persistence import (
     DKWelfordTracker,
@@ -779,9 +780,9 @@ def _link_decision_to_invoice(
 ) -> None:
     if not decision_id or not invoice_id:
         return
-    link = getattr(graph_store, "link_decision_to_entity", None)
-    if not callable(link):
+    if not isinstance(graph_store, ProtocolV2GraphStore):
         return
+    link = graph_store.link_decision_to_entity
     try:
         existing = (reader or S2PGraphReader(store=graph_store)).get_decision_links(decision_id)
         if any(
@@ -1255,6 +1256,7 @@ def _evidence_receipt_payload(
 ) -> dict[str, Any]:
     receipt_context = _decision_context(decision, context)
     return {
+        "receipt_type": "pre_outcome_context",
         "decision_id": decision_id,
         "domain": "s2p",
         "actual_action": actual_action,
@@ -1319,7 +1321,7 @@ def _append_evidence_receipt_before_outcome(
     conservation_before: dict[str, Any],
     context: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    append = getattr(graph_store, "append_evidence_receipt", None)
+    append = graph_store.append_evidence_receipt
     domain = _graph_domain(graph_store)
     receipt_intent_id = f"RCP-{uuid4().hex[:12]}"
     canonical_payload = _evidence_receipt_payload(
@@ -1335,31 +1337,6 @@ def _append_evidence_receipt_before_outcome(
         "phase": "pre_outcome",
         "factor_schema_version": "s2p_factor_schema_v2",
     }
-    if not callable(append):
-        try:
-            outbox_id = _enqueue_evidence_receipt_intent(
-                graph_store=graph_store,
-                receipt_intent_id=receipt_intent_id,
-                domain=domain,
-                decision_id=decision_id,
-                canonical_payload=canonical_payload,
-                actor=actor,
-                source_route=source_route,
-                metadata=metadata,
-            )
-            return {
-                "receipt_intent_id": receipt_intent_id,
-                "chain_index": None,
-                "payload_hash": None,
-                "receipt_queued": True,
-                "outbox_id": outbox_id,
-            }
-        except Exception as outbox_exc:
-            raise HTTPException(
-                status_code=503,
-                detail="Evidence receipt persistence is unavailable",
-            ) from outbox_exc
-
     try:
         chain_index, payload_hash = append(
             receipt_intent_id=receipt_intent_id,
@@ -1575,10 +1552,13 @@ def _learn_with_scorer(
     had_invoice_link = _has_decision_invoice_link(reader, decision_id, invoice_id_before)
     learn_context = _decision_context(decision, context)
     with _GRAPH_LINK_ADVISORY_LOCK:
-        original_link = getattr(scorer.graph_store, "link_decision_to_entity", None)
-        restore_link = False
+        can_link_invoice = isinstance(scorer.graph_store, ProtocolV2GraphStore)
+        original_link = (
+            scorer.graph_store.link_decision_to_entity if can_link_invoice else None
+        )
+        restore_link = can_link_invoice
         try:
-            if callable(original_link):
+            if can_link_invoice:
                 def _advisory_invoice_link(
                     linked_decision_id: str,
                     entity_id: str,
@@ -1597,7 +1577,6 @@ def _learn_with_scorer(
                         log.exception("S2P graph invoice link skipped for decision %s", linked_decision_id)
 
                 scorer.graph_store.link_decision_to_entity = _advisory_invoice_link
-                restore_link = True
             result = scorer.learn(
                 decision_id,
                 actual_action,

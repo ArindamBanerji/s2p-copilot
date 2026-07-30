@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.graph.s2p_graph_reader import S2PGraphReader
+from copilot_sdk.graph.protocol import GraphStore
 
 
 DOMAIN = "s2p"
@@ -144,8 +145,7 @@ class S2PCentroidExplorerService:
     def get_centroid_drift(self, category: str, action: str, *, limit: int = 50) -> DriftResponse:
         _index_or_error(self.preset.categories, category, "category")
         _index_or_error(self.preset.actions, action, "action")
-        reader = getattr(self.graph_store, "get_centroid_checkpoints", None)
-        if not callable(reader):
+        if not isinstance(self.graph_store, GraphStore):
             return DriftResponse(
                 category=category,
                 action=action,
@@ -154,7 +154,9 @@ class S2PCentroidExplorerService:
                 points=[],
             )
         try:
-            checkpoints = reader(DOMAIN, category=category, limit=max(int(limit), 0))
+            checkpoints = self.graph_store.get_centroid_checkpoints(
+                DOMAIN, category=category, limit=max(int(limit), 0)
+            )
         except Exception:
             return DriftResponse(
                 category=category,
@@ -194,11 +196,10 @@ class S2PCentroidExplorerService:
         supplier_id = _supplier_id(decision)
         if not supplier_id:
             return {}
-        reader = getattr(self.graph_store, "read_entity_enrichment", None)
-        if not callable(reader):
+        if not isinstance(self.graph_store, GraphStore):
             return {}
         try:
-            values = reader(
+            values = self.graph_store.read_entity_enrichment(
                 domain=DOMAIN,
                 entity_type="Supplier",
                 entity_id=supplier_id,

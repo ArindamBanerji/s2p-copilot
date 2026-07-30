@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from fastapi.testclient import TestClient
 from gae.calibration import compute_theta_min
 
+from app.domains.s2p.config import S2P_CATEGORIES
 from app.graph.s2p_graph_reader import S2PGraphReader
 from app.main import app, build_s2p_scorer
 from app.routers import s2p_performance
@@ -27,8 +28,8 @@ class FakeGraphStore:
             {"decision_id": "D-3", "action": "auto_approve"},
         ]
         self.verified = [
-            {"decision_id": "D-1", "is_correct": True},
-            {"decision_id": "D-2", "is_correct": False},
+            {"decision_id": "D-1", "category": S2P_CATEGORIES[0], "is_correct": True},
+            {"decision_id": "D-2", "category": S2P_CATEGORIES[1], "is_correct": False},
         ]
 
     def get_centroid_checkpoints(
@@ -206,8 +207,8 @@ def test_what_if_uses_canonical_theta_min_formula():
         s2p_performance.clear_summary_cache()
 
     data = response.json()
-    override_rate = 1 / 12
-    expected = round(compute_theta_min(override_rate, 12), 4)
+    category_coverage = 2 / len(S2P_CATEGORIES)
+    expected = round(compute_theta_min(category_coverage, 12), 4)
     assert data["projected"]["theta_min"] == expected
 
 

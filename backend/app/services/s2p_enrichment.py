@@ -13,6 +13,7 @@ from copilot_sdk.graph.enrichment import (
     EntityEnrichmentRecord,
     ProvenancedValue,
 )
+from copilot_sdk.graph.protocol import GraphStore
 
 from app.routers.s2p_data_helpers import load_invoices, load_suppliers
 from app.graph.s2p_graph_reader import S2PGraphReader
@@ -204,11 +205,10 @@ class S2PSupplierEnrichmentService:
         return metrics, source_set
 
     def read_supplier(self, supplier_id: str) -> dict[str, ProvenancedValue]:
-        read = getattr(self.graph_store, "read_entity_enrichment", None)
-        if not callable(read):
+        if not isinstance(self.graph_store, GraphStore):
             return {}
         try:
-            result = read(
+            result = self.graph_store.read_entity_enrichment(
                 domain=DOMAIN,
                 entity_type=ENTITY_TYPE,
                 entity_id=str(supplier_id),
@@ -219,11 +219,12 @@ class S2PSupplierEnrichmentService:
         return result if isinstance(result, dict) else {}
 
     def list_suppliers(self, *, limit: int = 500) -> list[EntityEnrichmentRecord]:
-        listing = getattr(self.graph_store, "list_entity_enrichments", None)
-        if not callable(listing):
+        if not isinstance(self.graph_store, GraphStore):
             return []
         try:
-            rows = listing(domain=DOMAIN, entity_type=ENTITY_TYPE, namespace=NAMESPACE, limit=limit)
+            rows = self.graph_store.list_entity_enrichments(
+                domain=DOMAIN, entity_type=ENTITY_TYPE, namespace=NAMESPACE, limit=limit
+            )
         except Exception:
             return []
         return [row for row in rows if isinstance(row, EntityEnrichmentRecord)]
@@ -284,11 +285,10 @@ class S2PSupplierEnrichmentService:
         source_set: EnrichmentSourceSet,
         dry_run: bool,
     ) -> EntityEnrichmentReceipt:
-        write = getattr(self.graph_store, "write_entity_enrichment", None)
-        if not callable(write):
+        if not isinstance(self.graph_store, GraphStore):
             return _unsupported_receipt(supplier_id, dry_run=dry_run)
         try:
-            return write(
+            return self.graph_store.write_entity_enrichment(
                 domain=DOMAIN,
                 entity_type=ENTITY_TYPE,
                 entity_id=str(supplier_id),
@@ -312,12 +312,11 @@ class S2PSupplierEnrichmentService:
         supplier_id: str,
         metrics: dict[str, ProvenancedValue],
     ) -> EntityEnrichmentReceipt:
-        write = getattr(self.graph_store, "write_entity_enrichment", None)
-        if callable(write):
+        if isinstance(self.graph_store, GraphStore):
             metrics_for_dry_run = dict(metrics)
             source_set = EnrichmentSourceSet(computation_version=COMPUTATION_VERSION)
             try:
-                return write(
+                return self.graph_store.write_entity_enrichment(
                     domain=DOMAIN,
                     entity_type=ENTITY_TYPE,
                     entity_id=str(supplier_id),

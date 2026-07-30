@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from copilot_sdk.graph.enrichment import EnrichmentSourceSet, ProvenancedValue
+from copilot_sdk.graph.protocol import GraphStore
 
 from app.graph.s2p_graph_reader import S2PGraphReader
 
@@ -87,7 +88,10 @@ class S2PSituationEnricher:
             existed = bool(self._read(entity_type, entity_id))
             self._write(entity_type, entity_id, properties, invoice_id)
             self._link_invoice_decisions(invoice_id, entity_id, str(config["edge_type"]))
-            linked_any = linked_any or _has_entity_link(self.reader, entity_id, str(config["edge_type"]))
+            if self.reader is not None:
+                linked_any = linked_any or _has_entity_link(
+                    self.reader, entity_id, str(config["edge_type"])
+                )
             if not existed:
                 written += 1
         self.linked = linked_any
@@ -95,10 +99,11 @@ class S2PSituationEnricher:
         return written
 
     def _read(self, entity_type: str, entity_id: str) -> dict[str, ProvenancedValue]:
-        reader = getattr(self.graph_store, "read_entity_enrichment", None)
-        if not callable(reader):
+        if not isinstance(self.graph_store, GraphStore):
             return {}
-        result = reader(domain=DOMAIN, entity_type=entity_type, entity_id=entity_id, namespace=NAMESPACE)
+        result = self.graph_store.read_entity_enrichment(
+            domain=DOMAIN, entity_type=entity_type, entity_id=entity_id, namespace=NAMESPACE
+        )
         return result if isinstance(result, dict) else {}
 
     def _write(
@@ -108,10 +113,9 @@ class S2PSituationEnricher:
         properties: dict[str, Any],
         invoice_id: str,
     ) -> None:
-        writer = getattr(self.graph_store, "write_entity_enrichment", None)
-        if not callable(writer):
+        if not isinstance(self.graph_store, GraphStore):
             raise ValueError("GraphStore write_entity_enrichment API unavailable")
-        writer(
+        self.graph_store.write_entity_enrichment(
             domain=DOMAIN,
             entity_type=entity_type,
             entity_id=entity_id,
@@ -128,6 +132,8 @@ class S2PSituationEnricher:
     def _link_invoice_decisions(self, invoice_id: str, entity_id: str, edge_type: str) -> None:
         linker = getattr(self.graph_store, "link_decision_to_entity", None)
         if not callable(linker):
+            return
+        if self.reader is None:
             return
         existing_links = _decision_links(self.reader)
         decision_ids = sorted(

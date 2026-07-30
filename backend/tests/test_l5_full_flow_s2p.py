@@ -88,6 +88,20 @@ def test_s2p_full_learn_flow_writes_all_three_l5_state_types(monkeypatch) -> Non
 
     client = TestClient(app)
 
+    # Conservation alpha is configured-category coverage. Seed the four
+    # non-target categories so the phase transition test exercises L5 rather
+    # than intentionally pausing at the conservation gate.
+    for category in S2PDomainConfig.categories:
+        if category == CATEGORY:
+            continue
+        seed = scorer.score(
+            factors=_factor_payload(0),
+            category=category,
+            metadata={"invoice_id": f"INV-P27-SEED-{category}"},
+        )
+        seed_result = _learn(client, seed.decision_id, seed.action)
+        assert "paused" not in seed_result
+
     first_score = _score_direct(scorer, 0)
     first_learn = _learn(client, first_score.decision_id, first_score.action)
     assert scorer.get_category_phase(CATEGORY) == "MEAN_CONVERGENCE"

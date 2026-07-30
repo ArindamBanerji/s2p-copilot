@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from typing import Any, Optional, cast
 
 from copilot_sdk.backend.conservation_utils import compute_conservation_metrics
+from copilot_sdk.backend.diagnostics_models import build_diagnostics
 from copilot_sdk.graph.protocol import ProtocolV2GraphStore
 from copilot_sdk.scoring.mutation_lock import get_mutation_lock, serialize_mutation
 from copilot_sdk.scoring.dk_persistence import (
@@ -57,6 +58,7 @@ from app.services.s2p_evolver import get_active_variant, record_triage_outcome
 from app.services.supplier_profile_accumulator import accumulator as supplier_profile_accumulator
 from app.s2p_shadow import S2PShadowState
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 learn_router = APIRouter(prefix="/api", tags=["S2P"])
 log = logging.getLogger(__name__)
@@ -69,6 +71,27 @@ _L5_CONSERVATION_STATE_LOCK = threading.RLock()
 _L5_DK_STATE_LOCK = threading.RLock()
 _L5_CENTROID_STATE_LOCK = threading.RLock()
 _S2P_DK_WELFORD_TRACKER = DKWelfordTracker()
+
+
+@learn_router.get("/diagnostics")
+def diagnostics(http_request: Request) -> dict[str, Any]:
+    try:
+        scorer = _sdk_scorer(http_request)
+        store = _graph_store_from_request(http_request)
+        extras: dict[str, Any] = {
+            "facade_active": store is not None,
+            "neo4j_client_status": "disabled",
+            "receipt_type_support": True,
+        }
+        startup_status = getattr(http_request.app.state, "l5_startup_status", None)
+        if isinstance(startup_status, dict):
+            extras["l5_startup_status"] = dict(startup_status)
+        result: dict[str, Any] = build_diagnostics("s2p", scorer, store, extras=extras)
+        return result
+    except Exception as exc:
+        logger.exception("Diagnostics failed for s2p")
+        result = build_diagnostics("s2p", None, None, extras={"error": str(exc)})
+        return result
 
 
 def set_l5_dk_welford_tracker(tracker: DKWelfordTracker | None) -> None:
@@ -1615,8 +1638,9 @@ def _ensure_outcome_decision(
     # leave them untouched.  The scorer's learn() call below writes the
     # domain-scoped Outcome exactly once.
     metadata = decision.get("metadata")
-    governed = getattr(scorer.graph_store, "write_governed_decision", None)
-    if not isinstance(metadata, dict) or not callable(governed):
+    if not isinstance(scorer.graph_store, ProtocolV2GraphStore):
+        return
+    if not isinstance(metadata, dict):
         return
     required = (
         "source",
@@ -1636,7 +1660,7 @@ def _ensure_outcome_decision(
         and isinstance(factor_names, list)
     ):
         return
-    governed(
+    scorer.graph_store.write_governed_decision(
         decision_id=str(decision.get("decision_id") or request.decision_id),
         domain="s2p",
         category=str(decision.get("category") or request.category),

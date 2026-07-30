@@ -6,21 +6,74 @@ import ast
 from pathlib import Path
 
 
-DECISION_METHODS = frozenset(
+PROTOCOL_METHODS = frozenset(
     {
+        "write_decision",
+        "write_outcome",
         "get_decision",
-        "get_all_decisions",
-        "get_verified_decisions",
         "get_decisions",
+        "get_all_decisions",
+        "get_archived_decisions",
+        "get_verified_decisions",
         "count_verified",
         "count_verified_decisions",
         "count_correct",
         "count_decisions",
-        "count_recommended_action",
+        "save_centroids",
+        "load_latest_centroids",
+        "get_centroid_checkpoints",
+        "archive_old_decisions",
+        "count_archived",
+        "close",
+        "write_entity_enrichment",
+        "read_entity_enrichment",
+        "list_entity_enrichments",
         "get_decision_links",
+        "query_context",
+        "query_similar",
+        "generate_decision_id",
+        "write_governed_decision",
+        "write_observation",
+        "append_evidence_receipt",
+        "write_conservation_status",
+        "write_fingerprint",
+        "write_centroid_checkpoint",
+        "write_evolution_event",
+        "write_transfer_pattern",
+        "get_transfer_patterns",
+        "get_latest_conservation_statuses",
+        "get_iks_trajectory",
+        "link_entity",
+        "archive_decisions",
+        "domain_scoped_reset",
+    }
+)
+
+DECISION_METHODS = PROTOCOL_METHODS | {"count_recommended_action"}
+
+DOMAIN_REQUIRED = frozenset(
+    {
+        "get_decisions",
+        "get_all_decisions",
+        "get_verified_decisions",
+        "count_verified",
+        "count_verified_decisions",
+        "count_correct",
+        "count_decisions",
         "query_context",
     }
 )
+
+DOMAIN_POSITION = {
+    "get_decisions": 0,
+    "get_all_decisions": 0,
+    "get_verified_decisions": 0,
+    "count_verified": 0,
+    "count_verified_decisions": 0,
+    "count_correct": 0,
+    "count_decisions": 0,
+    "query_context": 2,
+}
 
 ALLOWED_RELATIVE_PATHS = frozenset(
     {
@@ -36,6 +89,31 @@ def _method_name(node: ast.AST) -> str | None:
         if node.value in DECISION_METHODS:
             return node.value
     return None
+
+
+def _has_domain_argument(call: ast.Call, method: str) -> bool:
+    if any(keyword.arg == "domain" for keyword in call.keywords):
+        return True
+    position = DOMAIN_POSITION.get(method)
+    return position is not None and len(call.args) > position
+
+
+def _raw_unscoped_decision_query(call: ast.Call) -> bool:
+    if not isinstance(call.func, ast.Attribute) or call.func.attr != "run_query":
+        return False
+    literals = [
+        node.value
+        for node in ast.walk(call)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    ]
+    query_text = " ".join(literals)
+    if "Decision" not in query_text:
+        return False
+    has_scope_expression = "d.domain" in query_text or any(
+        isinstance(node, ast.Name) and node.id == "domain_clause"
+        for node in ast.walk(call)
+    )
+    return not has_scope_expression
 
 
 def _type_error_handler(handler: ast.ExceptHandler) -> bool:
@@ -79,6 +157,11 @@ class _Rule72Visitor(ast.NodeVisitor):
                         f"{self.relative_path}:{node.lineno}: "
                         f"{function.id}(..., {method!r})"
                     )
+        if _raw_unscoped_decision_query(node):
+            self.violations.append(
+                f"{self.relative_path}:{node.lineno}: raw run_query for an "
+                "Decision query has no domain predicate"
+            )
         self.generic_visit(node)
 
     def visit_Try(self, node: ast.Try) -> None:

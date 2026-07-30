@@ -13,6 +13,7 @@ import numpy as np
 from app.domains.s2p.config import S2PDomainConfig
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import ExplorerCentroidResponse, GenericResponse
+from copilot_sdk.graph.protocol import GraphStore
 
 
 router = APIRouter(prefix="/api/s2p/explorer", tags=["s2p-explorer"])
@@ -206,11 +207,10 @@ def _checkpoint_imported_centroids(
     if graph_store is None:
         scorer = getattr(state, "scorer", None)
         graph_store = getattr(scorer, "graph_store", None)
-    save_centroids = getattr(graph_store, "save_centroids", None)
-    if not callable(save_centroids):
+    if not isinstance(graph_store, GraphStore):
         return False
     config = _get_config()
-    save_centroids(
+    graph_store.save_centroids(
         _graph_domain(graph_store),
         "import",
         centroids,

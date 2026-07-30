@@ -12,6 +12,7 @@ from copilot_sdk.situation import (
     TraversalNode,
     TypedIntent,
 )
+from copilot_sdk.graph.protocol import GraphStore, GraphTraversalStore
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.graph.s2p_graph_reader import S2PGraphReader
@@ -532,11 +533,10 @@ def _read_enriched_properties(graph_store: Any, node_type: str, entity_id: str) 
         "compliance_rule": "ComplianceHistory",
         "historical_compliance": "ComplianceHistory",
     }.get(node_type)
-    reader = getattr(graph_store, "read_entity_enrichment", None)
-    if not entity_type or not entity_id or not callable(reader):
+    if not entity_type or not entity_id or not isinstance(graph_store, GraphStore):
         return {}
     try:
-        metrics = reader(
+        metrics = graph_store.read_entity_enrichment(
             domain="s2p",
             entity_type=entity_type,
             entity_id=entity_id,
@@ -651,10 +651,9 @@ def _get_decision(reader: S2PGraphReader | None, decision_id: str | None) -> dic
 
 
 def _similar_decision(graph_store: Any, prepared: _PreparedContext) -> dict[str, Any] | None:
-    query_similar = getattr(graph_store, "query_similar", None)
-    if callable(query_similar):
+    if isinstance(graph_store, GraphTraversalStore):
         try:
-            rows = query_similar(prepared.decision_id or prepared.invoice_id, 1)
+            rows = graph_store.query_similar(prepared.decision_id or prepared.invoice_id, 1)
         except Exception as exc:
             raise RuntimeError("S2P similar-decision graph lookup failed") from exc
         if rows and isinstance(rows[0], dict):

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 
 from copilot_sdk.situation import TraversalEdge, TraversalNode
+from copilot_sdk.graph.protocol import GraphStore
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.graph.s2p_graph_reader import S2PGraphReader
@@ -232,11 +233,10 @@ class S2PContextBuilder:
         return node_id
 
     def _supplier_enrichment(self, supplier_id: str) -> dict[str, Any]:
-        read = getattr(self.graph_store, "read_entity_enrichment", None)
-        if not callable(read):
+        if not isinstance(self.graph_store, GraphStore):
             return {}
         try:
-            values = read(
+            values = self.graph_store.read_entity_enrichment(
                 domain=S2P_ENRICHMENT_DOMAIN,
                 entity_type=S2P_ENRICHMENT_ENTITY_TYPE,
                 entity_id=str(supplier_id),

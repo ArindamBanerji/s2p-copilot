@@ -20,6 +20,7 @@ from app.services.centroid_explorer import (
     explain_decision,
     get_all_centroid_cells,
 )
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
 client = TestClient(app)
@@ -71,8 +72,9 @@ class FakeProvenanced:
     warnings: list[str] = field(default_factory=list)
 
 
-class FakeGraphStore:
+class FakeGraphStore(InMemoryGraphStore):
     def __init__(self, decision: dict[str, Any] | None = None, checkpoints: list[dict[str, Any]] | None = None) -> None:
+        super().__init__(domain="s2p")
         self.decision = decision
         self.checkpoints = checkpoints
         self.write_decision_calls = 0
@@ -89,6 +91,7 @@ class FakeGraphStore:
     def get_centroid_checkpoints(
         self,
         domain: str,
+        include_v2: bool = False,
         *,
         limit: int = 100,
         checkpoint_time_start: str | None = None,
@@ -96,6 +99,7 @@ class FakeGraphStore:
         decision_time_start: str | None = None,
         decision_time_end: str | None = None,
         category: str | None = None,
+        **kwargs: Any,
     ):
         assert domain == "s2p"
         return list(self.checkpoints or [])

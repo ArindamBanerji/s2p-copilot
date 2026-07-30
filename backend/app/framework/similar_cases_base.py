@@ -26,6 +26,8 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+from app.graph.s2p_graph_reader import S2PGraphReader
+
 log = logging.getLogger(__name__)
 
 # ── Generic §23.4 defaults ───────────────────────────────────────────────────
@@ -56,47 +58,37 @@ class SimilarCasesBase(abc.ABC):
     def get_theta(self, category: str) -> float:
         """Return per-category cosine similarity threshold for retrieval."""
 
-    # ── Neo4j query ──────────────────────────────────────────────────────────
+    # ── Domain-bound graph query ─────────────────────────────────────────────
 
     async def _fetch_verified_decisions(
         self,
         category: str,
-        neo4j_client: Any,
+        graph_reader: S2PGraphReader,
         limit: int = SIMILAR_CASES_MAX_SCAN,
         domain: str = "s2p",
     ) -> List[Dict[str, Any]]:
         """
-        Fetch up to *limit* verified Decision nodes for *category* from Neo4j,
+        Fetch up to *limit* verified Decision nodes for *category* from the
+        domain-bound S2P graph reader,
         most-recent first.
 
         Returns a list of dicts with keys:
           decision_id, action, confidence, outcome, factor_vector, timestamp
         """
-        try:
-            rows = await neo4j_client.run_query(
-                """
-                MATCH (d:Decision)
-                WHERE d.domain = $domain
-                  AND d.category = $category
-                  AND d.factor_vector IS NOT NULL
-                  AND d.outcome IS NOT NULL
-                RETURN d.id            AS decision_id,
-                       d.action        AS action,
-                       d.confidence    AS confidence,
-                       d.outcome       AS outcome,
-                       d.factor_vector AS factor_vector,
-                       d.timestamp     AS timestamp
-                ORDER BY d.timestamp DESC
-                LIMIT $limit
-                """,
-                {"category": category, "limit": limit, "domain": domain},
-            )
-        except Exception as exc:
-            log.warning("[SIMILAR-CASES] Neo4j query failed for category=%r: %s", category, exc)
-            raise RuntimeError("AGE similar-case query failed") from exc
+        if domain != graph_reader.domain:
+            raise ValueError("similar-case domain must match the S2P graph reader")
+        rows = graph_reader.get_verified_decisions()
 
-        results = []
-        for row in rows:
+        results: List[Dict[str, Any]] = []
+        matching_rows = [
+            row
+            for row in rows
+            if row.get("category") == category
+            and row.get("factor_vector") is not None
+            and row.get("outcome") is not None
+        ]
+        recent_rows = matching_rows[-limit:] if limit > 0 else []
+        for row in reversed(recent_rows):
             fv = row.get("factor_vector")
             if isinstance(fv, str):
                 try:
@@ -122,7 +114,7 @@ class SimilarCasesBase(abc.ABC):
         self,
         factor_vector: List[float],
         category: str,
-        neo4j_client: Any,
+        graph_reader: S2PGraphReader,
         k: int = SIMILAR_CASES_K,
         domain: str = "s2p",
     ) -> List[Dict[str, Any]]:
@@ -135,7 +127,7 @@ class SimilarCasesBase(abc.ABC):
         Each returned dict adds a 'similarity' key (float in [0,1]).
         """
         decisions = await self._fetch_verified_decisions(
-            category, neo4j_client, domain=domain
+            category, graph_reader, domain=domain
         )
 
         if len(decisions) < SIMILAR_CASES_MIN_PRIOR:

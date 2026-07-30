@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import Any
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.routers.s2p_data_helpers import find_invoice
 from app.services.s2p_context_builder import S2PContextBuilder
 from copilot_sdk.graph.enrichment import ProvenancedValue
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
 class FakeScorer:
@@ -18,12 +20,13 @@ class FakeScorer:
         return [0.5] * len(S2PDomainConfig.factors)
 
 
-class FakeGraphStore:
+class FakeGraphStore(InMemoryGraphStore):
     domain = "s2p"
 
     def __init__(self) -> None:
+        super().__init__(domain="s2p")
         self.write_calls = 0
-        self.decisions = [
+        self.decisions: list[dict[str, Any]] = [
             {
                 "decision_id": "D-TARGET",
                 "category": "contract_gap",
@@ -127,7 +130,7 @@ class VerifiedDecisionGraphStore(FakeGraphStore):
 
 
 class EmptyEnrichmentGraphStore(FakeGraphStore):
-    def read_entity_enrichment(self, *, domain: str, entity_type: str, entity_id: str, namespace: str):
+    def read_entity_enrichment(self, *, domain: str, entity_type: str, entity_id: str, namespace: str | None = None):
         assert domain == "s2p"
         assert entity_type == "Supplier"
         assert entity_id == "SUP-001"
@@ -136,7 +139,7 @@ class EmptyEnrichmentGraphStore(FakeGraphStore):
 
 
 class PersistedEnrichmentGraphStore(FakeGraphStore):
-    def read_entity_enrichment(self, *, domain: str, entity_type: str, entity_id: str, namespace: str):
+    def read_entity_enrichment(self, *, domain: str, entity_type: str, entity_id: str, namespace: str | None = None):
         assert domain == "s2p"
         assert entity_type == "Supplier"
         assert entity_id == "SUP-001"

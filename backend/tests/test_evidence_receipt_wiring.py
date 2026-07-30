@@ -120,12 +120,28 @@ def test_learn_appends_evidence_receipt_before_outcome_write(monkeypatch) -> Non
 
     assert calls[:2] == ["append", "write_outcome"]
     rows = _evidence_rows()
-    assert len(rows) == 1
-    assert rows[0]["decision_id"] == score["decision_id"]
-    assert rows[0]["receipt_intent_id"].startswith("RCP-")
-    assert rows[0]["chain_index"] == 0
-    assert rows[0]["payload_hash"]
-    payload = json.loads(rows[0]["canonical_payload_json"])
+    assert len(rows) == 2
+    assert {json.loads(row["canonical_payload_json"])["receipt_type"] for row in rows} == {
+        "pre_outcome_context",
+        "post_outcome_verification",
+    }
+    pre_row = next(
+        row
+        for row in rows
+        if json.loads(row["canonical_payload_json"])["receipt_type"] == "pre_outcome_context"
+    )
+    post_row = next(
+        row
+        for row in rows
+        if json.loads(row["canonical_payload_json"])["receipt_type"] == "post_outcome_verification"
+    )
+    assert pre_row["decision_id"] == score["decision_id"]
+    assert pre_row["receipt_intent_id"].startswith("RCP-")
+    assert pre_row["chain_index"] == 0
+    assert post_row["chain_index"] == 1
+    assert pre_row["payload_hash"]
+    assert post_row["payload_hash"]
+    payload = json.loads(pre_row["canonical_payload_json"])
     assert payload["decision_id"] == score["decision_id"]
     assert payload["domain"] == "s2p"
     assert payload["actual_action"] == score["action"]
@@ -212,7 +228,16 @@ def test_chain_index_monotonic_for_multiple_receipts() -> None:
     _learn(second["decision_id"], second["action"])
 
     rows = _evidence_rows()
-    assert [row["chain_index"] for row in rows] == [0, 1]
+    assert len(rows) == 4
+    assert [row["chain_index"] for row in rows] == [0, 1, 2, 3]
+    assert [
+        json.loads(row["canonical_payload_json"])["receipt_type"] for row in rows
+    ] == [
+        "pre_outcome_context",
+        "post_outcome_verification",
+        "pre_outcome_context",
+        "post_outcome_verification",
+    ]
     assert all(row["payload_hash"] for row in rows)
 
 
@@ -256,10 +281,25 @@ def test_outcome_route_appends_evidence_receipt() -> None:
 
     assert response.status_code == 200
     rows = _evidence_rows()
-    assert len(rows) == 1
-    assert rows[0]["actor"] == "evidence-receipt-test"
-    assert rows[0]["source_route"] == "/api/s2p/outcome"
-    assert rows[0]["payload_hash"]
+    assert len(rows) == 2
+    assert {json.loads(row["canonical_payload_json"])["receipt_type"] for row in rows} == {
+        "pre_outcome_context",
+        "post_outcome_verification",
+    }
+    pre_row = next(
+        row
+        for row in rows
+        if json.loads(row["canonical_payload_json"])["receipt_type"] == "pre_outcome_context"
+    )
+    post_row = next(
+        row
+        for row in rows
+        if json.loads(row["canonical_payload_json"])["receipt_type"] == "post_outcome_verification"
+    )
+    assert pre_row["actor"] == "evidence-receipt-test"
+    assert pre_row["source_route"] == "/api/s2p/outcome"
+    assert pre_row["payload_hash"]
+    assert post_row["payload_hash"]
 
 
 def test_outcome_route_receipt_failure_blocks_outcome_write(monkeypatch) -> None:

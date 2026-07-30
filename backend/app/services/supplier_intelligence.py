@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from copilot_sdk.graph.enrichment import ProvenancedValue
+from copilot_sdk.graph.protocol import GraphStore
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.graph.s2p_graph_reader import S2PGraphReader
@@ -360,7 +361,7 @@ class SupplierIntelligenceComposer:
         return self._serialize_metric(ProvenancedValue.unavailable(f"{metric_name} unavailable"))
 
     def _read_enrichment(self, supplier_id: str) -> dict[str, Any]:
-        if self.graph_store is None or not hasattr(self.graph_store, "read_entity_enrichment"):
+        if not isinstance(self.graph_store, GraphStore):
             return {}
         try:
             value = self.graph_store.read_entity_enrichment(
@@ -369,7 +370,7 @@ class SupplierIntelligenceComposer:
                 entity_id=str(supplier_id),
                 namespace=S2P_ENRICHMENT_NAMESPACE,
             )
-        except (AttributeError, NotImplementedError, TypeError, ValueError):
+        except (AttributeError, NotImplementedError, ValueError):
             return {}
         return value if isinstance(value, dict) else {}
 

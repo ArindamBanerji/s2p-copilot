@@ -13,6 +13,7 @@ import numpy as np
 from fastapi import APIRouter, Request
 
 from copilot_sdk.state.cached_static import cached_static
+from copilot_sdk.graph.protocol import ProtocolV2GraphStore
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.models.responses import GenericResponse
@@ -207,8 +208,7 @@ def _score_invoice(invoice: dict[str, Any], scorer) -> dict[str, Any]:
 def _write_preview_observation(request: Request, invoice: dict[str, Any]) -> None:
     scorer = _get_scorer(request)
     graph_store = _get_graph_store(request, scorer)
-    write_observation = getattr(graph_store, "write_observation", None)
-    if not callable(write_observation):
+    if not isinstance(graph_store, ProtocolV2GraphStore):
         return
 
     factor_names = _get_factor_list()
@@ -223,7 +223,7 @@ def _write_preview_observation(request: Request, invoice: dict[str, Any]) -> Non
             "po_reference": invoice.get("po_reference"),
         }
     )
-    write_observation(
+    graph_store.write_observation(
         observation_id=f"OBS-{uuid4().hex[:12]}",
         domain="s2p",
         category=str(invoice["category"]),

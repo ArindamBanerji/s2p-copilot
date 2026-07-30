@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from gae.calibration import compute_theta_min
 
+from app.domains.s2p.config import S2P_CATEGORIES
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
 
@@ -106,6 +107,18 @@ def _is_override_decision(decision: dict[str, Any]) -> bool:
     return decision.get("is_correct") is False
 
 
+def _category_coverage(reader: S2PGraphReader) -> float:
+    """JM alpha: verified categories with data divided by configured categories."""
+    if not S2P_CATEGORIES:
+        return 0.0
+    categories = {
+        str(decision.get("category") or "")
+        for decision in _verified_decisions(reader)
+        if str(decision.get("category") or "") in S2P_CATEGORIES
+    }
+    return len(categories) / len(S2P_CATEGORIES)
+
+
 def _build_summary(reader: S2PGraphReader) -> dict[str, Any]:
     total = _count_decisions(reader)
     verified = _count_verified(reader)
@@ -146,12 +159,11 @@ def _projected_theta_min(
 ) -> float:
     if new_verified <= 0:
         return 1.0
-    current_overrides = sum(1 for decision in _verified_decisions(reader) if _is_override_decision(decision))
-    projected_override_rate = (current_overrides + additional_incorrect) / new_verified
-    if projected_override_rate <= 0:
+    category_coverage = _category_coverage(reader)
+    if category_coverage <= 0:
         return 1.0
     try:
-        return round(float(compute_theta_min(projected_override_rate, new_verified)), 4)
+        return round(float(compute_theta_min(category_coverage, new_verified)), 4)
     except (TypeError, ValueError):
         return 1.0
 
@@ -208,7 +220,9 @@ def what_if(
             "correct": new_correct,
             "q": projected_q,
             "theta_min": theta_min,
-            "status": "GREEN" if projected_q >= theta_min else "RED",
+            "status": "GREEN"
+            if _category_coverage(reader) * projected_q * new_verified >= theta_min
+            else "RED",
         },
         "penalty_ratio": PENALTY_RATIO,
     }

@@ -9,6 +9,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from copilot_sdk.graph.enrichment import ProvenancedValue
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.main import app
@@ -20,8 +21,9 @@ from app.services.supplier_intelligence import (
 from app.services.supplier_profile_accumulator import accumulator
 
 
-class FakeGraphStore:
+class FakeGraphStore(InMemoryGraphStore):
     def __init__(self, enrichment=None, decisions=None):
+        super().__init__(domain="s2p")
         self.enrichment = enrichment or {}
         self.decisions = decisions or []
         self.write_called = False

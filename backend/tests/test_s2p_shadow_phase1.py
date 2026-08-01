@@ -70,58 +70,52 @@ def test_shadow_config_explicit_mapping_ignores_os_environ(monkeypatch):
     assert config.domain == "s2p"
 
 
-def test_shadow_config_enabled_requires_dsn():
-    with pytest.raises(S2PShadowConfigError, match="S2P_AGE_DSN"):
-        S2PShadowConfig.from_env(
-            {
-                "S2P_SHADOW_AGE": "1",
-                "S2P_AGE_GRAPH": "protocol_v2_test_shadow",
-                "S2P_AGE_TEST_MODE": "1",
-            }
-        )
+def test_shadow_config_enabled_does_not_require_second_graph_dsn():
+    config = S2PShadowConfig.from_env({"S2P_SHADOW_AGE": "1"})
+
+    assert config.enabled is True
+    assert config.dsn is None
 
 
-def test_shadow_config_enabled_requires_graph():
-    with pytest.raises(S2PShadowConfigError, match="S2P_AGE_GRAPH"):
-        S2PShadowConfig.from_env(
-            {
-                "S2P_SHADOW_AGE": "1",
-                "S2P_AGE_DSN": "postgresql://user:secret@127.0.0.1/db",
-            }
-        )
+def test_shadow_config_enabled_does_not_require_second_graph_name():
+    config = S2PShadowConfig.from_env({"S2P_SHADOW_AGE": "1"})
+
+    assert config.enabled is True
+    assert config.graph is None
 
 
-def test_shadow_config_rejects_soc_graph():
-    with pytest.raises(S2PShadowConfigError, match="soc_graph"):
-        S2PShadowConfig.from_env(
-            {
-                "S2P_SHADOW_AGE": "1",
-                "S2P_AGE_DSN": "postgresql://user:secret@127.0.0.1/db",
-                "S2P_AGE_GRAPH": "soc_graph",
-            }
-        )
+def test_shadow_config_accepts_soc_graph_lifecycle_target():
+    config = S2PShadowConfig.from_env(
+        {
+            "S2P_SHADOW_AGE": "1",
+            "S2P_AGE_GRAPH": "soc_graph",
+        }
+    )
+
+    assert config.enabled is True
+    assert config.graph == "soc_graph"
 
 
-def test_shadow_config_rejects_blank_graph():
-    with pytest.raises(S2PShadowConfigError, match="S2P_AGE_GRAPH"):
-        S2PShadowConfig.from_env(
-            {
-                "S2P_SHADOW_AGE": "1",
-                "S2P_AGE_DSN": "postgresql://user:secret@127.0.0.1/db",
-                "S2P_AGE_GRAPH": "  ",
-            }
-        )
+def test_shadow_config_allows_blank_legacy_graph():
+    config = S2PShadowConfig.from_env(
+        {
+            "S2P_SHADOW_AGE": "1",
+            "S2P_AGE_GRAPH": "  ",
+        }
+    )
+
+    assert config.enabled is True
 
 
-def test_shadow_config_requires_test_mode_for_protocol_v2_test_graph():
-    with pytest.raises(S2PShadowConfigError, match="S2P_AGE_TEST_MODE"):
-        S2PShadowConfig.from_env(
-            {
-                "S2P_SHADOW_AGE": "1",
-                "S2P_AGE_DSN": "postgresql://user:secret@127.0.0.1/db",
-                "S2P_AGE_GRAPH": "protocol_v2_test_shadow",
-            }
-        )
+def test_shadow_config_does_not_construct_protocol_test_graph():
+    config = S2PShadowConfig.from_env(
+        {
+            "S2P_SHADOW_AGE": "1",
+            "S2P_AGE_GRAPH": "protocol_v2_test_shadow",
+        }
+    )
+
+    assert config.enabled is True
 
 
 def test_shadow_config_allows_protocol_v2_test_graph_with_test_mode():

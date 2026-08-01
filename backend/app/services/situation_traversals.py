@@ -653,7 +653,9 @@ def _get_decision(reader: S2PGraphReader | None, decision_id: str | None) -> dic
 def _similar_decision(graph_store: Any, prepared: _PreparedContext) -> dict[str, Any] | None:
     if isinstance(graph_store, GraphTraversalStore):
         try:
-            rows = graph_store.query_similar(prepared.decision_id or prepared.invoice_id, 1)
+            rows = graph_store.query_similar(
+                prepared.decision_id or prepared.invoice_id, 1, domain="s2p"
+            )
         except Exception as exc:
             raise RuntimeError("S2P similar-decision graph lookup failed") from exc
         if rows and isinstance(rows[0], dict):

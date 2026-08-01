@@ -10,7 +10,7 @@ import numpy as np
 from copilot_sdk.backend import create_conservation_router, create_measurement_state_router
 from copilot_sdk.backend.counterfactual_router import create_counterfactual_router
 from copilot_sdk.backend.transfer_router import create_transfer_router
-from copilot_sdk.config import GraphConfig
+from copilot_sdk.config import GraphConfig, require_shared_graph
 from copilot_sdk.graph.factory import create_graph_store
 from copilot_sdk.scoring import CompoundingScorer
 from copilot_sdk.scoring.startup_restore import restore_l5_runtime_state
@@ -113,6 +113,13 @@ def build_s2p_scorer(
         selected_backend = type(graph_store).__name__
     else:
         graph_config = GraphConfig.load("s2p", profile=resolved_profile)
+        require_shared_graph(
+            backend=graph_config.backend,
+            graph=graph_config.graph,
+            domain=graph_config.domain,
+            profile=resolved_profile,
+            test_mode=graph_config.active_test_mode,
+        )
         selected_graph_store = create_graph_store(
             backend=graph_config.backend,
             domain=graph_config.domain,
@@ -169,22 +176,14 @@ app.state.s2p_graph_reader = S2PGraphReader(
     store=app.state.scorer.graph_store,
     domain="s2p",
 )
-# Enrichment remains SQLite-owned during the split-read migration.  The
-# canonical DualWriteStore exposes its primary as ``primary``; support the
-# legacy private spelling as well for compatible wrappers.
-enrichment_store = getattr(app.state.scorer.graph_store, "primary", None)
-if enrichment_store is None:
-    enrichment_store = getattr(app.state.scorer.graph_store, "_primary", app.state.graph_store)
-app.state.enrichment_store = enrichment_store
-if enrichment_store is not app.state.graph_store and GraphConfig.load("s2p", profile=_resolve_profile()).backend == "dual_write":
-    # The enrichment router resolves its store from app.state.graph_store.
-    # Keep that dependency pointed at the SQLite primary; scorer writes still
-    # use the DualWriteStore held by app.state.scorer.
-    app.state.graph_store = enrichment_store
+# Enrichment and scoring share one authoritative GraphStore.  Keep the
+# explicit alias for consumers that inspect app.state.enrichment_store, but do
+# not replace the scorer's store with a DualWriteStore primary.
+app.state.enrichment_store = app.state.graph_store
 logger.info(
-    "S2P resolved data path: %s (enrichment_store=%s)",
+    "S2P resolved data path: %s (shared_store=%s)",
     DATA_DIR / "s2p.db",
-    type(enrichment_store).__name__,
+    type(app.state.graph_store).__name__,
 )
 l5_startup_status = restore_l5_runtime_state(
     domain="s2p",
@@ -195,7 +194,7 @@ set_l5_dk_welford_tracker(l5_startup_status.pop("welford_tracker", None))
 app.state.l5_startup_status = l5_startup_status
 app.state.s2p_reward_function = app.state.scorer._reward_fn
 app.state.s2p_evolution = S2PEvolutionService(app.state.scorer)
-app.state.s2p_shadow = initialize_s2p_shadow_state()
+app.state.s2p_shadow = initialize_s2p_shadow_state(store=app.state.graph_store)
 app.state.s2p_tab_state_cache = create_s2p_tab_state_cache(app.state)
 
 

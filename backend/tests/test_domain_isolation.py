@@ -33,7 +33,7 @@ class TestNoSOCImports:
         modules = [
             "app.domains.s2p.config",
             "app.domains.s2p.factors",
-            "app.domains.s2p.graph",
+            "app.graph.s2p_graph_reader",
         ]
         for m in modules:
             importlib.import_module(m)

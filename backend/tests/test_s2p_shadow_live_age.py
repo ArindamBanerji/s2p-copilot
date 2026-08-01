@@ -29,14 +29,8 @@ BASE_SCORE_BODY = {
 
 
 def _reset_app_with_live_shadow(s2p_age_test_env):
-    shadow = initialize_s2p_shadow_state(env=s2p_age_test_env.shadow)
-    assert shadow.config.enabled is True
-    assert shadow.config.strict is False
-    assert shadow.config.graph != "soc_graph"
-    assert str(shadow.config.graph).startswith("protocol_v2_test")
-    assert shadow.config.test_mode is True
-    # The fixture isolates module-level app construction on SQLite.  Resolve
-    # the scorer against the same disposable AGE graph as the shadow store.
+    # Resolve the scorer against the disposable active AGE graph, then inject
+    # that exact store into the lifecycle-labelled shadow diagnostics.
     active_keys = tuple(s2p_age_test_env.active)
     previous = {key: os.environ.get(key) for key in active_keys}
     try:
@@ -50,6 +44,15 @@ def _reset_app_with_live_shadow(s2p_age_test_env):
                 os.environ[key] = value
     app.state.graph_store = app.state.scorer.graph_store
     app.state.s2p_reward_function = app.state.scorer._reward_fn
+    shadow = initialize_s2p_shadow_state(
+        env=s2p_age_test_env.shadow,
+        store=app.state.graph_store,
+    )
+    assert shadow.config.enabled is True
+    assert shadow.config.strict is False
+    assert shadow.config.graph == s2p_age_test_env.active["S2P_ACTIVE_AGE_GRAPH"]
+    assert shadow.config.test_mode is True
+    assert shadow.store is app.state.graph_store
     app.state.s2p_shadow = shadow
     s2p_router._clear_score_conservation_status_cache()
     return shadow
@@ -105,10 +108,11 @@ def _assert_no_secret_text(value) -> None:
 
 
 def _verified_decision(shadow, decision_id: str) -> dict:
+    shadow_id = s2p_router._shadow_decision_id(decision_id)
     linked = [
         item
         for item in shadow.store.get_verified_decisions("s2p")
-        if item.get("decision_id") == decision_id
+        if item.get("decision_id") == shadow_id
     ]
     assert linked
     return linked[-1]
@@ -123,12 +127,16 @@ def test_live_age_shadow_score_non_strict_success(s2p_age_test_env):
     assert response.status_code == 200
     body = response.json()
     assert "shadow" not in body
-    decision = shadow.store.get_decision(body["decision_id"])
+    decision = shadow.store.get_decision(
+        s2p_router._shadow_decision_id(body["decision_id"]), domain="s2p"
+    )
     assert decision is not None
-    assert decision["decision_id"] == body["decision_id"]
+    assert decision["decision_id"] == s2p_router._shadow_decision_id(body["decision_id"])
     assert decision["domain"] == "s2p"
     assert decision["status"] == "pending"
     metadata = _metadata(decision)
+    assert metadata["lifecycle"] == "shadow"
+    assert metadata["production_decision_id"] == body["decision_id"]
     assert metadata["shadow_run_id"] == shadow.diagnostics.shadow_run_id
     assert metadata["shadow_operation"] == "score_shadow"
     assert metadata["operation_id"] == body["decision_id"]
@@ -162,7 +170,7 @@ def test_live_age_shadow_outcome_non_strict_success(s2p_age_test_env):
     )
 
     assert response.status_code == 200
-    decision = shadow.store.get_decision(score["decision_id"])
+    decision = shadow.store.get_decision(score["decision_id"], domain="s2p")
     assert decision is not None
     assert decision["decision_id"] == score["decision_id"]
     assert decision["status"] == "confirmed"
@@ -212,7 +220,7 @@ def test_live_age_shadow_learn_non_strict_success(s2p_age_test_env):
     )
 
     assert response.status_code == 200
-    decision = shadow.store.get_decision(score["decision_id"])
+    decision = shadow.store.get_decision(score["decision_id"], domain="s2p")
     assert decision is not None
     assert decision["decision_id"] == score["decision_id"]
     assert decision["status"] == "confirmed"

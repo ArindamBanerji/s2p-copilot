@@ -85,7 +85,7 @@ def test_score_then_learn_links_invoice():
 
     score = _score_then_outcome(client, invoice_id)
 
-    links = app.state.scorer.graph_store.get_decision_links(score["decision_id"])
+    links = app.state.scorer.graph_store.get_decision_links(score["decision_id"], domain="s2p")
     assert links == [
         {
             "decision_id": score["decision_id"],
@@ -105,7 +105,7 @@ def test_score_endpoint_creates_invoice_link_immediately():
 
     assert response.status_code == 200
     score = response.json()
-    links = app.state.graph_store.get_decision_links(score["decision_id"])
+    links = app.state.graph_store.get_decision_links(score["decision_id"], domain="s2p")
     assert any(
         link["decision_id"] == score["decision_id"]
         and link["entity_id"] == invoice_id
@@ -141,7 +141,7 @@ def test_outcome_still_returns_200_when_learn_linking_fails(monkeypatch):
     score_response = client.post("/api/s2p/score", json=_score_payload("S2P-GS-LINK-LEARN-FAIL"))
     assert score_response.status_code == 200
     score = score_response.json()
-    assert app.state.graph_store.get_decision_links(score["decision_id"]) == []
+    assert app.state.graph_store.get_decision_links(score["decision_id"], domain="s2p") == []
 
     outcome_response = client.post(
         "/api/s2p/outcome",
@@ -212,7 +212,10 @@ class _BlockingGraphStore:
             filtered = [link for link in links if link["decision_id"] == decision_id]
         return filtered[:limit] if limit is not None else filtered
 
-    def _link_decision_to_entity(self, decision_id, entity_id, edge_type="DECIDED_ON"):
+    def _link_decision_to_entity(
+        self, decision_id, entity_id, edge_type="DECIDED_ON", *, domain
+    ):
+        assert domain == "s2p"
         with self._lock:
             self._link_calls += 1
             link_call = self._link_calls
@@ -222,6 +225,7 @@ class _BlockingGraphStore:
         with self._lock:
             self.links.append(
                 {
+                    "domain": domain,
                     "decision_id": decision_id,
                     "entity_id": entity_id,
                     "edge_type": edge_type,
@@ -237,7 +241,9 @@ class _FakeScorer:
         if decision_id == "decision-b":
             self.graph_store.second_learn_entered.set()
         invoice_id = (context or {}).get("invoice_id")
-        self.graph_store.link_decision_to_entity(decision_id, invoice_id, edge_type="DECIDED_ON")
+        self.graph_store.link_decision_to_entity(
+            decision_id, invoice_id, edge_type="DECIDED_ON", domain="s2p"
+        )
         return {
             "decision_id": decision_id,
             "status": "recorded",
@@ -282,7 +288,7 @@ def test_concurrent_learn_restores_original_link_callable():
     assert graph_store.link_decision_to_entity is original_link
     assert all(
         link["edge_type"] == "DECIDED_ON"
-        for link in graph_store.get_decision_links()
+        for link in graph_store.get_decision_links(domain="s2p")
     )
 
 
@@ -321,7 +327,7 @@ def test_linked_invoice_retrievable():
 
     score = _score_then_outcome(client, invoice_id)
 
-    all_links = app.state.graph_store.get_decision_links()
+    all_links = app.state.graph_store.get_decision_links(domain="s2p")
     assert any(
         link["decision_id"] == score["decision_id"]
         and link["entity_id"] == invoice_id

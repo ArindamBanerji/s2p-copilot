@@ -45,6 +45,7 @@ def test_evidence_uses_graph_links() -> None:
         decision_id,
         invoice_id,
         edge_type="DECIDED_ON",
+        domain="s2p",
     )
 
     response = client.get(f"/api/s2p/evidence/audit-trail/{invoice_id}")
@@ -81,6 +82,7 @@ def test_evidence_response_shape_unchanged() -> None:
         graph_decision_id,
         graph_invoice_id,
         edge_type="DECIDED_ON",
+        domain="s2p",
     )
 
     graph_response = client.get(f"/api/s2p/evidence/audit-trail/{graph_invoice_id}")

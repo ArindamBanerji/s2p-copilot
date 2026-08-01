@@ -55,7 +55,8 @@ def _write_decision(
             action if correct else "escalate_to_buyer",
             bool(correct),
             metadata={"verified_at": verified_at if verified_at is not None else created_at + 60},
-        )
+        
+            domain="s2p",)
     return decision_id
 
 

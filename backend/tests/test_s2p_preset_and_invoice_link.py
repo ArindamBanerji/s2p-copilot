@@ -58,7 +58,7 @@ def test_score_response_shape_preserved_and_invoice_metadata_persisted():
 
     for key in ("decision_id", "action", "action_index", "confidence", "factor_vector", "factor_names"):
         assert key in scored
-    decision = app.state.graph_store.get_decision(scored["decision_id"])
+    decision = app.state.graph_store.get_decision(scored["decision_id"], domain="s2p")
     assert decision is not None
     assert decision["metadata"]["invoice_id"] == invoice["invoice_id"]
     assert decision["metadata"]["source_invoice_id"] == invoice["invoice_id"]
@@ -90,7 +90,7 @@ def test_outcome_uses_persistent_invoice_link_without_memory_index():
     assert data["learning_applied"] is True
     assert data["reward_raw"] == 0.8
     assert data["invoice_id"] == invoice["invoice_id"]
-    decision = app.state.graph_store.get_decision(scored["decision_id"])
+    decision = app.state.graph_store.get_decision(scored["decision_id"], domain="s2p")
     assert decision["metadata"]["invoice_id"] == invoice["invoice_id"]
 
 

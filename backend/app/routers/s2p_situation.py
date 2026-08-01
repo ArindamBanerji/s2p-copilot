@@ -40,6 +40,8 @@ async def get_situation(
         raise HTTPException(status_code=503, detail="Decision graph unavailable") from exc
     if decision is None:
         raise HTTPException(status_code=404, detail=f"decision_id not found: {decision_id}")
+    decision = dict(decision)
+    decision["provenance"] = "graph_store"
     category = str(decision.get("category") or "")
     if category not in S2PDomainConfig.categories:
         raise HTTPException(status_code=400, detail=f"unsupported category: {category}")
@@ -140,7 +142,7 @@ def _graph_reader(request: Request) -> S2PGraphReader:
 
 def _decision(reader: S2PGraphReader, decision_id: str) -> dict[str, Any] | None:
     decision = reader.get_decision(str(decision_id))
-    if isinstance(decision, dict) and decision.get("domain") not in (None, "s2p"):
+    if isinstance(decision, dict) and decision.get("domain") != "s2p":
         raise GraphUnavailableError("S2P decision lookup returned a foreign domain")
     return decision if isinstance(decision, dict) else None
 

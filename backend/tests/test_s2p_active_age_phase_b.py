@@ -317,7 +317,7 @@ def _product_config() -> S2PActiveGraphConfig:
         {
             "S2P_ACTIVE_GRAPH_BACKEND": "age",
             "S2P_ACTIVE_AGE_DSN": "postgresql://postgres:secret@127.0.0.1/db",
-            "S2P_ACTIVE_AGE_GRAPH": "governed_copilot_graph",
+            "S2P_ACTIVE_AGE_GRAPH": "soc_graph",
             "S2P_ACTIVE_AGE_DOMAIN": "s2p",
             "S2P_ACTIVE_AGE_TEST_MODE": "0",
         }
@@ -474,7 +474,7 @@ def test_learn_route_uses_active_age_after_score_and_preserves_invariant():
     assert duplicate.status_code != 200
 
 
-def test_active_age_shadow_conflict_rejects_before_store_construction(monkeypatch):
+def test_active_age_shadow_lifecycle_allows_shared_store_construction(monkeypatch):
     constructed = False
 
     def factory(**kwargs: Any) -> FakeAGEStore:
@@ -484,10 +484,10 @@ def test_active_age_shadow_conflict_rejects_before_store_construction(monkeypatc
 
     config = _active_config()
     monkeypatch.setenv("S2P_SHADOW_AGE", "1")
-    with pytest.raises(Exception, match="S2P_SHADOW_AGE"):
-        create_s2p_active_graph_store(config, store_factory=factory)
+    store = create_s2p_active_graph_store(config, store_factory=factory)
 
-    assert constructed is False
+    assert constructed is True
+    assert isinstance(store, S2PActiveAGEGraphStore)
 
 
 def test_preview_remains_read_only_under_active_age():
@@ -562,7 +562,7 @@ def test_product_active_age_score_outcome_and_status_with_fake_store():
     assert status["age_active"] is True
     assert status["sqlite_authoritative"] is False
     assert status["age_graph_kind"] == "product"
-    assert status["active_graph_name"] == "governed_copilot_graph"
+    assert status["active_graph_name"] == "soc_graph"
     assert status["active_test_mode"] is False
     assert status["cutover_ready"] is True
     assert status["decision_outcome_cutover_ready"] is True
@@ -662,7 +662,7 @@ def test_product_active_age_rollback_proves_no_hidden_reconciliation():
 
     assert sqlite_response.status_code == 200
     assert app.state.graph_store.count_decisions("s2p") == before_sqlite + 1
-    assert app.state.graph_store.get_decision(product_decision_id) is None
+    assert app.state.graph_store.get_decision(product_decision_id, domain="s2p") is None
     assert fake.get_decision(product_decision_id) is not None
     status = client.get("/api/s2p/graph/status").json()
     assert status["active_backend"] == "sqlite"

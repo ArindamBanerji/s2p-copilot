@@ -300,6 +300,11 @@ def _shadow_latency_ms(start: float) -> float:
     return round((time.perf_counter() - start) * 1000.0, 3)
 
 
+def _shadow_decision_id(decision_id: str) -> str:
+    """Return a distinct same-graph ID for a non-authoritative shadow record."""
+    return f"{decision_id}::shadow"
+
+
 def _handle_shadow_error(
     shadow: S2PShadowState,
     *,
@@ -344,10 +349,11 @@ def _record_score_shadow(
         return
 
     operation_id = str(score_result.decision_id)
+    shadow_decision_id = _shadow_decision_id(operation_id)
     start = time.perf_counter()
     try:
         shadow.store.write_governed_decision(
-            decision_id=score_result.decision_id,
+            decision_id=shadow_decision_id,
             domain=shadow.config.domain,
             category=score_request.category,
             category_index=S2PDomainConfig.get_category_index(score_request.category),
@@ -363,6 +369,8 @@ def _record_score_shadow(
             factor_schema_version="s2p_factor_schema_v1",
             metadata={
                 "shadow": True,
+                "lifecycle": "shadow",
+                "production_decision_id": operation_id,
                 "shadow_run_id": shadow.diagnostics.shadow_run_id,
                 "shadow_operation": "score_shadow",
                 "operation_id": operation_id,
@@ -424,14 +432,17 @@ def _record_outcome_shadow(
         "confirmed",
     }
     start = time.perf_counter()
+    shadow_decision_id = _shadow_decision_id(decision_id)
     try:
         shadow.store.write_outcome(
-            decision_id=decision_id,
+            decision_id=shadow_decision_id,
             actual_action=actual_action,
             is_correct=is_correct,
             domain=shadow.config.domain,
             metadata={
                 "shadow": True,
+                "lifecycle": "shadow",
+                "production_decision_id": decision_id,
                 "shadow_run_id": shadow.diagnostics.shadow_run_id,
                 "shadow_operation": operation,
                 "operation_id": decision_id,
@@ -456,6 +467,7 @@ def _record_outcome_shadow(
         latency_ms=_shadow_latency_ms(start),
         parity={
             "decision_id": decision_id,
+            "shadow_decision_id": shadow_decision_id,
             "decision_id_match": True,
             "outcome_match": True,
             "is_correct": is_correct,
@@ -815,7 +827,7 @@ def _link_decision_to_invoice(
             if isinstance(item, dict)
         ):
             return
-        link(decision_id, invoice_id, "DECIDED_ON")
+        link(decision_id, invoice_id, "DECIDED_ON", domain="s2p")
     except GraphUnavailableError:
         raise
     except Exception:
@@ -1586,6 +1598,8 @@ def _learn_with_scorer(
                     linked_decision_id: str,
                     entity_id: str,
                     edge_type: str = "DECIDED_ON",
+                    *,
+                    domain: str = "s2p",
                 ) -> None:
                     if (
                         had_invoice_link
@@ -1595,7 +1609,12 @@ def _learn_with_scorer(
                     ):
                         return
                     try:
-                        original_link(linked_decision_id, entity_id, edge_type=edge_type)
+                        original_link(
+                            linked_decision_id,
+                            entity_id,
+                            edge_type=edge_type,
+                            domain=domain,
+                        )
                     except Exception:
                         log.exception("S2P graph invoice link skipped for decision %s", linked_decision_id)
 

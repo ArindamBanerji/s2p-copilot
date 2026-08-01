@@ -197,7 +197,7 @@ def test_active_age_config_validates_test_graph_without_constructing_age_store()
     assert body["active_backend"] == "sqlite"
     assert body["requested_backend"] == "age"
     assert body["age_active"] is False
-    assert body["shadow_allowed"] is False
+    assert body["shadow_allowed"] is True
     assert body["active_graph_name"] == "protocol_v2_test_cutover"
     assert body["age_graph_kind"] == "test"
     assert body["active_test_mode"] is True
@@ -210,14 +210,14 @@ def test_product_graph_allow_list_accepts_governed_copilot_graph_without_constru
         {
             "S2P_ACTIVE_GRAPH_BACKEND": "age",
             "S2P_ACTIVE_AGE_DSN": "postgresql://postgres:secret@127.0.0.1/db",
-            "S2P_ACTIVE_AGE_GRAPH": "governed_copilot_graph",
+            "S2P_ACTIVE_AGE_GRAPH": "soc_graph",
             "S2P_ACTIVE_AGE_DOMAIN": "s2p",
             "S2P_ACTIVE_AGE_TEST_MODE": "0",
         }
     )
 
     assert config.graph_kind() == "product"
-    assert config.graph == "governed_copilot_graph"
+    assert config.graph == "soc_graph"
     assert config.test_mode is False
 
 
@@ -265,7 +265,7 @@ def test_product_graph_status_reports_readiness_fields_without_cutover():
         {
             "S2P_ACTIVE_GRAPH_BACKEND": "age",
             "S2P_ACTIVE_AGE_DSN": "postgresql://postgres:postgres@127.0.0.1/db?token=secret",
-            "S2P_ACTIVE_AGE_GRAPH": "governed_copilot_graph",
+            "S2P_ACTIVE_AGE_GRAPH": "soc_graph",
             "S2P_ACTIVE_AGE_DOMAIN": "s2p",
             "S2P_ACTIVE_AGE_TEST_MODE": "0",
         }
@@ -277,11 +277,11 @@ def test_product_graph_status_reports_readiness_fields_without_cutover():
     assert body["active_backend"] == "sqlite"
     assert body["requested_backend"] == "age"
     assert body["age_active"] is False
-    assert body["active_graph_name"] == "governed_copilot_graph"
+    assert body["active_graph_name"] == "soc_graph"
     assert body["age_graph_kind"] == "product"
     assert body["graph_kind"] == "product"
     assert body["product_graph_allowed"] is True
-    assert "governed_copilot_graph" in body["product_graph_allow_list"]
+    assert "soc_graph" in body["product_graph_allow_list"]
     assert body["product_cutover_implementation_ready"] is False
     assert body["true_parallel_gate_status"] == "completed_backend_live"
     assert body["evidence_receipt_mapping_status"] == "design_required"
@@ -320,17 +320,19 @@ def test_active_age_protocol_v2_test_requires_test_mode():
         )
 
 
-def test_active_age_rejects_shadow_self_conflict():
-    with pytest.raises(S2PActiveGraphConfigError, match="S2P_SHADOW_AGE"):
-        S2PActiveGraphConfig.from_env(
-            {
-                "S2P_ACTIVE_GRAPH_BACKEND": "age",
-                "S2P_ACTIVE_AGE_DSN": "postgresql://postgres:secret@127.0.0.1/db",
-                "S2P_ACTIVE_AGE_GRAPH": "protocol_v2_test_cutover",
-                "S2P_ACTIVE_AGE_TEST_MODE": "1",
-                "S2P_SHADOW_AGE": "1",
-            }
-        )
+def test_active_age_allows_shared_graph_shadow_lifecycle():
+    config = S2PActiveGraphConfig.from_env(
+        {
+            "S2P_ACTIVE_GRAPH_BACKEND": "age",
+            "S2P_ACTIVE_AGE_DSN": "postgresql://postgres:secret@127.0.0.1/db",
+            "S2P_ACTIVE_AGE_GRAPH": "protocol_v2_test_cutover",
+            "S2P_ACTIVE_AGE_TEST_MODE": "1",
+            "S2P_SHADOW_AGE": "1",
+        }
+    )
+
+    assert config.requested_backend == "age"
+    assert config.graph == "protocol_v2_test_cutover"
 
 
 def test_active_age_domain_locked_to_s2p():

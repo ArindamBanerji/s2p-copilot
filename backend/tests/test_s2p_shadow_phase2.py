@@ -170,8 +170,10 @@ def test_shadow_disabled_by_default_does_not_construct_age_store():
     assert shadow.store is None
 
 
-def test_enabled_shadow_state_constructs_store_with_injected_factory():
-    fake = FakeShadowStore()
+def test_enabled_shadow_state_uses_injected_shared_store():
+    from copilot_sdk.graph.memory_store import InMemoryGraphStore
+
+    shared_store = InMemoryGraphStore(domain="s2p")
     state = initialize_s2p_shadow_state(
         env={
             "S2P_SHADOW_AGE": "1",
@@ -179,12 +181,12 @@ def test_enabled_shadow_state_constructs_store_with_injected_factory():
             "S2P_AGE_GRAPH": "protocol_v2_test_shadow",
             "S2P_AGE_TEST_MODE": "1",
         },
-        store_factory=lambda config: fake,
+        store=shared_store,
     )
 
     assert state.config.enabled is True
     assert state.config.graph == "protocol_v2_test_shadow"
-    assert state.store is fake
+    assert state.store is shared_store
 
 
 def test_score_shadow_success_uses_authoritative_decision_id_and_keeps_response_shape():
@@ -198,10 +200,12 @@ def test_score_shadow_success_uses_authoritative_decision_id_and_keeps_response_
     body = response.json()
     assert len(fake.governed_decisions) == 1
     shadow_write = fake.governed_decisions[0]
-    assert shadow_write["decision_id"] == body["decision_id"]
+    assert shadow_write["decision_id"] == f"{body['decision_id']}::shadow"
     assert shadow_write["domain"] == "s2p"
     assert shadow_write["factor_names"] == s2p_router.S2PDomainConfig.factors
     assert shadow_write["metadata"]["shadow_run_id"] == "phase2-test"
+    assert shadow_write["metadata"]["lifecycle"] == "shadow"
+    assert shadow_write["metadata"]["production_decision_id"] == body["decision_id"]
     assert shadow_write["metadata"]["shadow_operation"] == "score_shadow"
     assert shadow_write["metadata"]["operation_id"] == body["decision_id"]
     assert "shadow" not in body
@@ -234,9 +238,10 @@ def test_outcome_shadow_success_runs_after_authoritative_outcome():
 
     assert response.status_code == 200
     assert len(fake.outcomes) == 1
-    assert fake.outcomes[0]["decision_id"] == score["decision_id"]
+    assert fake.outcomes[0]["decision_id"] == f"{score['decision_id']}::shadow"
     assert fake.outcomes[0]["actual_action"] == score["action"]
     assert fake.outcomes[0]["metadata"]["shadow_run_id"] == "phase2-test"
+    assert fake.outcomes[0]["metadata"]["lifecycle"] == "shadow"
     assert fake.outcomes[0]["metadata"]["shadow_operation"] == "outcome_shadow"
     assert fake.outcomes[0]["metadata"]["operation_id"] == score["decision_id"]
     event = shadow.diagnostics.events()[-1]

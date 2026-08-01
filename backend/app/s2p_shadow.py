@@ -1,7 +1,7 @@
-"""S2P AGE shadow configuration and diagnostics.
+"""S2P shared-graph shadow configuration and diagnostics.
 
-Shadow state is non-authoritative. SQLite remains the S2P runtime source of
-truth until explicit parity and cutover gates pass.
+Shadow state is non-authoritative and uses the already-selected S2P GraphStore.
+This module must never construct a second AGE connection or graph.
 """
 
 from __future__ import annotations
@@ -73,12 +73,6 @@ class S2PShadowConfig:
         domain = (source.get("S2P_AGE_DOMAIN") or "s2p").strip()
         legacy_dsn = source.get("S2P_AGE_DSN")
         legacy_graph = source.get("S2P_AGE_GRAPH")
-        if env is None and (legacy_dsn or legacy_graph) and not os.environ.get("PYTEST_CURRENT_TEST"):
-            raise GraphConfigError(
-                "S2P_AGE_DSN/S2P_AGE_GRAPH are test-only overrides. "
-                "Production shadow must use GraphConfig. Remove these env vars "
-                "or set PYTEST_CURRENT_TEST."
-            )
         if env is None and enabled and not (legacy_dsn or legacy_graph):
             try:
                 graph_config = GraphConfig.load("s2p")
@@ -88,9 +82,8 @@ class S2PShadowConfig:
             dsn = graph_config.dsn
             graph = graph_config.graph
         else:
-            # Explicit mapping injection is retained for isolated tests only;
-            # production resolution always uses GraphConfig above.  The
-            # legacy names are accepted only for test-mode compatibility.
+            # Legacy values remain visible in diagnostics for compatibility,
+            # but are never used to construct a graph store.
             dsn = legacy_dsn
             graph = legacy_graph
 
@@ -114,20 +107,8 @@ class S2PShadowConfig:
         if not self.enabled:
             return
 
-        if not self.dsn or not self.dsn.strip():
-            raise S2PShadowConfigError("S2P_AGE_DSN is required when S2P_SHADOW_AGE=1")
-        if not self.graph or not self.graph.strip():
-            raise S2PShadowConfigError("S2P_AGE_GRAPH is required when S2P_SHADOW_AGE=1")
-
-        graph = self.graph.strip()
-        # Shadow uses a separate AGE graph by design (Rule #61, P29-D).
-        # This is NOT a Goal 6 violation — shadow validates before promotion.
-        if graph == "soc_graph":
-            raise S2PShadowConfigError("S2P AGE shadow must not target soc_graph")
-        if graph.startswith("protocol_v2_test") and not self.test_mode:
-            raise S2PShadowConfigError(
-                "protocol_v2_test* graphs require S2P_AGE_TEST_MODE=1"
-            )
+        # The active GraphStore, resolved by S2P startup, is the only graph
+        # authority. Legacy DSN/graph fields are informational only.
 
     def safe_summary(self) -> dict[str, Any]:
         return {
@@ -220,34 +201,24 @@ class S2PShadowDiagnostics:
         return dict(self._last_error) if self._last_error else None
 
 
-def _default_shadow_store_factory(config: S2PShadowConfig) -> Any:
-    # Import lazily so disabled/default S2P startup does not construct or depend
-    # on AGE/factory objects.
-    from copilot_sdk.graph.factory import create_graph_store
-
-    return create_graph_store(
-        backend="age",
-        domain=config.domain,
-        dsn=config.dsn,
-        graph_name=config.graph,
-        env={},
-        test_mode=config.test_mode,
-    )
-
-
 def initialize_s2p_shadow_state(
     *,
     env: Mapping[str, str] | None = None,
     store_factory: Any | None = None,
     diagnostics: S2PShadowDiagnostics | None = None,
+    store: Any | None = None,
 ) -> S2PShadowState:
     config = S2PShadowConfig.from_env(env)
     coordinator = diagnostics or S2PShadowDiagnostics()
-    store = None
-    if config.enabled:
-        factory = store_factory or _default_shadow_store_factory
-        store = factory(config)
-    return S2PShadowState(config=config, diagnostics=coordinator, store=store)
+    # ``store_factory`` is retained as a compatibility parameter for isolated
+    # callers, but is deliberately ignored: shared-graph shadowing cannot
+    # construct a second physical store.
+    del store_factory
+    return S2PShadowState(
+        config=config,
+        diagnostics=coordinator,
+        store=store if config.enabled else None,
+    )
 
 
 __all__ = [

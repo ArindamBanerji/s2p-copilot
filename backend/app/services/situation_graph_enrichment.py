@@ -153,7 +153,7 @@ class S2PSituationEnricher:
                 for link in existing_links
             ):
                 continue
-            linker(decision_id, entity_id, edge_type=edge_type)
+            linker(decision_id, entity_id, edge_type=edge_type, domain=DOMAIN)
 
 
 def _context_nodes(context: dict[str, Any]) -> list[dict[str, Any]]:

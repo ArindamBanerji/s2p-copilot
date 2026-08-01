@@ -119,7 +119,10 @@ def _validate_seed_target(graph: str | None) -> str:
     if not target:
         raise ValueError("--graph is required for S2P seeding")
     if target == "soc_graph" and os.environ.get("ALLOW_PRODUCTION_SEED") != "1":
-        raise PermissionError("Refusing to seed soc_graph without ALLOW_PRODUCTION_SEED=1")
+        raise ValueError(
+            "Cannot seed production graph from JSON. "
+            "Use an explicitly authorized migration/seed command."
+        )
     return target
 
 
@@ -211,6 +214,7 @@ def seed_s2p_graph(seed: int = 42) -> tuple[list[dict[str, Any]], list[dict[str,
             {
                 "decision_id": f"decision_{invoice_id}",
                 "domain": "s2p",
+                "provenance": "seed",
                 "invoice_id": invoice_id,
                 "category": category,
                 "recommended_action": invoice.get("ground_truth_action"),

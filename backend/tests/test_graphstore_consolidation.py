@@ -69,7 +69,7 @@ def test_s2p_uses_canonical_inmemory_graphstore_with_prefix() -> None:
         metadata={"decision_id": "abc123", "entity_id": "invoice-1"},
     )
 
-    stored = graph_store.get_decision(decision_id)
+    stored = graph_store.get_decision(decision_id, domain="s2p")
     assert decision_id.startswith("S2P-")
     assert stored is not None
     assert stored["decision_id"] == decision_id
@@ -87,7 +87,7 @@ def test_score_endpoint_preserves_s2p_decision_prefix() -> None:
 
     assert response.status_code == 200
     decision_id = response.json()["decision_id"]
-    stored = app.state.graph_store.get_decision(decision_id)
+    stored = app.state.graph_store.get_decision(decision_id, domain="s2p")
     assert decision_id.startswith("S2P-")
     assert stored["metadata"]["decision_id"] == decision_id
 

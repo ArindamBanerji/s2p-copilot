@@ -64,7 +64,7 @@ def _store(category: str = "price_variance", confidence: float = 0.91) -> tuple[
             "provenance": "fixture",
         },
     )
-    store.link_decision_to_entity(decision_id, "S2P-INV-0001")
+    store.link_decision_to_entity(decision_id, "S2P-INV-0001", domain="s2p")
     similar_id = store.write_decision(
         "s2p",
         category,
@@ -80,7 +80,7 @@ def _store(category: str = "price_variance", confidence: float = 0.91) -> tuple[
             "provenance": "fixture",
         },
     )
-    store.link_decision_to_entity(similar_id, "S2P-INV-0002")
+    store.link_decision_to_entity(similar_id, "S2P-INV-0002", domain="s2p")
     return store, decision_id
 
 
@@ -200,7 +200,7 @@ def test_format_compliance_traversal_with_fixture_data() -> None:
 
 def test_price_variance_missing_graph_data_graceful() -> None:
     store, decision_id = _store("price_variance")
-    decision = store.get_decision(decision_id)
+    decision = store.get_decision(decision_id, domain="s2p")
     assert decision is not None
     decision["metadata"].pop("commodity", None)
     store._decisions[decision_id] = decision
@@ -213,7 +213,7 @@ def test_price_variance_missing_graph_data_graceful() -> None:
 
 def test_quantity_mismatch_missing_gr_graceful() -> None:
     store, decision_id = _store("quantity_mismatch")
-    decision = store.get_decision(decision_id)
+    decision = store.get_decision(decision_id, domain="s2p")
     assert decision is not None
     decision["metadata"].pop("gr_qty", None)
     store._decisions[decision_id] = decision
@@ -234,7 +234,7 @@ def test_duplicate_missing_similar_data_graceful() -> None:
 
 def test_contract_gap_missing_contract_graceful() -> None:
     store, decision_id = _store("contract_gap")
-    decision = store.get_decision(decision_id)
+    decision = store.get_decision(decision_id, domain="s2p")
     assert decision is not None
     decision["metadata"].pop("contract_ref", None)
     store._decisions[decision_id] = decision
@@ -331,13 +331,13 @@ def test_max_depth_parameter_limits_traversal() -> None:
 def test_endpoint_is_read_only() -> None:
     store, decision_id = _store("price_variance")
     decision_count_before = store.count_decisions("s2p")
-    link_count_before = len(store.get_decision_links())
+    link_count_before = len(store.get_decision_links(domain="s2p"))
 
     response = _client(store).get(f"/api/s2p/situation/{decision_id}")
 
     assert response.status_code == 200
     assert store.count_decisions("s2p") == decision_count_before
-    assert len(store.get_decision_links()) == link_count_before
+    assert len(store.get_decision_links(domain="s2p")) == link_count_before
 
 
 def test_traversal_uses_graph_context_before_fixture_node() -> None:
@@ -385,7 +385,7 @@ def test_context_chain_nodes_include_provenance_field() -> None:
 def test_all_graph_sourced_nodes_report_context_overall() -> None:
     store = GraphCompleteStore(domain="s2p")
     base_store, decision_id = _store("price_variance")
-    decision = base_store.get_decision(decision_id)
+    decision = base_store.get_decision(decision_id, domain="s2p")
     assert decision is not None
     decision["metadata"]["provenance"] = "graph_store"
     base_store._decisions[decision_id] = decision

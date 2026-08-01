@@ -76,7 +76,7 @@ def test_live_active_age_score_test_mode_success(s2p_age_test_env):
 
     assert response.status_code == 200
     body = response.json()
-    decision = active_store.get_decision(body["decision_id"])
+    decision = active_store.get_decision(body["decision_id"], domain="s2p")
     assert decision is not None
     assert decision["decision_id"] == body["decision_id"]
     assert decision["domain"] == "s2p"
@@ -108,7 +108,7 @@ def test_live_active_age_outcome_test_mode_success_and_invariant(s2p_age_test_en
     )
 
     assert response.status_code == 200
-    decision = active_store.get_decision(score["decision_id"])
+    decision = active_store.get_decision(score["decision_id"], domain="s2p")
     assert decision is not None
     assert decision["status"] == "confirmed"
     verified = [
@@ -147,7 +147,7 @@ def test_live_active_age_learn_test_mode_success_and_invariant(s2p_age_test_env)
     )
 
     assert response.status_code == 200
-    decision = active_store.get_decision(score["decision_id"])
+    decision = active_store.get_decision(score["decision_id"], domain="s2p")
     assert decision is not None
     assert decision["decision_id"] == score["decision_id"]
     assert decision["domain"] == "s2p"
@@ -190,7 +190,7 @@ def test_live_active_age_rollback_to_sqlite(s2p_age_test_env):
     client = TestClient(app)
     response = _score(client, "ROLLBACK-ACTIVE")
     assert response.status_code == 200
-    assert active_store.get_decision(response.json()["decision_id"]) is not None
+    assert active_store.get_decision(response.json()["decision_id"], domain="s2p") is not None
 
     _reset_app_with_sqlite()
     before = app.state.graph_store.count_decisions("s2p")

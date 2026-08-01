@@ -13,7 +13,7 @@ import re
 
 from fastapi import APIRouter, Request
 
-from copilot_sdk.config import GraphConfig, GraphConfigError
+from copilot_sdk.config import GraphConfig, GraphConfigError, require_shared_graph
 
 router = APIRouter(prefix="/api/s2p/graph", tags=["s2p-graph"])
 
@@ -28,7 +28,7 @@ _GENERIC_GRAPH_ENV_KEYS = (
 
 S2P_ALLOWED_PRODUCT_AGE_GRAPHS = frozenset(
     {
-        "governed_copilot_graph",
+        "soc_graph",
     }
 )
 _HISTORICAL_VISIBILITY_WARNING = (
@@ -187,10 +187,6 @@ class S2PActiveGraphConfig:
             raise S2PActiveGraphConfigError(
                 "S2P_ACTIVE_AGE_DOMAIN must be 's2p' for S2P active graph"
             )
-        if _parse_bool(source.get("S2P_SHADOW_AGE"), default=False):
-            raise S2PActiveGraphConfigError(
-                "S2P_SHADOW_AGE=1 conflicts with active AGE cutover"
-            )
         if not self.dsn or not self.dsn.strip():
             raise S2PActiveGraphConfigError(
                 "S2P_ACTIVE_AGE_DSN is required when S2P_ACTIVE_GRAPH_BACKEND=age"
@@ -339,18 +335,24 @@ def create_s2p_active_graph_store(
 ) -> Any | None:
     if config.requested_backend != "age":
         return None
-    if _parse_bool(os.environ.get("S2P_SHADOW_AGE"), default=False):
-        raise S2PActiveGraphConfigError(
-            "S2P_SHADOW_AGE=1 conflicts with active AGE cutover"
-        )
     config.validate({"S2P_ACTIVE_GRAPH_BACKEND": "age"})
+    try:
+        require_shared_graph(
+            backend=config.requested_backend,
+            graph=config.graph,
+            domain=config.domain,
+            profile="test" if config.test_mode else "production",
+            test_mode=config.test_mode,
+        )
+    except GraphConfigError as exc:
+        raise S2PActiveGraphConfigError(str(exc)) from exc
     graph_kind = config.graph_kind()
     factory = store_factory
     if factory is None:
         from copilot_sdk.graph.factory import create_graph_store
 
         factory = create_graph_store
-    factory_args = {
+    factory_args: dict[str, Any] = {
         "backend": "age",
         "domain": config.domain,
         "dsn": config.dsn,
@@ -415,7 +417,7 @@ def build_s2p_graph_status(app_state: Any) -> dict[str, Any]:
         "sqlite_authoritative": not age_active,
         "age_active": age_active,
         "shadow_enabled": shadow_summary["enabled"],
-        "shadow_allowed": not requested_age,
+        "shadow_allowed": True,
         "active_graph_name": config.graph if requested_age else None,
         "age_graph_kind": graph_kind,
         "graph_kind": "sqlite" if not requested_age else graph_kind,

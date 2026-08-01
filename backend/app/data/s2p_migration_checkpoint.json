@@ -1,0 +1,22 @@
+{
+  "active_decisions_written": 801,
+  "active_last_rowid": 24983,
+  "active_outcomes_written": 80,
+  "active_source_manifest_hash": "53a0b9c3b9b4f7428b470daa9c5fae6bb21845fdb9750583a9ecba9e83fd58d8",
+  "all_decisions": true,
+  "archive_last_archive_id": 24182,
+  "archive_source_manifest_hash": "993a3fd618313cccf060bfb7d83b4e64ccec4029b8373d8790939bff3218c553",
+  "archived_decisions_written": 24182,
+  "archived_outcomes_written": 12,
+  "batch_number": 26,
+  "decisions_written": 24983,
+  "domain": "s2p",
+  "graph_name": "soc_graph",
+  "include_archived": true,
+  "last_rowid": 24983,
+  "outcomes_written": 92,
+  "phase": "complete",
+  "source_db_path": "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\s2p-copilot\\backend\\app\\data\\s2p.db",
+  "status": "complete",
+  "timestamp": "2026-07-25T10:43:31.464809+00:00"
+}

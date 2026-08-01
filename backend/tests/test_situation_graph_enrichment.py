@@ -45,7 +45,7 @@ def _client(store: InMemoryGraphStore) -> TestClient:
 
 def _price_store(provenance: str = "graph_store") -> tuple[InMemoryGraphStore, str]:
     store, decision_id = _store("price_variance")
-    decision = store.get_decision(decision_id)
+    decision = store.get_decision(decision_id, domain="s2p")
     assert decision is not None
     decision["metadata"]["provenance"] = provenance
     store._decisions[decision_id] = decision
@@ -126,7 +126,7 @@ def test_duplicate_enrichment_is_idempotent() -> None:
     assert second == 0
     links = [
         link
-        for link in store.get_decision_links()
+        for link in store.get_decision_links(domain="s2p")
         if link["entity_id"] == "CommodityIndex:Copper" and link["edge_type"] == "HAS_COMMODITY_INDEX"
     ]
     assert len(links) == 1

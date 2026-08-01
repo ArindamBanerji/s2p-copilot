@@ -276,8 +276,10 @@ async def get_ols_status_endpoint():
     try:
         # Check warm_start flag from LearningState node if present
         result = await _get_age_client().run_query(
-            "MATCH (ls:LearningState) RETURN ls.warm_start_active AS warm_start LIMIT 1",
-            {},
+            "MATCH (ls:LearningState) "
+            "WHERE ls.domain = $domain "
+            "RETURN ls.warm_start_active AS warm_start LIMIT 1",
+            {"domain": FRAMEWORK_DOMAIN},
         )
         if result:
             warm_start_active = bool(result[0].get("warm_start", False))

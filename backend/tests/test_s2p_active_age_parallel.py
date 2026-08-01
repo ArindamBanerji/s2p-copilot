@@ -122,7 +122,7 @@ def test_parallel_active_age_score_outcome_and_learn_gate(s2p_age_test_env):
     verified = active_store.get_verified_decisions("s2p")
     verified_by_id = {item.get("decision_id"): item for item in verified}
     for result in results:
-        decision = active_store.get_decision(result["decision_id"])
+        decision = active_store.get_decision(result["decision_id"], domain="s2p")
         assert decision is not None
         assert decision["decision_id"] == result["decision_id"]
         assert decision["domain"] == "s2p"

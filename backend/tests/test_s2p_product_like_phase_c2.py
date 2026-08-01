@@ -21,7 +21,7 @@ from app.s2p_shadow import initialize_s2p_shadow_state  # noqa: E402
 PRODUCT_LIKE_ENV = {
     "S2P_ACTIVE_GRAPH_BACKEND": "age",
     "S2P_ACTIVE_AGE_DSN": "postgresql://postgres:postgres@127.0.0.1/db?token=secret",
-    "S2P_ACTIVE_AGE_GRAPH": "governed_copilot_graph",
+    "S2P_ACTIVE_AGE_GRAPH": "soc_graph",
     "S2P_ACTIVE_AGE_DOMAIN": "s2p",
     "S2P_ACTIVE_AGE_TEST_MODE": "0",
 }
@@ -60,7 +60,7 @@ def test_product_like_config_status_reports_guarded_intent_without_activation():
     assert body["active_backend"] == "sqlite"
     assert body["sqlite_authoritative"] is True
     assert body["age_active"] is False
-    assert body["active_graph_name"] == "governed_copilot_graph"
+    assert body["active_graph_name"] == "soc_graph"
     assert body["age_graph_kind"] == "product"
     assert body["graph_kind"] == "product"
     assert body["product_graph_allowed"] is True
@@ -102,9 +102,10 @@ def test_product_like_store_construction_uses_factory_without_live_product_conne
             "backend": "age",
             "domain": "s2p",
             "dsn": PRODUCT_LIKE_ENV["S2P_ACTIVE_AGE_DSN"],
-            "graph_name": "governed_copilot_graph",
+            "graph_name": "soc_graph",
             "env": {},
             "test_mode": False,
+            "shared_graph_authorization": "s2p:soc_graph",
         }
     ]
 
@@ -140,11 +141,13 @@ def test_product_like_rejects_test_mode_for_allow_listed_product_graph():
         S2PActiveGraphConfig.from_env(env)
 
 
-def test_product_like_rejects_shadow_conflict():
+def test_product_like_allows_shared_graph_shadow_lifecycle():
     env = {**PRODUCT_LIKE_ENV, "S2P_SHADOW_AGE": "1"}
 
-    with pytest.raises(S2PActiveGraphConfigError, match="S2P_SHADOW_AGE"):
-        S2PActiveGraphConfig.from_env(env)
+    config = S2PActiveGraphConfig.from_env(env)
+
+    assert config.requested_backend == "age"
+    assert config.graph == "soc_graph"
 
 
 def test_generic_graph_env_does_not_switch_s2p_product_like_backend():

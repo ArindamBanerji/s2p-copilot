@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any, Callable
 
 from copilot_sdk.state import TabStateCache, register_tab_state_cache
+from copilot_sdk.backend.conservation_utils import compute_conservation_status_payload
 
 from app.models.responses import CollectionResponse, GenericResponse, LearningGateResponse
 from app.routers import s2p as s2p_router
@@ -37,6 +38,12 @@ def create_s2p_tab_state_cache(app_state: Any) -> TabStateCache:
     cache = TabStateCache("s2p")
     request = _request_for(app_state)
     graph_store = getattr(app_state, "graph_store", None)
+
+    def conservation_payload() -> dict[str, Any]:
+        return compute_conservation_status_payload(
+            "s2p",
+            s2p_router.cached_conservation_state_provider(app_state),
+        )
 
     _register(
         cache,
@@ -71,6 +78,15 @@ def create_s2p_tab_state_cache(app_state: Any) -> TabStateCache:
         "/api/s2p/auto-approve/status",
         lambda: _call(s2p_auto_approve.auto_approve_status, request),
         s2p_auto_approve.auto_approve_status,
+        tier="STANDARD",
+        invalidated_by=("score", "learn", "reset"),
+    )
+    _register(
+        cache,
+        "conservation",
+        "/api/conservation/status",
+        conservation_payload,
+        conservation_payload,
         tier="STANDARD",
         invalidated_by=("score", "learn", "reset"),
     )

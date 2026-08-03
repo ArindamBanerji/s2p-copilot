@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from typing import Any
 
@@ -35,7 +36,8 @@ async def get_situation(
     if graph_store is None:
         raise HTTPException(status_code=503, detail="Graph store unavailable")
     try:
-        decision = _decision(_graph_reader(request), decision_id)
+        reader = _graph_reader(request)
+        decision = await asyncio.to_thread(_decision, reader, decision_id)
     except GraphUnavailableError as exc:
         raise HTTPException(status_code=503, detail="Decision graph unavailable") from exc
     if decision is None:
@@ -49,7 +51,6 @@ async def get_situation(
         raise HTTPException(status_code=400, detail=f"no traversal pattern for category: {category}")
 
     metadata = decision.get("metadata") if isinstance(decision.get("metadata"), dict) else {}
-    reader = _graph_reader(request)
     analyzer = SituationAnalyzer(
         [replace(pattern, reader=reader) for pattern in S2P_TRAVERSAL_PATTERNS],
         default_max_depth=3,
@@ -71,7 +72,9 @@ async def get_situation(
         }
     )
     try:
-        context = analyzer.analyze_intent(intent, graph_store=graph_store, max_depth=depth)
+        context = await asyncio.to_thread(
+            lambda: analyzer.analyze_intent(intent, graph_store=graph_store, max_depth=depth)
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="Decision graph unavailable") from exc
     template_vars = context.metadata.get("template_variables")

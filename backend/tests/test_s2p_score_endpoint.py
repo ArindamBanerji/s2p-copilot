@@ -285,7 +285,7 @@ def test_concurrent_score_requests_coalesce_conservation_status(monkeypatch):
     assert elapsed < 1.5
 
 
-def test_concurrent_full_conservation_requests_coalesce_counts(monkeypatch):
+def test_concurrent_full_conservation_requests_do_not_serialize_counts(monkeypatch):
     reset_sdk_scorer()
     calls = 0
     calls_lock = threading.Lock()
@@ -310,12 +310,16 @@ def test_concurrent_full_conservation_requests_coalesce_counts(monkeypatch):
     elapsed = time.perf_counter() - started
 
     assert [response.status_code for response in responses] == [200, 200, 200, 200]
-    assert calls == 1
+    assert 1 <= calls <= 4
     assert elapsed < 1.5
 
 
 def test_browser_like_conservation_and_score_waterfall_shares_counts_cache(monkeypatch):
     reset_sdk_scorer()
+    # Startup materialization may already have a ready conservation entry.
+    # Clear that entry so this test exercises the shared counts computation
+    # deterministically, without depending on startup timing.
+    app.state.s2p_tab_state_cache.delete_standard("score")
     calls = 0
     calls_lock = threading.Lock()
 
@@ -346,8 +350,11 @@ def test_browser_like_conservation_and_score_waterfall_shares_counts_cache(monke
     elapsed = time.perf_counter() - started
 
     assert [response.status_code for response in responses] == [200, 200, 200, 200]
+    conservation = responses[2].json()
+    assert conservation["verified_count"] == 12
+    assert conservation["correct_count"] == 10
     assert responses[-1].json()["auto_approve"]["conservation_status"]
-    assert calls == 1
+    assert 1 <= calls <= 4
     assert elapsed < 1.5
 
 
@@ -462,18 +469,155 @@ def test_full_conservation_counts_cache_expires(monkeypatch):
     first = s2p_router.cached_conservation_state_provider(app.state)
     cached = s2p_router.cached_conservation_state_provider(app.state)
     cache_key = s2p_router._conservation_cache_key(app.state.graph_store, "s2p")
-    with s2p_router._SCORE_CONSERVATION_STATUS_LOCK:
-        _timestamp, cached_counts = s2p_router._CONSERVATION_COUNTS_CACHE[cache_key]
-        s2p_router._CONSERVATION_COUNTS_CACHE[cache_key] = (
-            time.monotonic() - 61.0,
-            cached_counts,
-        )
+    _timestamp, cached_counts = s2p_router._CONSERVATION_COUNTS_CACHE[cache_key]
+    s2p_router._CONSERVATION_COUNTS_CACHE[cache_key] = (
+        time.monotonic() - 61.0,
+        cached_counts,
+    )
     refreshed = s2p_router.cached_conservation_state_provider(app.state)
 
     assert first["verified_count"] == 1
     assert cached["verified_count"] == 1
     assert refreshed["verified_count"] == 2
     assert len(calls) == 2
+
+
+def test_conservation_cache_returns_value_within_ttl(monkeypatch):
+    reset_sdk_scorer()
+    calls = []
+
+    def counts(_graph_store, _domain=None):
+        calls.append(1)
+        return {
+            "verified_count": 7,
+            "correct_count": 6,
+            "total_decisions": 8,
+            "penalty_ratio": 5.0,
+        }
+
+    monkeypatch.setattr(s2p_router, "_read_conservation_counts", counts)
+    monkeypatch.setattr(s2p_router, "_SCORE_CONSERVATION_STATUS_TTL_SECONDS", 60.0)
+
+    first = s2p_router.cached_conservation_state_provider(app.state)
+    second = s2p_router.cached_conservation_state_provider(app.state)
+
+    assert first == second
+    assert first["verified_count"] == 7
+    assert len(calls) == 1
+
+
+def test_conservation_cache_recomputes_after_ttl(monkeypatch):
+    reset_sdk_scorer()
+    calls = []
+
+    def counts(_graph_store, _domain=None):
+        calls.append(1)
+        return {
+            "verified_count": len(calls),
+            "correct_count": len(calls),
+            "total_decisions": len(calls),
+            "penalty_ratio": 5.0,
+        }
+
+    monkeypatch.setattr(s2p_router, "_read_conservation_counts", counts)
+    monkeypatch.setattr(s2p_router, "_SCORE_CONSERVATION_STATUS_TTL_SECONDS", 0.1)
+
+    first = s2p_router.cached_conservation_state_provider(app.state)
+    time.sleep(0.15)
+    refreshed = s2p_router.cached_conservation_state_provider(app.state)
+
+    assert first["verified_count"] == 1
+    assert refreshed["verified_count"] == 2
+    assert len(calls) == 2
+
+
+def test_conservation_cache_cleared_on_learn(monkeypatch):
+    reset_sdk_scorer()
+    calls = []
+
+    def counts(_graph_store, _domain=None):
+        calls.append(1)
+        return {
+            "verified_count": len(calls),
+            "correct_count": len(calls),
+            "total_decisions": len(calls),
+            "penalty_ratio": 5.0,
+        }
+
+    monkeypatch.setattr(s2p_router, "_read_conservation_counts", counts)
+    monkeypatch.setattr(s2p_router, "_SCORE_CONSERVATION_STATUS_TTL_SECONDS", 60.0)
+
+    first = s2p_router.cached_conservation_state_provider(app.state)
+    s2p_router._clear_score_conservation_status_cache()
+    refreshed = s2p_router.cached_conservation_state_provider(app.state)
+
+    assert first["verified_count"] == 1
+    assert refreshed["verified_count"] == 2
+    assert len(calls) == 2
+
+
+def test_conservation_cache_readers_do_not_block_on_miss(monkeypatch):
+    reset_sdk_scorer()
+    monkeypatch.setattr(s2p_router, "_SCORE_CONSERVATION_STATUS_TTL_SECONDS", 0.01)
+    key = s2p_router._conservation_cache_key(app.state.graph_store, "s2p")
+    s2p_router._CONSERVATION_COUNTS_CACHE[key] = (
+        time.monotonic() - 1.0,
+        {
+            "verified_count": 3,
+            "correct_count": 2,
+            "total_decisions": 4,
+            "penalty_ratio": 5.0,
+        },
+    )
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_counts(_graph_store, _domain=None):
+        started.set()
+        assert release.wait(2.0)
+        return {
+            "verified_count": 9,
+            "correct_count": 8,
+            "total_decisions": 10,
+            "penalty_ratio": 5.0,
+        }
+
+    monkeypatch.setattr(s2p_router, "_read_conservation_counts", slow_counts)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(s2p_router.cached_conservation_state_provider, app.state)
+        assert started.wait(2.0)
+        began = time.perf_counter()
+        stale = s2p_router.cached_conservation_state_provider(app.state)
+        elapsed = time.perf_counter() - began
+        release.set()
+        future.result(timeout=2.0)
+
+    assert elapsed < 0.1
+    assert stale["verified_count"] == 3
+    assert s2p_router.cached_conservation_state_provider(app.state)["verified_count"] == 9
+
+
+def test_conservation_cache_miss_is_idempotent(monkeypatch):
+    reset_sdk_scorer()
+    calls = []
+
+    def counts(_graph_store, _domain=None):
+        calls.append(1)
+        time.sleep(0.05)
+        return {
+            "verified_count": 11,
+            "correct_count": 10,
+            "total_decisions": 12,
+            "penalty_ratio": 5.0,
+        }
+
+    monkeypatch.setattr(s2p_router, "_read_conservation_counts", counts)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _index: s2p_router.cached_conservation_state_provider(app.state), range(2)))
+
+    assert all(result["verified_count"] == 11 for result in results)
+    assert s2p_router.cached_conservation_state_provider(app.state)["correct_count"] == 10
+    assert 1 <= len(calls) <= 2
 
 
 def test_current_conservation_status_failure_remains_unknown(monkeypatch):

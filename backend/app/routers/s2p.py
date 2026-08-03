@@ -30,7 +30,7 @@ from copilot_sdk.scoring.dk_persistence import (
     DKWelfordTracker,
     persist_dk_after_reestimate,
 )
-from copilot_sdk.state.invalidation import apply_cache_invalidation_event
+from copilot_sdk.state.invalidation import apply_cache_invalidation_event, get_tab_state_cache
 from copilot_sdk.state.cached_static import cached_static
 
 from app.domains.s2p.auto_approve import (
@@ -45,7 +45,7 @@ from app.domains.s2p.factors import S2PEvent, compute_all_factors
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse, LearningGateResponse, S2PScoreResponse
 from app.routers.s2p_data_helpers import find_invoice, load_invoices
-from app.routers.s2p_preview import _load_celonis_cache
+from app.routers.s2p_preview import _load_celonis_cache, invalidate_preview_observation
 from app.models.outcome_receipt import OutcomeReceipt
 from app.services.receipt_store import get_receipt_store
 from app.services.cross_copilot_signals import (
@@ -65,11 +65,7 @@ log = logging.getLogger(__name__)
 _SIDE_EFFECT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="s2p-side-effect")
 _GRAPH_LINK_ADVISORY_LOCK = threading.RLock()
 _SCORE_CONSERVATION_STATUS_TTL_SECONDS = 2.0
-_SCORE_CONSERVATION_STATUS_LOCK = threading.RLock()
-_SCORE_PROCESS_CONTEXT_LOCK = threading.RLock()
-_L5_CONSERVATION_STATE_LOCK = threading.RLock()
 _L5_DK_STATE_LOCK = threading.RLock()
-_L5_CENTROID_STATE_LOCK = threading.RLock()
 _S2P_DK_WELFORD_TRACKER = DKWelfordTracker()
 
 
@@ -104,6 +100,9 @@ def set_l5_dk_welford_tracker(tracker: DKWelfordTracker | None) -> None:
 _SCORE_CONSERVATION_STATUS_CACHE: dict[str, tuple[float, str]] = {}
 _CONSERVATION_COUNTS_CACHE: dict[str, tuple[float, dict[str, float | int]]] = {}
 _SCORE_PROCESS_CONTEXT_CACHE: tuple[int, dict] | None = None
+_SCORE_CONSERVATION_CACHE_GENERATION = 0
+_SCORE_CONSERVATION_STATUS_IN_FLIGHT: set[str] = set()
+_CONSERVATION_COUNTS_IN_FLIGHT: set[str] = set()
 
 
 def _log_side_effect_failure(future: Future) -> None:
@@ -206,12 +205,19 @@ def _compute_score_process_context() -> dict | None:
 
 def _score_process_context() -> dict | None:
     global _SCORE_PROCESS_CONTEXT_CACHE
-    with _SCORE_PROCESS_CONTEXT_LOCK:
-        loader_id = id(_load_celonis_cache)
-        if _SCORE_PROCESS_CONTEXT_CACHE is None or _SCORE_PROCESS_CONTEXT_CACHE[0] != loader_id:
-            _SCORE_PROCESS_CONTEXT_CACHE = (loader_id, _compute_score_process_context() or {})
-        process_context = _SCORE_PROCESS_CONTEXT_CACHE[1]
+    loader_id = id(_load_celonis_cache)
+    cached = _SCORE_PROCESS_CONTEXT_CACHE
+    if cached is not None and cached[0] == loader_id:
+        process_context = cached[1]
         return dict(process_context) if process_context else None
+
+    # The loader is read-only. Compute outside the publication path so an
+    # external score reader never waits behind file/cache I/O.
+    process_context = _compute_score_process_context() or {}
+    current = _SCORE_PROCESS_CONTEXT_CACHE
+    if current is None or current[0] != loader_id:
+        _SCORE_PROCESS_CONTEXT_CACHE = (loader_id, dict(process_context))
+    return dict(process_context) if process_context else None
 
 
 def _score_process_context_with_signal(signal: dict[str, Any] | None) -> dict | None:
@@ -606,35 +612,34 @@ def _persist_l5_conservation_state(http_request: Request, decision_id: str | Non
     except Exception as exc:
         log.warning("S2P L5 conservation state skipped: %s", exc)
         return None
-    with _L5_CONSERVATION_STATE_LOCK:
-        try:
-            old_state = store.get_conservation_state(domain)
-        except Exception as exc:
-            log.warning("S2P L5 conservation state read failed: %s", exc)
-            return None
-        old_status = None
-        if isinstance(old_state, dict):
-            stored_status = old_state.get("status")
-            old_status = None if stored_status is None else str(stored_status)
-        try:
-            store.update_conservation_state(
-                domain=domain,
-                status=str(metrics["status"]),
-                alpha=float(metrics["alpha"]),
-                q=float(metrics["q"]),
-                V=int(metrics["V"]),
-                theta_min=float(metrics["theta_min"]),
-                product=float(metrics["product"]),
-                categories_total=int(metrics["categories_total"]),
-                categories_with_data=int(metrics["categories_with_data"]),
-                baseline_product=float(metrics["baseline_product"]),
-                relative_threshold=float(metrics["relative_threshold"]),
-                complacency_flag=str(metrics["complacency_flag"]),
-                caused_by_decision_id=decision_id,
-                old_status=old_status,
-            )
-        except Exception as exc:
-            log.warning("S2P L5 conservation state write failed: %s", exc)
+    try:
+        old_state = store.get_conservation_state(domain)
+    except Exception as exc:
+        log.warning("S2P L5 conservation state read failed: %s", exc)
+        return None
+    old_status = None
+    if isinstance(old_state, dict):
+        stored_status = old_state.get("status")
+        old_status = None if stored_status is None else str(stored_status)
+    try:
+        store.update_conservation_state(
+            domain=domain,
+            status=str(metrics["status"]),
+            alpha=float(metrics["alpha"]),
+            q=float(metrics["q"]),
+            V=int(metrics["V"]),
+            theta_min=float(metrics["theta_min"]),
+            product=float(metrics["product"]),
+            categories_total=int(metrics["categories_total"]),
+            categories_with_data=int(metrics["categories_with_data"]),
+            baseline_product=float(metrics["baseline_product"]),
+            relative_threshold=float(metrics["relative_threshold"]),
+            complacency_flag=str(metrics["complacency_flag"]),
+            caused_by_decision_id=decision_id,
+            old_status=old_status,
+        )
+    except Exception as exc:
+        log.warning("S2P L5 conservation state write failed: %s", exc)
     return None
 
 
@@ -680,15 +685,14 @@ def _persist_l5_centroid_state(
     delta_norm = _centroid_delta_norm(pre_centroid, post_vector)
     domain = _graph_domain(_graph_store_from_request(http_request))
     try:
-        with _L5_CENTROID_STATE_LOCK:
-            store.update_centroid(
-                domain=domain,
-                category=str(category),
-                action=str(actual_action),
-                centroid_vector=post_vector,
-                delta_norm=delta_norm,
-                caused_by_decision_id=decision_id,
-            )
+        store.update_centroid(
+            domain=domain,
+            category=str(category),
+            action=str(actual_action),
+            centroid_vector=post_vector,
+            delta_norm=delta_norm,
+            caused_by_decision_id=decision_id,
+        )
     except Exception as exc:
         log.warning("S2P L5 centroid write failed: %s", exc)
         return False
@@ -884,18 +888,31 @@ def _cached_conservation_counts(
     graph_store: Any | None,
     domain: str | None = None,
 ) -> dict[str, float | int]:
+    global _CONSERVATION_COUNTS_CACHE
     now = time.monotonic()
     key = _conservation_cache_key(graph_store, domain)
-    with _SCORE_CONSERVATION_STATUS_LOCK:
-        cached = _CONSERVATION_COUNTS_CACHE.get(key)
-        if cached is not None:
-            timestamp, counts = cached
-            if now - timestamp <= _SCORE_CONSERVATION_STATUS_TTL_SECONDS:
-                return dict(counts)
+    cached = _CONSERVATION_COUNTS_CACHE.get(key)
+    if cached is not None:
+        timestamp, counts = cached
+        if now - timestamp <= _SCORE_CONSERVATION_STATUS_TTL_SECONDS:
+            return dict(counts)
 
+    if key in _CONSERVATION_COUNTS_IN_FLIGHT and cached is not None:
+        # A stale immutable snapshot is preferable to waiting behind another
+        # reader's graph query. The in-flight reader will publish a fresh value.
+        return dict(cached[1])
+
+    # Counts are read-only graph queries. Compute outside the cache
+    # publication path; concurrent misses are harmless and idempotent.
+    generation = _SCORE_CONSERVATION_CACHE_GENERATION
+    _CONSERVATION_COUNTS_IN_FLIGHT.add(key)
+    try:
         counts = _read_conservation_counts(graph_store, domain)
+    finally:
+        _CONSERVATION_COUNTS_IN_FLIGHT.discard(key)
+    if generation == _SCORE_CONSERVATION_CACHE_GENERATION:
         _CONSERVATION_COUNTS_CACHE[key] = (time.monotonic(), dict(counts))
-        return dict(counts)
+    return dict(counts)
 
 
 def cached_conservation_state_provider(app_state: Any) -> dict[str, float | int]:
@@ -930,39 +947,53 @@ def _score_conservation_cache_key(http_request: Request) -> str:
 
 
 def _clear_score_conservation_status_cache() -> None:
-    with _SCORE_CONSERVATION_STATUS_LOCK:
-        _SCORE_CONSERVATION_STATUS_CACHE.clear()
-        _CONSERVATION_COUNTS_CACHE.clear()
+    global _SCORE_CONSERVATION_CACHE_GENERATION
+    _SCORE_CONSERVATION_CACHE_GENERATION += 1
+    _SCORE_CONSERVATION_STATUS_CACHE.clear()
+    _CONSERVATION_COUNTS_CACHE.clear()
+    tab_cache = get_tab_state_cache("s2p")
+    if tab_cache is not None:
+        tab_cache.delete_standard("score")
 
 
 def _score_conservation_status(http_request: Request) -> str:
     """Short-lived score-path cache for expensive graph-wide conservation checks."""
+    global _SCORE_CONSERVATION_STATUS_CACHE
     now = time.monotonic()
     key = _score_conservation_cache_key(http_request)
-    with _SCORE_CONSERVATION_STATUS_LOCK:
-        cached = _SCORE_CONSERVATION_STATUS_CACHE.get(key)
-        if cached is not None:
-            timestamp, status = cached
-            if now - timestamp <= _SCORE_CONSERVATION_STATUS_TTL_SECONDS:
-                return status
+    cached = _SCORE_CONSERVATION_STATUS_CACHE.get(key)
+    if cached is not None:
+        timestamp, status = cached
+        if now - timestamp <= _SCORE_CONSERVATION_STATUS_TTL_SECONDS:
+            return status
 
+    if key in _SCORE_CONSERVATION_STATUS_IN_FLIGHT and cached is not None:
+        return cached[1]
+
+    # Status evaluation is read-only. Do not hold a process lock while it
+    # performs the underlying graph counts.
+    generation = _SCORE_CONSERVATION_CACHE_GENERATION
+    _SCORE_CONSERVATION_STATUS_IN_FLIGHT.add(key)
+    try:
         status = _current_conservation_status(http_request)
+    finally:
+        _SCORE_CONSERVATION_STATUS_IN_FLIGHT.discard(key)
+    if generation == _SCORE_CONSERVATION_CACHE_GENERATION:
         _SCORE_CONSERVATION_STATUS_CACHE[key] = (time.monotonic(), status)
-        return status
+    return status
 
 
 def _cached_score_conservation_status_only(http_request: Request) -> str:
     """Read score-path conservation status cache without graph/scorer I/O."""
     now = time.monotonic()
     key = _score_conservation_cache_key(http_request)
-    with _SCORE_CONSERVATION_STATUS_LOCK:
-        cached = _SCORE_CONSERVATION_STATUS_CACHE.get(key)
-        if cached is None:
-            return "UNKNOWN"
-        timestamp, status = cached
-        if now - timestamp > _SCORE_CONSERVATION_STATUS_TTL_SECONDS:
-            return "UNKNOWN"
-        return status
+    cached = _SCORE_CONSERVATION_STATUS_CACHE.get(key)
+    if cached is None:
+        return "UNKNOWN"
+    timestamp, status = cached
+    if now - timestamp > _SCORE_CONSERVATION_STATUS_TTL_SECONDS:
+        return "UNKNOWN"
+    return status
 
 
 def _is_learning_paused(conservation: Any) -> bool:
@@ -2146,6 +2177,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             payload=payload,
         )
         apply_cache_invalidation_event("s2p", "learn")
+        invalidate_preview_observation(_decision_invoice_id(decision))
         conservation_after_snapshot = _receipt_conservation_snapshot(http_request)
         payload_snapshot = dict(payload)
         decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None
@@ -2268,6 +2300,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             payload=payload,
         )
         apply_cache_invalidation_event("s2p", "learn")
+        invalidate_preview_observation(invoice_id)
         conservation_after_snapshot = _receipt_conservation_snapshot(http_request)
         payload_snapshot = dict(payload)
         decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None

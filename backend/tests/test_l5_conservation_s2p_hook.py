@@ -255,13 +255,12 @@ def test_s2p_persistence_requires_real_category_coverage() -> None:
     assert store.updates == []
 
 
-def test_s2p_persistence_lock_wraps_read_write(monkeypatch) -> None:
-    lock = RecordingLock()
-    store = LockAssertingLearningStore(lock)
+def test_s2p_persistence_read_write_remains_correct_without_router_lock() -> None:
+    # Lock removed per s2p_handler_perf_design_v1.md §2 — mutation_lock_scope
+    # serializes these writes. Keep the value assertion on the persistence path.
+    store = RecordingLearningStore()
     request = _fake_request(learning_store=store)
-    monkeypatch.setattr(s2p_router, "_L5_CONSERVATION_STATE_LOCK", lock)
 
     s2p_router._persist_l5_conservation_state(request, "S2P-LOCK")
 
-    assert lock.entries == 1
     assert len(store.updates) == 1

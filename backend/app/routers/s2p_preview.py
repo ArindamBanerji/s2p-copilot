@@ -26,6 +26,7 @@ TAU = 0.1
 _scored_invoices: list[dict[str, Any]] | None = None
 _centroids: dict[str, dict[str, list[float]]] | None = None
 _invoices: list[dict[str, Any]] | None = None
+_PREVIEW_OBSERVATIONS_WRITTEN: set[str] = set()
 
 
 def _repo_root() -> Path:
@@ -239,6 +240,26 @@ def _write_preview_observation(request: Request, invoice: dict[str, Any]) -> Non
     )
 
 
+def _write_preview_observation_once(request: Request, invoice: dict[str, Any]) -> None:
+    invoice_id = str(invoice.get("invoice_id") or "")
+    if not invoice_id:
+        _write_preview_observation(request, invoice)
+        return
+    if invoice_id in _PREVIEW_OBSERVATIONS_WRITTEN:
+        return
+    _PREVIEW_OBSERVATIONS_WRITTEN.add(invoice_id)
+    try:
+        _write_preview_observation(request, invoice)
+    except Exception:
+        _PREVIEW_OBSERVATIONS_WRITTEN.discard(invoice_id)
+        raise
+
+
+def invalidate_preview_observation(invoice_id: str | None) -> None:
+    if invoice_id:
+        _PREVIEW_OBSERVATIONS_WRITTEN.discard(str(invoice_id))
+
+
 def _get_fixture_invoices(n: int = 50) -> list[dict[str, Any]]:
     global _invoices
     if _invoices is None:
@@ -420,6 +441,7 @@ def reset_preview_state() -> None:
     _invoices = None
     _scored_invoices = None
     _centroids = None
+    _PREVIEW_OBSERVATIONS_WRITTEN.clear()
 
 
 def _preview_queue_payload(request: Request, limit: int = 5) -> dict[str, Any]:
@@ -441,7 +463,7 @@ def _preview_queue_payload(request: Request, limit: int = 5) -> dict[str, Any]:
         preview_size = next_size
     shown = _preview_slice_with_action_diversity(invoices, clamped_limit)
     for invoice in shown:
-        _write_preview_observation(request, invoice)
+        _write_preview_observation_once(request, invoice)
     process_context = _build_process_context(_load_celonis_cache())
     exceptions = [
         _with_process_context(invoice, process_context)

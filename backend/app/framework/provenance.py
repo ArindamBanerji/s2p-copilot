@@ -286,17 +286,17 @@ class ProvenanceService:
     @staticmethod
     async def get_provenance_from_graph(
         decision_id: str,
-        neo4j_service: Any,
+        graph_service: Any,
         factor_names: Optional[List[str]] = None,
         resolve_category: Optional[Any] = None,
     ) -> Optional[dict]:
         """
-        Retrieve a stored decision's factor vector from Neo4j and rebuild provenance.
+        Retrieve a stored decision's factor vector from AGE and rebuild provenance.
 
         Parameters
         ----------
         decision_id      : UUID of the Decision node
-        neo4j_service    : db client with run_query()
+        graph_service    : db client with run_query()
         factor_names     : ordered factor name list; pass SOC_FACTORS for SOC copilot
         resolve_category : callable(alert_type) -> category str; pass
                            resolve_alert_category for SOC copilot
@@ -307,7 +307,7 @@ class ProvenanceService:
         _resolve = resolve_category if resolve_category is not None else (lambda x: x)
 
         try:
-            results = await neo4j_service.run_query(
+            results = await graph_service.run_query(
                 """
                 MATCH (d:Decision {id: $id})-[:DECIDED_ON]->(a:Alert)
                 WHERE d.domain = $domain

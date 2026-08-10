@@ -43,6 +43,22 @@ VALID_REQUEST = {
 }
 
 
+def test_score_timeout_returns_503_when_mutation_lock_is_held(monkeypatch):
+    monkeypatch.setattr(s2p_router, "SCORE_TIMEOUT", 0.05)
+    lock = s2p_router.get_mutation_lock("s2p")
+    assert lock.acquire(timeout=1.0)
+    try:
+        started = time.perf_counter()
+        response = client.post("/api/s2p/score", json=VALID_REQUEST)
+        elapsed = time.perf_counter() - started
+    finally:
+        lock.release()
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Score path busy — retry"
+    assert elapsed < 1.0
+
+
 def reset_sdk_scorer():
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
@@ -715,7 +731,7 @@ def test_score_endpoint_uses_graph_context_when_available(monkeypatch):
     assert calls == [{"neighbors": [{"node": {"_label": "PurchaseOrder", "po_id": "PO-1"}}]}]
 
 
-def test_score_endpoint_graph_context_failure_returns_503(monkeypatch):
+def test_score_endpoint_graph_context_failure_degrades_gracefully(monkeypatch):
     calls = []
 
     def fake_compute_all_factors(invoice, context=None):
@@ -740,8 +756,44 @@ def test_score_endpoint_graph_context_failure_returns_503(monkeypatch):
             app.state.graph_store = original_graph_store
         app.state.s2p_graph_reader = S2PGraphReader(store=original_store)
 
-    assert response.status_code == 503
-    assert calls == []
+    body = response.json()
+    assert response.status_code == 200
+    assert isinstance(body["decision_id"], str)
+    assert "neighbors" not in body
+    assert calls == [None]
+
+
+def test_score_endpoint_graph_context_timeout_degrades_gracefully(monkeypatch):
+    def fake_compute_all_factors(invoice, context=None):
+        return {name: 0.3 for name in S2PDomainConfig.factors}
+
+    original_scorer = app.state.scorer
+    original_store = original_scorer.graph_store
+    original_graph_store = getattr(app.state, "graph_store", None)
+    fake_store = GraphContextStore(original_store)
+
+    def slow_query_context(entity_id, hops, domain=None):
+        time.sleep(0.01)
+        raise RuntimeError("graph timeout")
+
+    fake_store.query_context = slow_query_context
+    app.state.scorer = build_s2p_scorer(graph_store=fake_store)
+    app.state.graph_store = fake_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=fake_store)
+    monkeypatch.setattr(s2p_router, "compute_all_factors", fake_compute_all_factors)
+    try:
+        response = client.post("/api/s2p/score", json=VALID_REQUEST)
+    finally:
+        app.state.scorer = original_scorer
+        if original_graph_store is None:
+            del app.state.graph_store
+        else:
+            app.state.graph_store = original_graph_store
+        app.state.s2p_graph_reader = S2PGraphReader(store=original_store)
+
+    body = response.json()
+    assert response.status_code == 200
+    assert isinstance(body["decision_id"], str)
 
 
 def test_score_endpoint_uses_fixture_invoice_factors_when_no_graph():

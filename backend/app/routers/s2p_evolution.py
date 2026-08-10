@@ -8,6 +8,7 @@ from copilot_sdk.scoring.mutation_lock import serialize_mutation
 
 from app.domains.s2p.evolution import S2PEvolutionService
 from app.models.responses import GenericResponse, StatusResponse
+from app.routers.s2p import _current_conservation_status
 from app.services.s2p_evolver import (
     check_promotion,
     get_dimensions,
@@ -53,8 +54,9 @@ def create_s2p_evolution_router(
         return propose_variant(str(dimension))
 
     @router.get("/promotion-check", response_model=GenericResponse)
-    def promotion_check() -> dict:
-        return {"promotion": check_promotion()}
+    def promotion_check(request: Request) -> dict:
+        conservation_state = _current_conservation_status(request)
+        return {"promotion": check_promotion(conservation_state)}
 
     @router.post("/reset", response_model=StatusResponse)
     @serialize_mutation("s2p", event="reset")

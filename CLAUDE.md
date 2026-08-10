@@ -62,6 +62,17 @@ S2P is an independent domain. It must never depend on SOC-specific code.
 2. Run Playwright test: `npx playwright test -g "s2p" --reporter=list`
 3. If you changed the router prefix: update gen-ai-roi-demo-v4-v50/main.py mount
 
+## Mypy Gate (Standing Rule #86)
+
+**Every code change must pass mypy on all changed files before completion.**
+
+This is mandatory. mypy errors in files you changed = NOT DONE.
+
+After completing all code changes and before declaring success, run:
+`python -m mypy <every changed Python file>`
+
+Run mypy before pytest. Do not weaken annotations or suppress errors with `# type: ignore`. A failed mypy gate means the task is incomplete.
+
 ## Rule #63 — Test Double Completeness
 
 No mock/monkeypatch in test code unless the external dependency is

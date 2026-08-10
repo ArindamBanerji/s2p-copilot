@@ -178,7 +178,7 @@ async def get_convergence_calendar():
         from app.services.gae_state import get_learning_state
         ls = get_learning_state()
 
-        # Decision count per factor — query Neo4j decision nodes grouped by factor
+        # Decision count per factor — query AGE decision nodes grouped by factor
         try:
             rows = await _get_age_client().run_query(
                 """
@@ -432,7 +432,7 @@ async def shadow_analyst_action(request: AnalystActionRequest):
     await ShadowModeService.record_analyst_action(
         decision_id=request.decision_id,
         analyst_action=request.analyst_action,
-        neo4j_service=_get_age_client(),
+        graph_service=_get_age_client(),
     )
     return {"recorded": True}
 
@@ -460,7 +460,7 @@ async def checkpoint_create(request: CheckpointCreateRequest):
 
     checkpoint_id = await CheckpointService.create_checkpoint(
         scorer=scorer,
-        neo4j_service=_get_age_client(),
+        graph_service=_get_age_client(),
         reason=request.reason,
     )
     return {
@@ -491,7 +491,7 @@ async def checkpoint_rollback(request: RollbackRequest):
     result = await CheckpointService.rollback(
         checkpoint_id=request.checkpoint_id,
         scorer=scorer,
-        neo4j_service=_get_age_client(),
+        graph_service=_get_age_client(),
     )
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])

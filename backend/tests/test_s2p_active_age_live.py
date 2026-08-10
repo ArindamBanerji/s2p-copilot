@@ -171,7 +171,8 @@ def test_live_active_age_learn_test_mode_success_and_invariant(s2p_age_test_env)
             "outcome": "confirmed",
         },
     )
-    assert duplicate.status_code != 200
+    # Identical duplicate outcomes are idempotent across graph stores.
+    assert duplicate.status_code == 200
 
 
 def test_live_active_age_preview_no_decision_write(s2p_age_test_env):

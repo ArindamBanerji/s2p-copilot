@@ -100,7 +100,8 @@ def test_evolution_promotion_check_endpoint():
     data = response.json()
     assert_json_safe(data)
     promotion = data["promotion"]
-    assert promotion["promoted_id"] == "EVIDENCE_ORDER_v2"
+    assert promotion["promoted"] is False
+    assert promotion["reason"] == "conservation"
 
 
 def test_evolution_reset_endpoint():

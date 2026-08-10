@@ -89,14 +89,17 @@ def enrichment_supplier(request: Request, supplier_id: str) -> EnrichedSupplierR
 
 def _service(request: Request) -> S2PSupplierEnrichmentService:
     state = getattr(request.app, "state", None)
-    graph_store = getattr(state, "graph_store", None)
-    if graph_store is None:
-        scorer = getattr(state, "scorer", None)
-        graph_store = getattr(scorer, "graph_store", None)
-    if graph_store is None:
-        raise HTTPException(status_code=503, detail="GraphStore unavailable for S2P enrichment")
     scorer = getattr(state, "scorer", None)
     scorer_store = getattr(scorer, "graph_store", None)
+    configured_graph_store = getattr(state, "graph_store", None)
+    # Tests and isolated app instances may replace graph_store after startup;
+    # honor that override instead of leaking the process-level fallback store.
+    if configured_graph_store is not None and configured_graph_store is not scorer_store:
+        graph_store = configured_graph_store
+    else:
+        graph_store = getattr(state, "enrichment_store", None) or configured_graph_store or scorer_store
+    if graph_store is None:
+        raise HTTPException(status_code=503, detail="GraphStore unavailable for S2P enrichment")
     reader = getattr(state, "s2p_graph_reader", None)
     if not isinstance(reader, S2PGraphReader) or reader.store is not scorer_store:
         if scorer_store is None:

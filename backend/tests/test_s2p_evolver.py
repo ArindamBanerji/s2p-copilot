@@ -195,7 +195,7 @@ def test_s2p_promotion_when_threshold_exceeded():
     for _ in range(S2P_EVOLVER_CONFIG.promotion_min_samples):
         s2p_evolver.record_triage_outcome("EVIDENCE_ORDER_v2", is_correct=True, category="price_variance")
 
-    result = s2p_evolver.check_promotion()
+    result = s2p_evolver.check_promotion({"status": "GREEN"})
 
     assert result is not None
     assert result["family"] == "evidence_ordering"
@@ -211,7 +211,7 @@ def test_s2p_no_promotion_below_threshold():
         s2p_evolver.record_triage_outcome("EVIDENCE_ORDER_v1", is_correct=True, category="price_variance")
         s2p_evolver.record_triage_outcome("EVIDENCE_ORDER_v2", is_correct=True, category="price_variance")
 
-    assert s2p_evolver.check_promotion() is None
+    assert s2p_evolver.check_promotion({"status": "GREEN"}) is None
 
 
 def test_s2p_reset_re_registers_variants():

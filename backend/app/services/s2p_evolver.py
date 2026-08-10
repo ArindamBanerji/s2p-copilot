@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from typing import Any, cast
 
-from copilot_sdk.evolution import PromptVariantEvolver, VariantSpec
+from copilot_sdk.evolution import (
+    ConservationStateProvider,
+    PromptVariantEvolver,
+    VariantSpec,
+)
 
 from app.domains.s2p.evolver_config import S2P_EVOLVER_CONFIG, S2P_VARIANTS
 from app.services.s2p_evolution_dimensions import (
@@ -17,6 +22,20 @@ from app.services.s2p_evolution_dimensions import (
 
 _INITIAL_VARIANTS: tuple[VariantSpec, ...] = tuple(S2P_VARIANTS)
 _s2p_evolver = PromptVariantEvolver(config=S2P_EVOLVER_CONFIG)
+
+
+def set_conservation_provider(provider: ConservationStateProvider) -> None:
+    """Bind the live S2P scorer provider to the singleton evolver."""
+
+    global _s2p_evolver
+    config = replace(S2P_EVOLVER_CONFIG, conservation_state_provider=provider)
+    _s2p_evolver = PromptVariantEvolver(config=config)
+    _register_initial_variants()
+
+
+def get_evolver() -> PromptVariantEvolver:
+    """Return the live S2P SDK evolver for shared telemetry adapters."""
+    return _s2p_evolver
 
 
 def _register_initial_variants() -> None:
@@ -61,9 +80,12 @@ def record_triage_outcome(
     _s2p_evolver.record_outcome(variant_id, success, category=category)
 
 
-def check_promotion() -> dict | None:
-    """Promote a qualifying S2P shadow variant, if one exists."""
-    return cast(dict[Any, Any] | None, _s2p_evolver.check_for_promotion(conservation_state="GREEN"))
+def check_promotion(conservation_state: Any = None) -> dict | None:
+    """Promote a qualifying S2P shadow variant using current conservation state."""
+    return cast(
+        dict[Any, Any] | None,
+        _s2p_evolver.check_for_promotion(conservation_state=conservation_state),
+    )
 
 
 def get_evolution_summary() -> dict[str, Any]:

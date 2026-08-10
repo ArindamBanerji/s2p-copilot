@@ -29,10 +29,10 @@ class ShadowModeService:
         system_action: str,
         system_confidence: float,
         category: str,
-        neo4j_service: Any,
+        graph_service: Any,
     ) -> None:
         """Mark a Decision node as shadow_mode=True."""
-        await neo4j_service.run_query(
+        await graph_service.run_query(
             "MATCH (d:Decision {id: $id}) WHERE d.domain = 's2p' SET d.shadow_mode = true",
             {"id": decision_id},
         )
@@ -45,11 +45,11 @@ class ShadowModeService:
     async def record_analyst_action(
         decision_id: str,
         analyst_action: str,
-        neo4j_service: Any,
+        graph_service: Any,
     ) -> None:
         """Record what the analyst actually did (the ground truth).
         Also sets d.agreement = (d.action = analyst_action) on the node."""
-        await neo4j_service.run_query(
+        await graph_service.run_query(
             """MATCH (d:Decision {id: $id})
                WHERE d.domain = 's2p'
                SET d.analyst_action = $analyst_action,
@@ -59,7 +59,7 @@ class ShadowModeService:
         log.debug("[SHADOW] Analyst action recorded: decision=%s action=%s", decision_id, analyst_action)
 
     @staticmethod
-    async def get_shadow_report(neo4j_service: Any) -> dict:
+    async def get_shadow_report(graph_service: Any) -> dict:
         """Generate shadow mode report: agreement rates by category.
 
         Returns
@@ -72,7 +72,7 @@ class ShadowModeService:
         }
         """
         try:
-            result = await neo4j_service.run_query(
+            result = await graph_service.run_query(
                 """
                 MATCH (d:Decision)
                 WHERE d.domain = 's2p'

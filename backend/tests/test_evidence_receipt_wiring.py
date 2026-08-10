@@ -303,7 +303,7 @@ def test_outcome_route_appends_evidence_receipt() -> None:
 
 
 def test_outcome_route_receipt_failure_blocks_outcome_write(monkeypatch) -> None:
-    score = _score("EVID-RCP-NEO4J-BLOCK-001")
+    score = _score("EVID-RCP-GRAPH-BLOCK-001")
     store = app.state.graph_store
     calls: list[str] = []
 
@@ -337,7 +337,7 @@ def test_outcome_route_receipt_failure_blocks_outcome_write(monkeypatch) -> None
 
 
 def test_outcome_route_outbox_fallback_precedes_outcome_write(monkeypatch) -> None:
-    score = _score("EVID-RCP-NEO4J-OUTBOX-001")
+    score = _score("EVID-RCP-GRAPH-OUTBOX-001")
     store = app.state.graph_store
     calls: list[str] = []
     original_enqueue = store.enqueue_to_outbox

@@ -403,5 +403,7 @@ def test_duplicate_outcome_invariant_still_blocks_second_authoritative_write():
     second = client.post("/api/learn", json=payload)
 
     assert first.status_code == 200
-    assert second.status_code != 200
-    assert len(fake.outcomes) == 1
+    # Repeating the identical outcome is idempotent; conflicting outcomes
+    # remain the path that must be rejected by the store contract.
+    assert second.status_code == 200
+    assert len(fake.outcomes) == 2

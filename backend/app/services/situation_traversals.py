@@ -21,7 +21,6 @@ from app.services.s2p_evidence_templates import S2P_FACTOR_MAP, evidence_context
 from app.services.s2p_situation_pattern import _intent_context
 from app.services.situation_graph_enrichment import NAMESPACE as SITUATION_ENRICHMENT_NAMESPACE
 
-
 SITUATION_NL_TEMPLATES: dict[str, str] = {
     "price_variance": (
         "{variance_pct}% price delta. {commodity} moved {commodity_delta}% in "

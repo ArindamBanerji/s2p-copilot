@@ -2,7 +2,7 @@
 InterventionControls — P22 Consolidated Oversight Panel (L-12).
 
 EU AI Act Article 14: effective human oversight.  Six controls, full audit
-trail.  Every action writes an Intervention node to Neo4j with who/when/why.
+trail.  Every action writes an Intervention node to AGE with who/when/why.
 
 Controls
 --------
@@ -144,7 +144,7 @@ class ConservationStateMachine:
 
 
 class InterventionControls:
-    """Six-control human oversight panel with Neo4j audit trail."""
+    """Six-control human oversight panel with AGE audit trail."""
 
     def __init__(
         self,
@@ -240,7 +240,7 @@ class InterventionControls:
                     {"id": snapshot_id},
                 )
             except Exception as exc:
-                return {"error": f"Neo4j query failed: {exc}", "preview": True}
+                return {"error": f"AGE query failed: {exc}", "preview": True}
 
             if not result:
                 return {"error": "Checkpoint not found", "preview": True}
@@ -260,7 +260,7 @@ class InterventionControls:
         rollback_result = await CheckpointService.rollback(
             checkpoint_id=snapshot_id,
             scorer=self.scorer,
-            neo4j_service=self.db,
+            graph_service=self.db,
         )
         if "error" in rollback_result:
             return rollback_result
@@ -443,7 +443,7 @@ class InterventionControls:
         }
 
     async def get_intervention_history(self, limit: int = 50) -> List[Dict]:
-        """Return intervention audit log from Neo4j."""
+        """Return intervention audit log from AGE."""
         try:
             rows = await self.db.run_query(
                 """MATCH (i:Intervention)
@@ -491,7 +491,7 @@ class InterventionControls:
         reason: str,
         details: Dict,
     ) -> Dict:
-        """Write an Intervention node to Neo4j and return the record dict."""
+        """Write an Intervention node to AGE and return the record dict."""
         intervention_id = str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc).isoformat()
         try:

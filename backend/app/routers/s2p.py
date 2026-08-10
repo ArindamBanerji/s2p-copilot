@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import math
+import os
 import threading
 import time
 from uuid import uuid4
@@ -26,10 +27,7 @@ from copilot_sdk.backend.conservation_utils import compute_conservation_metrics
 from copilot_sdk.backend.diagnostics_models import build_diagnostics
 from copilot_sdk.graph.protocol import ProtocolV2GraphStore
 from copilot_sdk.scoring.mutation_lock import get_mutation_lock, serialize_mutation
-from copilot_sdk.scoring.dk_persistence import (
-    DKWelfordTracker,
-    persist_dk_after_reestimate,
-)
+from copilot_sdk.scoring.dk_persistence import DKWelfordTracker, persist_dk_after_reestimate
 from copilot_sdk.state.invalidation import apply_cache_invalidation_event, get_tab_state_cache
 from copilot_sdk.state.cached_static import cached_static
 
@@ -62,6 +60,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 learn_router = APIRouter(prefix="/api", tags=["S2P"])
 log = logging.getLogger(__name__)
+SCORE_TIMEOUT = float(os.environ.get("S2P_SCORE_TIMEOUT", "3.0"))
 _SIDE_EFFECT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="s2p-side-effect")
 _GRAPH_LINK_ADVISORY_LOCK = threading.RLock()
 _SCORE_CONSERVATION_STATUS_TTL_SECONDS = 2.0
@@ -76,7 +75,7 @@ def diagnostics(http_request: Request) -> dict[str, Any]:
         store = _graph_store_from_request(http_request)
         extras: dict[str, Any] = {
             "facade_active": store is not None,
-            "neo4j_client_status": "disabled",
+            "graph_client_status": "disabled",
             "receipt_type_support": True,
         }
         startup_status = getattr(http_request.app.state, "l5_startup_status", None)
@@ -125,6 +124,7 @@ def _submit_side_effect(fn):
     future.add_done_callback(_log_side_effect_failure)
     return future
 
+
 def _s2p_graph_reader(http_request: Request) -> S2PGraphReader:
     state = getattr(http_request.app, "state", None)
     scorer = getattr(state, "scorer", None)
@@ -137,20 +137,32 @@ def _s2p_graph_reader(http_request: Request) -> S2PGraphReader:
     return S2PGraphReader(store=graph_store)
 
 
-def _resolve_graph_context(invoice_id: str, http_request: Request):
+def _resolve_graph_context(
+    invoice_id: str,
+    http_request: Request,
+    *,
+    supplier_id: str | None = None,
+    amount: float | None = None,
+):
     reader = _s2p_graph_reader(http_request)
     try:
-        context_raw = reader.query_context(invoice_id, max_depth=2)
-    except GraphUnavailableError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="S2P graph context lookup failed",
-        ) from exc
+        context_raw = reader.query_direct_context(invoice_id)
+        if supplier_id and amount is not None:
+            context_raw = context_raw + reader.query_duplicate_context(
+                invoice_id,
+                supplier_id,
+                amount,
+            )
     except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="S2P graph context lookup failed",
-        ) from exc
+        # Context enrichment is OPTIONAL — graph failure must not fail
+        # the authoritative score. compute_all_factors handles context=None;
+        # empty-success already returns None below.
+        logger.warning(
+            "s2p score context degraded to None (invoice=%s): %s",
+            invoice_id,
+            exc,
+        )
+        return None
     if isinstance(context_raw, list):
         if not any(
             isinstance(row, dict) and _graph_context_row_is_domain_specific(row)
@@ -703,6 +715,7 @@ def _persist_l5_dk_state(
     http_request: Request,
     *,
     decision: dict[str, Any] | None,
+    decision_id: str | None = None,
     actual_action: str,
     payload: dict[str, Any],
 ) -> None:
@@ -1667,7 +1680,11 @@ def _learn_with_scorer(
         if invoice_id:
             payload.setdefault("invoice_id", invoice_id)
             if not had_invoice_link:
-                _link_decision_to_invoice(scorer.graph_store, decision_id, invoice_id, reader)
+                _submit_side_effect(
+                    lambda: _link_decision_to_invoice(
+                        scorer.graph_store, decision_id, invoice_id, reader
+                    )
+                )
     return cast(dict[str, Any], payload)
 
 
@@ -1925,6 +1942,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
     Score a procurement event and return recommended action.
     POST /api/s2p/score
     """
+    t0 = time.perf_counter()
     if request.category not in S2PDomainConfig.categories:
         raise HTTPException(
             status_code=422,
@@ -1961,13 +1979,23 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         log.exception("S2P active variant enrichment failed")
         active_variant = None
     lookup_id = invoice.get("invoice_id") or request.event_id
-    context = _resolve_graph_context(lookup_id, http_request)
+    context = _resolve_graph_context(
+        lookup_id,
+        http_request,
+        supplier_id=str(invoice.get("supplier_id") or request.supplier_id),
+        amount=float(invoice.get("amount") or request.amount),
+    )
     cross_copilot_signal = _apply_cross_copilot_signal(invoice, request)
     computed_factors = compute_all_factors(invoice, context=context)
     factor_vector = [computed_factors[name] for name in S2PDomainConfig.factors]
     scorer = _sdk_scorer(http_request)
+    t1 = time.perf_counter()
 
-    with get_mutation_lock("s2p"):
+    score_lock = get_mutation_lock("s2p")
+    acquired = score_lock.acquire(timeout=SCORE_TIMEOUT)
+    if not acquired:
+        raise HTTPException(status_code=503, detail="Score path busy — retry")
+    try:
         try:
             score_result = scorer.score(
                 computed_factors,
@@ -1976,6 +2004,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
             )
         except AssertionError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        t2 = time.perf_counter()
         core = {
             "event_id": request.event_id,
             "category": request.category,
@@ -1988,6 +2017,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
             "decision_id": score_result.decision_id,
         }
         conservation_snapshot = _cached_score_conservation_status_only(http_request)
+        t3 = time.perf_counter()
         centroid_snapshot = {}
         try:
             centroid_snapshot = _snapshot_score_centroids(scorer)
@@ -1996,10 +2026,14 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         except Exception:
             log.exception("S2P score centroid snapshot skipped")
             centroid_snapshot = {}
+        t4 = time.perf_counter()
         try:
             apply_cache_invalidation_event("s2p", "score")
         except Exception:
             log.exception("S2P score cache invalidation failed")
+        t5 = time.perf_counter()
+    finally:
+        score_lock.release()
 
     conservation_status = conservation_snapshot
     try:
@@ -2027,12 +2061,31 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
     except Exception:
         log.exception("S2P threshold decision enrichment failed")
         threshold_decision = None
+    t6 = time.perf_counter()
 
-    _link_decision_to_invoice(
-        scorer.graph_store,
-        core["decision_id"],
-        str(lookup_id),
-        _s2p_graph_reader(http_request),
+    if t6 - t0 > 3.0:
+        logger.warning(
+            "[S2P-PERF] score %s total=%.2fs | context=%.2fs | "
+            "score+persist=%.2fs | response=%.2fs | snapshot=%.2fs | "
+            "cache=%.2fs | enrich=%.2fs",
+            lookup_id,
+            t6 - t0,
+            t1 - t0,
+            t2 - t1,
+            t3 - t2,
+            t4 - t3,
+            t5 - t4,
+            t6 - t5,
+        )
+
+    score_reader = _s2p_graph_reader(http_request)
+    _submit_side_effect(
+        lambda: _link_decision_to_invoice(
+            scorer.graph_store,
+            core["decision_id"],
+            str(lookup_id),
+            score_reader,
+        )
     )
     if auto_approve is not None:
         _submit_side_effect(lambda: record_auto_approve_decision(dict(auto_approve)))
@@ -2173,6 +2226,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         _persist_l5_dk_state(
             http_request,
             decision=decision,
+            decision_id=request.decision_id,
             actual_action=request.actual_action,
             payload=payload,
         )
@@ -2296,6 +2350,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
         _persist_l5_dk_state(
             http_request,
             decision=decision,
+            decision_id=request.decision_id,
             actual_action=request.analyst_action,
             payload=payload,
         )
@@ -2377,7 +2432,7 @@ def get_learning_gate() -> dict:
     verified_decisions = 0
     override_precision = 0.0
 
-    # Neo4jClient.session() is async-only; this sync endpoint keeps the existing
+    # GraphClient.session() is async-only; this sync endpoint keeps the existing
     # cold-start fallback instead of calling an async context manager from sync code.
 
     gate = evaluate_s2p_learning_gate(

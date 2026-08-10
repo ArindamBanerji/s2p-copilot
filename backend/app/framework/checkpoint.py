@@ -1,7 +1,7 @@
 """
 CheckpointService — centroid checkpoint and rollback (TD-033, Phase 4 §17.5).
 
-Creates immutable snapshots of the scorer centroid tensor in Neo4j.
+Creates immutable snapshots of the scorer centroid tensor in AGE.
 Rollback restores a snapshot and freezes the scorer to prevent further drift.
 CISO Q4 answer: "What if it's wrong?" — instant revert to any prior checkpoint.
 
@@ -26,15 +26,15 @@ class CheckpointService:
     @staticmethod
     async def create_checkpoint(
         scorer: Any,
-        neo4j_service: Any,
+        graph_service: Any,
         reason: str = "manual",
     ) -> str:
-        """Snapshot current centroids to a Checkpoint node in Neo4j.
+        """Snapshot current centroids to a Checkpoint node in AGE.
 
         Parameters
         ----------
         scorer : source of centroids, counts, decision_count
-        neo4j_service : object with async run_query
+        graph_service : object with async run_query
         reason : str — label stored on the node (e.g. "pre-learning-activation")
 
         Returns
@@ -46,7 +46,7 @@ class CheckpointService:
         counts_snapshot = scorer.counts.tolist() if hasattr(scorer, "counts") else []
         decision_count  = int(getattr(scorer, "decision_count", 0))
 
-        await neo4j_service.run_query(
+        await graph_service.run_query(
             """CREATE (cp:Checkpoint {
                 id:               $id,
                 timestamp:        datetime(),
@@ -70,10 +70,10 @@ class CheckpointService:
         return checkpoint_id
 
     @staticmethod
-    async def list_checkpoints(neo4j_service: Any) -> list:
+    async def list_checkpoints(graph_service: Any) -> list:
         """Return all Checkpoint nodes ordered by timestamp DESC."""
         try:
-            result = await neo4j_service.run_query(
+            result = await graph_service.run_query(
                 """MATCH (cp:Checkpoint)
                    RETURN cp.id             AS id,
                           toString(cp.timestamp) AS timestamp,
@@ -99,7 +99,7 @@ class CheckpointService:
     async def rollback(
         checkpoint_id: str,
         scorer: Any,
-        neo4j_service: Any,
+        graph_service: Any,
     ) -> dict:
         """Restore centroids from a Checkpoint node and freeze the scorer.
 
@@ -107,20 +107,20 @@ class CheckpointService:
         ----------
         checkpoint_id : str — UUID of the target Checkpoint node
         scorer : object whose centroids/counts will be restored
-        neo4j_service : object with async run_query
+        graph_service : object with async run_query
 
         Returns
         -------
         dict with keys: status, checkpoint_id, frozen, restored_decision_count
         """
         try:
-            result = await neo4j_service.run_query(
+            result = await graph_service.run_query(
                 "MATCH (cp:Checkpoint {id: $id}) RETURN cp",
                 {"id": checkpoint_id},
             )
         except Exception as exc:
             log.warning("[CHECKPOINT] rollback query failed: %s", exc)
-            return {"error": f"Neo4j query failed: {exc}"}
+            return {"error": f"AGE query failed: {exc}"}
 
         if not result:
             return {"error": "Checkpoint not found"}

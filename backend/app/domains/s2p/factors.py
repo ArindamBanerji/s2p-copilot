@@ -110,7 +110,8 @@ def _label(node: dict[str, Any]) -> str:
 
 
 def _has_label_or_key(node: dict[str, Any], label: str, key: str) -> bool:
-    return _label(node) == label or node.get(key) is not None
+    node_label = _label(node)
+    return node_label == label or (not node_label and node.get(key) is not None)
 
 
 def _graph_has_context(context: dict[str, Any] | list[dict[str, Any]] | None) -> bool:
@@ -122,6 +123,21 @@ def _amount(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _safe_get_float(value: Any) -> float | None:
+    """Coerce a numeric graph property without hiding shape errors."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number == number and abs(number) != float("inf") else None
+
+
+def _record_provenance(factor: Any, provenance: str) -> None:
+    factor.last_provenance = provenance
 
 
 def _payment_days(value: Any) -> int | None:
@@ -137,6 +153,7 @@ def _payment_days(value: Any) -> int | None:
 
 class MatchStatus:
     name = "match_status"
+    last_provenance = "not_computed"
 
     def compute(
         self,
@@ -145,18 +162,31 @@ class MatchStatus:
     ) -> float:
         invoice = _as_invoice(invoice)
         nodes = [_node(entry) for entry in _neighbors(context)]
-        if nodes:
-            has_po = any(_has_label_or_key(node, "PurchaseOrder", "po_id") for node in nodes)
-            has_gr = any(_has_label_or_key(node, "GoodsReceipt", "gr_id") for node in nodes)
-            if has_po and has_gr:
-                return 0.1
-            if has_po:
-                return 0.6
-            return 0.9
+        po = next((node for node in nodes if _has_label_or_key(node, "PurchaseOrder", "po_id")), None)
+        gr = next((node for node in nodes if _has_label_or_key(node, "GoodsReceipt", "gr_id")), None)
+        if po is None and gr is None:
+            _record_provenance(self, "no_match_data")
+            return 0.5
 
-        if isinstance(invoice.get("approved_categories"), list) and invoice.get("contract_id"):
-            return 0.9 if invoice.get("category") in invoice["approved_categories"] else 0.1
-        return _fallback(invoice, self.name, 0.5)
+        discrepancies: list[float] = []
+        invoice_amount = _safe_get_float(invoice.get("amount"))
+        invoice_quantity = _safe_get_float(invoice.get("quantity"))
+
+        def compare(left: float | None, right: float | None) -> None:
+            if left is not None and right is not None:
+                discrepancies.append(abs(left - right) / max(left, 1.0))
+
+        if po is not None:
+            compare(invoice_amount, _safe_get_float(po.get("amount")))
+            compare(invoice_quantity, _safe_get_float(po.get("quantity")))
+        if gr is not None:
+            compare(invoice_amount, _safe_get_float(gr.get("amount")))
+            compare(invoice_quantity, _safe_get_float(gr.get("qty_received")))
+        if not discrepancies:
+            _record_provenance(self, "partial_data")
+            return 0.5
+        _record_provenance(self, "computed")
+        return _clamp(1.0 - min(max(discrepancies), 1.0))
 
 
 class AmountVarianceRatio:
@@ -285,6 +315,7 @@ class CommodityIndexCorrelation:
 
 class TaxRegulatoryCompliance:
     name = "tax_regulatory_compliance"
+    last_provenance = "not_computed"
 
     def compute(
         self,
@@ -293,13 +324,40 @@ class TaxRegulatoryCompliance:
     ) -> float:
         invoice = _as_invoice(invoice)
         nodes = [_node(entry) for entry in _neighbors(context)]
-        if nodes:
-            has_contract = any(_has_label_or_key(node, "Contract", "contract_id") for node in nodes)
-            return 0.15 if has_contract else 0.8
-        metadata = invoice.get("metadata")
-        if isinstance(metadata, dict) and metadata.get("tax_code") and metadata.get("withholding_tax") is not None:
-            return 0.1
-        return _fallback(invoice, self.name, 0.9)
+        contract = next(
+            (node for node in nodes if _has_label_or_key(node, "Contract", "contract_id")),
+            None,
+        )
+        if contract is None:
+            _record_provenance(self, "no_contract")
+            return 0.3
+
+        checks_passed = 0
+        checks_total = 0
+        max_amount = _safe_get_float(contract.get("max_amount"))
+        if max_amount is not None:
+            checks_total += 1
+            invoice_amount = _safe_get_float(invoice.get("amount"))
+            if invoice_amount is not None and invoice_amount <= max_amount:
+                checks_passed += 1
+
+        compliant = contract.get("tax_compliant")
+        if compliant is not None:
+            checks_total += 1
+            if compliant is True or compliant == 1 or str(compliant).lower() == "true":
+                checks_passed += 1
+
+        regulatory_status = contract.get("regulatory_status")
+        if regulatory_status is not None:
+            checks_total += 1
+            if str(regulatory_status).lower() in {"approved", "active", "compliant"}:
+                checks_passed += 1
+
+        if checks_total == 0:
+            _record_provenance(self, "no_compliance_fields")
+            return 0.5
+        _record_provenance(self, "computed")
+        return _clamp(checks_passed / checks_total)
 
 
 class EnvironmentalRisk:
@@ -316,13 +374,17 @@ class EnvironmentalRisk:
             if node.get("environmental_risk") is not None:
                 return _clamp(node.get("environmental_risk"))
             if node.get("carbon_footprint") is not None:
-                return _clamp(float(node.get("carbon_footprint")) / 1_000.0)
+                footprint = _safe_get_float(node.get("carbon_footprint"))
+                if footprint is not None:
+                    return _clamp(footprint / 1_000.0)
         metadata = invoice.get("metadata")
         if isinstance(metadata, dict):
             if metadata.get("environmental_risk") is not None:
                 return _clamp(metadata.get("environmental_risk"))
             if metadata.get("carbon_footprint") is not None:
-                return _clamp(float(metadata.get("carbon_footprint")) / 1_000.0)
+                footprint = _safe_get_float(metadata.get("carbon_footprint"))
+                if footprint is not None:
+                    return _clamp(footprint / 1_000.0)
             if metadata.get("route_weather_risk") is not None:
                 return _clamp(metadata.get("route_weather_risk"))
         return _fallback(invoice, self.name, 0.5)

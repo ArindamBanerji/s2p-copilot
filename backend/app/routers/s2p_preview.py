@@ -282,6 +282,10 @@ def _get_preview_simulation_scorer():
 
     return build_s2p_scorer(
         graph_store=InMemoryGraphStore(domain="s2p"),
+        # The preview is an isolated, non-production simulation.  Explicitly
+        # select the test profile so production AGE requirements cannot make
+        # this read-only preview return HTTP 500 when AGE is unavailable.
+        profile="test",
     )
 
 

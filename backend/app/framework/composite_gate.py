@@ -63,7 +63,7 @@ class CompositeDiscriminant:
         category: str,
         factor_vector: Any,
         decision_position: float,
-        neo4j_service: Any,
+        graph_service: Any,
         actions: list | None = None,
         protected_action_name: str = "auto_approve",
     ) -> dict:
@@ -76,7 +76,7 @@ class CompositeDiscriminant:
         category          : domain category string (e.g. "price_variance")
         factor_vector     : domain factor vector as a numpy array or list
         decision_position : position in session (0-1); 0.0 for live triage
-        neo4j_service     : object with async run_query()
+        graph_service     : object with async run_query()
         actions           : ordered list of action name strings; used to resolve
                             action_index to a name for the protected action gate.
                             Pass the domain's action list (e.g. SCORER_ACTIONS).
@@ -114,7 +114,7 @@ class CompositeDiscriminant:
         # ── Graph context features ───────────────────────────────────────────
         try:
             cat_stats = await DecisionHistoryService.get_category_stats(
-                category, neo4j_service
+                category, graph_service
             )
         except Exception as exc:
             log.warning("[COMPOSITE] category_stats failed: %s", exc)

@@ -1,7 +1,7 @@
 """
 S2P Copilot 10-Scenario Demo.
 Runs end-to-end: score -> outcome -> IKS progression.
-No frontend. No Neo4j required (fault-tolerant).
+No frontend. No external graph service required (fault-tolerant).
 Run: python demo/s2p_demo.py
 """
 

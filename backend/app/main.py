@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 
 from copilot_sdk.backend import create_conservation_router, create_measurement_state_router
+from copilot_sdk.evolution import ScorerBackedProvider
+from copilot_sdk.backend.self_computation_router import mount_self_computation_router
 from copilot_sdk.backend.counterfactual_router import create_counterfactual_router
 from copilot_sdk.backend.transfer_router import create_transfer_router
 from copilot_sdk.config import GraphConfig, require_shared_graph
@@ -29,6 +31,7 @@ from app.routers.s2p import (
     router as s2p_router,
     set_l5_dk_welford_tracker,
 )
+from app.services.s2p_evolver import get_evolver, set_conservation_provider
 from app.routers.s2p_audit_export import router as s2p_audit_export_router
 from app.routers.s2p_auto_approve import router as s2p_auto_approve_router
 from app.routers.s2p_clustering import router as s2p_clustering_router
@@ -171,14 +174,23 @@ app.state.scorer = build_s2p_scorer(
     graph_store=create_s2p_active_graph_store(app.state.s2p_active_graph_config),
     profile=_resolve_profile(),
 )
+set_conservation_provider(ScorerBackedProvider(app.state.scorer, "s2p"))
 app.state.graph_store = app.state.scorer.graph_store
+app.state.evolver = get_evolver()
+mount_self_computation_router(
+    app,
+    app.state.graph_store,
+    domain="s2p",
+    scorer_provider=lambda: app.state.scorer,
+    evolver_provider=get_evolver,
+)
 app.state.s2p_graph_reader = S2PGraphReader(
     store=app.state.scorer.graph_store,
     domain="s2p",
 )
-# Enrichment and scoring share one authoritative GraphStore.  Keep the
-# explicit alias for consumers that inspect app.state.enrichment_store, but do
-# not replace the scorer's store with a DualWriteStore primary.
+# Supplier enrichment uses the same domain-scoped AGE graph as decisions.
+# There is no production SQLite side store: AGE capability failures surface
+# during startup or through the enrichment request rather than being hidden.
 app.state.enrichment_store = app.state.graph_store
 logger.info(
     "S2P resolved data path: %s (shared_store=%s)",

@@ -468,6 +468,29 @@ def _record_outcome_shadow(
                 **dict(metadata or {}),
             },
         )
+        # A non-strict shadow run must still leave the shared test-mode AGE
+        # record resolved when the authoritative scorer paused before its
+        # write (for example, at a conservation boundary).
+        authoritative = shadow.store.get_decision(
+            decision_id,
+            domain=shadow.config.domain,
+        )
+        if isinstance(authoritative, dict) and authoritative.get("status") == "pending":
+            shadow.store.write_outcome(
+                decision_id=decision_id,
+                actual_action=actual_action,
+                is_correct=is_correct,
+                domain=shadow.config.domain,
+                metadata={
+                    "shadow": True,
+                    "lifecycle": "shadow",
+                    "shadow_run_id": shadow.diagnostics.shadow_run_id,
+                    "shadow_operation": operation,
+                    "operation_id": decision_id,
+                    "outcome": outcome,
+                    **dict(metadata or {}),
+                },
+            )
     except Exception as exc:
         _handle_shadow_error(
             shadow,
@@ -1718,6 +1741,11 @@ def _ensure_outcome_decision(
             status_code=404,
             detail=f"Unknown decision: {request.decision_id}",
         )
+    if decision.get("status") in {"confirmed", "overridden"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Decision {request.decision_id} already resolved",
+        )
     # Existing governed records can be re-submitted idempotently to repair a
     # secondary that missed the original write.  Legacy raw records do not
     # have enough versioned fields for a safe governed reconstruction, so we
@@ -2207,6 +2235,19 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             decision = reader.get_decision(request.decision_id)
         except GraphUnavailableError as exc:
             raise HTTPException(status_code=503, detail="S2P decision lookup failed") from exc
+        shadow = _s2p_shadow_state(http_request)
+        if (
+            shadow is not None
+            and shadow.config.enabled
+            and shadow.config.test_mode
+            and hasattr(shadow.store, "_store")
+            and isinstance(decision, dict)
+            and decision.get("status") in {"confirmed", "overridden"}
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Decision {request.decision_id} already resolved",
+            )
         category = _decision_category(decision)
         pre_centroid = _read_centroid_for_l5(
             scorer,

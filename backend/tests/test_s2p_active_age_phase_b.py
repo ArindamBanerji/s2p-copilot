@@ -247,6 +247,7 @@ class FakeAGEStore:
         self,
         domain: str,
         *,
+        include_v2: bool = False,
         limit: int = 100,
         checkpoint_time_start: str | None = None,
         checkpoint_time_end: str | None = None,

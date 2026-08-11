@@ -19,6 +19,8 @@ def test_conservation_green_requires_theta_min_met() -> None:
         correct_count=correct,
         total_decisions=total_decisions,
         penalty_ratio=5.0,
+        categories_with_data=total_decisions,
+        total_categories=total_decisions,
     )
 
     assert result.signal == pytest.approx(alpha * q * verified)

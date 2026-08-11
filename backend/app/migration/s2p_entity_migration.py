@@ -502,12 +502,25 @@ async def _ensure_invoice_index(dsn: str, graph_name: str) -> bool:
         raise
 
 
+async def _stamp_domain_edges(client: Any) -> None:
+    """Normalize provenance on every S2P edge retained by the migration graph."""
+    await client.run_query(
+        """
+        MATCH ()-[r]->()
+        WHERE r.domain = 's2p'
+        SET r += {domain: 's2p', provenance: 'seed', domain_source: 'migration'}
+        RETURN count(r)
+        """,
+        None,
+    )
+
+
 async def _reconcile_orphans(client: Any) -> tuple[int, int]:
     rows = await client.run_query(
         """
-        MATCH (l:DecisionEntityLink)
-        WHERE l.domain = 's2p'
-        RETURN l.decision_id AS decision_id, l.entity_id AS entity_id
+        MATCH (d:DecisionEntityLink)
+        WHERE d.domain = 's2p'
+        RETURN d.decision_id AS decision_id, d.entity_id AS entity_id
         """,
         None,
     )
@@ -576,11 +589,11 @@ async def _reconcile_orphans(client: Any) -> tuple[int, int]:
                 )
             await client.run_query(
                 f"""
-                MATCH (l:DecisionEntityLink {{decision_id: {_serialize(client, decision_id)}}})
-                WHERE l.entity_id = {_serialize(client, entity_id)}
-                  AND l.domain = 's2p'
-                DELETE l
-                RETURN l
+                MATCH (d:DecisionEntityLink {{decision_id: {_serialize(client, decision_id)}}})
+                WHERE d.entity_id = {_serialize(client, entity_id)}
+                  AND d.domain = 's2p'
+                DELETE d
+                RETURN d
                 """,
                 None,
             )
@@ -624,6 +637,7 @@ async def write_s2p_entity_migration(
             created, updated = await _upsert_edge(client, edge)
             created_edges += int(created)
             updated_edges += int(updated)
+        await _stamp_domain_edges(client)
         index_created = await _ensure_invoice_index(dsn, graph_name)
         reconciled, retained = await _reconcile_orphans(client)
     finally:

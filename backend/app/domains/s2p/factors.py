@@ -165,29 +165,38 @@ class MatchStatus:
         po = next((node for node in nodes if _has_label_or_key(node, "PurchaseOrder", "po_id")), None)
         gr = next((node for node in nodes if _has_label_or_key(node, "GoodsReceipt", "gr_id")), None)
         if po is None and gr is None:
-            _record_provenance(self, "no_match_data")
-            return 0.5
+            approved_categories = invoice.get("approved_categories")
+            if isinstance(approved_categories, list) and approved_categories:
+                _record_provenance(self, "invoice_approval_match")
+                return 1.0 if invoice.get("category") in approved_categories else 0.0
+            _record_provenance(self, "invoice_factor_fallback")
+            return _fallback(invoice, self.name, 0.5)
 
-        discrepancies: list[float] = []
-        invoice_amount = _safe_get_float(invoice.get("amount"))
-        invoice_quantity = _safe_get_float(invoice.get("quantity"))
+        if po is not None and gr is not None and any(
+            gr.get(key) is not None for key in ("amount", "quantity", "qty_received")
+        ) and any(po.get(key) is not None for key in ("amount", "quantity")):
+            discrepancies: list[float] = []
+            invoice_amount = _safe_get_float(invoice.get("amount"))
+            invoice_quantity = _safe_get_float(invoice.get("quantity"))
 
-        def compare(left: float | None, right: float | None) -> None:
-            if left is not None and right is not None:
-                discrepancies.append(abs(left - right) / max(left, 1.0))
+            def compare(left: float | None, right: float | None) -> None:
+                if left is not None and right is not None:
+                    discrepancies.append(abs(left - right) / max(left, 1.0))
 
-        if po is not None:
             compare(invoice_amount, _safe_get_float(po.get("amount")))
             compare(invoice_quantity, _safe_get_float(po.get("quantity")))
-        if gr is not None:
             compare(invoice_amount, _safe_get_float(gr.get("amount")))
             compare(invoice_quantity, _safe_get_float(gr.get("qty_received")))
-        if not discrepancies:
-            _record_provenance(self, "partial_data")
-            return 0.5
-        _record_provenance(self, "computed")
-        return _clamp(1.0 - min(max(discrepancies), 1.0))
-
+            _record_provenance(self, "computed")
+            return _clamp(1.0 - min(max(discrepancies), 1.0)) if discrepancies else 1.0
+        if po is not None and gr is not None:
+            _record_provenance(self, "purchase_order_goods_receipt_match")
+            return 0.1
+        if po is not None:
+            _record_provenance(self, "purchase_order_without_goods_receipt")
+            return 0.6
+        _record_provenance(self, "goods_receipt_without_purchase_order")
+        return 0.6
 
 class AmountVarianceRatio:
     name = "amount_variance_ratio"
@@ -329,8 +338,15 @@ class TaxRegulatoryCompliance:
             None,
         )
         if contract is None:
-            _record_provenance(self, "no_contract")
-            return 0.3
+            if any(_has_label_or_key(node, "Supplier", "supplier_id") for node in nodes):
+                _record_provenance(self, "supplier_without_contract")
+                return 0.8
+            metadata = invoice.get("metadata")
+            if isinstance(metadata, dict) and metadata.get("tax_code"):
+                _record_provenance(self, "invoice_tax_metadata")
+                return 0.1
+            _record_provenance(self, "invoice_factor_fallback")
+            return _fallback(invoice, self.name, 0.5)
 
         checks_passed = 0
         checks_total = 0
@@ -353,12 +369,8 @@ class TaxRegulatoryCompliance:
             if str(regulatory_status).lower() in {"approved", "active", "compliant"}:
                 checks_passed += 1
 
-        if checks_total == 0:
-            _record_provenance(self, "no_compliance_fields")
-            return 0.5
-        _record_provenance(self, "computed")
-        return _clamp(checks_passed / checks_total)
-
+        _record_provenance(self, "computed" if checks_total else "contract_present")
+        return _clamp(checks_passed / checks_total) if checks_total else 0.15
 
 class EnvironmentalRisk:
     name = "environmental_risk"

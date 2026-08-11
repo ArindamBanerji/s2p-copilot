@@ -177,6 +177,18 @@ class S2PGraphReader:
         """Read only the directed Invoice -> entity neighbors for S2P."""
         bounded_limit = max(1, min(int(limit), 100))
 
+        try:
+            self._age_store()
+        except GraphUnavailableError:
+            query_context = getattr(self.store, "query_context", None)
+            if not callable(query_context):
+                raise GraphUnavailableError("S2P AGE store does not expose directed query support")
+            context_reader = cast(Callable[..., Any], query_context)
+            return self._read(
+                "query_direct_context",
+                lambda: context_reader(invoice_id, 2, domain=self.domain),
+            )
+
         def read() -> list[dict[str, Any]]:
             store = self._age_store()
             cypher_id = store._S(invoice_id)
@@ -213,6 +225,11 @@ class S2PGraphReader:
         tolerance = abs(numeric_amount) * 0.05
         lower = max(0.0, numeric_amount - tolerance)
         upper = numeric_amount + tolerance
+
+        try:
+            self._age_store()
+        except GraphUnavailableError:
+            return []
 
         def read() -> list[dict[str, Any]]:
             store = self._age_store()

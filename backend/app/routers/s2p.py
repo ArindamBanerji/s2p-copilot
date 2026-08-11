@@ -624,6 +624,12 @@ def _persist_l5_conservation_state(http_request: Request, decision_id: str | Non
     except Exception as exc:
         log.warning("S2P L5 conservation state skipped: %s", exc)
         return None
+    # Do not persist a falsely complete conservation snapshot when the graph
+    # adapter cannot report category coverage.  Verified volume alone is not
+    # enough to establish alpha for the L5 state.
+    if int(metrics.get("categories_with_data", 0)) <= 0:
+        log.warning("S2P L5 conservation state skipped: category coverage unavailable")
+        return None
     try:
         old_state = store.get_conservation_state(domain)
     except Exception as exc:
@@ -889,11 +895,24 @@ def _read_conservation_counts(
     verified_count = int(reader.count_verified())
     correct_count = int(reader.count_correct())
     total_decisions = int(reader.count_verified_decisions())
+    # The shared conservation payload derives alpha from these fields when
+    # the provider returns a mapping.  Previously S2P returned only volume
+    # and correctness, so the SDK's conservative fallback treated coverage
+    # as zero even when verified decisions had categories.
+    categories_total = len(S2PDomainConfig.categories)
+    count_categories_with_n = getattr(graph_store, "count_categories_with_n", None)
+    categories_with_data = (
+        int(count_categories_with_n(domain or "s2p", n=1))
+        if callable(count_categories_with_n)
+        else 0
+    )
     return {
         "verified_count": max(verified_count, 0),
         "correct_count": max(correct_count, 0),
         "total_decisions": max(int(total_decisions), 0),
         "penalty_ratio": PENALTY_RATIO,
+        "categories_total": max(categories_total, 0),
+        "categories_with_data": max(min(categories_with_data, categories_total), 0),
     }
 
 

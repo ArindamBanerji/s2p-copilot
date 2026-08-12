@@ -429,7 +429,11 @@ def _query_graph_context(
 ) -> list[dict[str, Any]]:
     if reader is None:
         raise RuntimeError("S2P graph context lookup is unavailable")
-    rows = reader.query_context(str(entity_id), max_depth)
+    directed_reader = getattr(reader, "query_direct_context", None)
+    if callable(directed_reader):
+        rows = directed_reader(str(entity_id), limit=50)
+    else:
+        rows = reader.query_context(str(entity_id), max_depth)
     if isinstance(rows, list):
         for row in rows:
             if isinstance(row, dict) and row.get("domain") not in (None, "s2p"):

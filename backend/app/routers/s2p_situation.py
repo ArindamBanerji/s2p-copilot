@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -31,7 +31,7 @@ async def get_situation(
     max_depth: int = 3,
 ) -> dict[str, Any]:
     """Traverse graph context for a scored decision and render NL explanation."""
-    depth = _bounded_depth(max_depth)
+    depth = min(_bounded_depth(max_depth), 2)
     graph_store = _graph_store(request)
     if graph_store is None:
         raise HTTPException(status_code=503, detail="Graph store unavailable")
@@ -50,7 +50,17 @@ async def get_situation(
     if pattern_for_category(category) is None:
         raise HTTPException(status_code=400, detail=f"no traversal pattern for category: {category}")
 
-    metadata = decision.get("metadata") if isinstance(decision.get("metadata"), dict) else {}
+    metadata_value = decision.get("metadata")
+    metadata = cast(dict[str, Any], metadata_value) if isinstance(metadata_value, dict) else {}
+    entity_id = str(metadata.get("invoice_id") or decision.get("entity_id") or "").strip()
+    if not await _entity_context_available(reader, entity_id):
+        return _degraded_response(
+            decision_id,
+            category,
+            decision,
+            status="unavailable",
+            reason="Entity not yet indexed in graph store",
+        )
     analyzer = SituationAnalyzer(
         [replace(pattern, reader=reader) for pattern in S2P_TRAVERSAL_PATTERNS],
         default_max_depth=3,
@@ -66,14 +76,25 @@ async def get_situation(
             "scope": {
                 "decision_id": decision_id,
                 "category": category,
-                "invoice_id": metadata.get("invoice_id") or decision.get("entity_id"),
+            "invoice_id": entity_id,
             },
             "payload": {**dict(metadata), **decision},
         }
     )
     try:
-        context = await asyncio.to_thread(
-            lambda: analyzer.analyze_intent(intent, graph_store=graph_store, max_depth=depth)
+        context = await asyncio.wait_for(
+            asyncio.to_thread(
+                lambda: analyzer.analyze_intent(intent, graph_store=graph_store, max_depth=depth)
+            ),
+            timeout=8.0,
+        )
+    except asyncio.TimeoutError:
+        return _degraded_response(
+            decision_id,
+            category,
+            decision,
+            status="timeout",
+            reason="Graph traversal exceeded 8s deadline",
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="Decision graph unavailable") from exc
@@ -150,6 +171,55 @@ def _decision(reader: S2PGraphReader, decision_id: str) -> dict[str, Any] | None
     return decision if isinstance(decision, dict) else None
 
 
+async def _entity_context_available(reader: S2PGraphReader, entity_id: str) -> bool:
+    """Use S2P's bounded directed read before generic graph traversal."""
+    if not entity_id:
+        return False
+    try:
+        rows = await asyncio.wait_for(
+            asyncio.to_thread(reader.query_direct_context, entity_id, limit=1),
+            timeout=2.0,
+        )
+        return bool(rows)
+    except Exception:
+        return False
+
+
+def _degraded_response(
+    decision_id: str,
+    category: str,
+    decision: dict[str, Any],
+    *,
+    status: str,
+    reason: str,
+) -> dict[str, Any]:
+    factors = decision.get("factors")
+    factors_used = list(factors) if isinstance(factors, dict) else []
+    confidence = _float(decision.get("confidence"), 0.0)
+    return {
+        "decision_id": decision_id,
+        "category": category,
+        "status": status,
+        "reason": reason,
+        "context_source": "scorer_only",
+        "context_chain": [],
+        "nl_explanation": "Situation context unavailable; factor-based scoring was used.",
+        "confidence": confidence,
+        "factors_used": factors_used,
+        "traversal_depth": 0,
+        "context_available": False,
+        "warnings": [reason],
+        "template_variables": {},
+        "missing_variables": [],
+        "situation_context": {},
+        "provenance": {
+            "nl_explanation": "learned",
+            "confidence": _confidence_provenance(decision),
+            "overall": "learned",
+        },
+    }
+
+
 def _dk_weights(request: Request) -> dict[str, Any] | None:
     state = getattr(request.app, "state", None)
     scorer = getattr(state, "scorer", None)
@@ -187,7 +257,8 @@ def _node_provenance(node: Any) -> str:
 
 
 def _confidence_provenance(decision: dict[str, Any]) -> str:
-    metadata = decision.get("metadata") if isinstance(decision.get("metadata"), dict) else {}
+    metadata_value = decision.get("metadata")
+    metadata = cast(dict[str, Any], metadata_value) if isinstance(metadata_value, dict) else {}
     raw = (
         decision.get("confidence_provenance")
         or metadata.get("confidence_provenance")

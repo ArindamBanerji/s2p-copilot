@@ -46,6 +46,7 @@ from app.routers.s2p_data_helpers import find_invoice, load_invoices
 from app.routers.s2p_preview import _load_celonis_cache, invalidate_preview_observation
 from app.models.outcome_receipt import OutcomeReceipt
 from app.services.receipt_store import get_receipt_store
+from app.routers.s2p_evidence import clear_evidence_context_cache
 from app.services.cross_copilot_signals import (
     CrossCopilotSignalConsumer,
     latest_supplier_signal,
@@ -1985,6 +1986,7 @@ class ScoreResponse(BaseModel):
 
 @router.post("/score", response_model=S2PScoreResponse)
 def score_procurement_event(request: ScoreRequest, http_request: Request) -> dict[str, Any]:
+    clear_evidence_context_cache()
     """
     Score a procurement event and return recommended action.
     POST /api/s2p/score
@@ -2217,6 +2219,7 @@ class LearnRequest(BaseModel):
 
 @learn_router.post("/learn", response_model=GenericResponse)
 def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, Any]:
+    clear_evidence_context_cache()
     """SDK-shaped learn endpoint backed by the S2P CompoundingScorer."""
     if request.actual_action not in S2PDomainConfig.actions:
         raise HTTPException(
@@ -2294,6 +2297,11 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         invalidate_preview_observation(_decision_invoice_id(decision))
         conservation_after_snapshot = _receipt_conservation_snapshot(http_request)
         payload_snapshot = dict(payload)
+        # Normalize this before deciding whether to append the receipt. Some
+        # scorer implementations return a successful outcome without copying
+        # learning_applied into their response payload; the outcome endpoint
+        # itself is the authoritative commit boundary.
+        payload_snapshot["learning_applied"] = payload_snapshot.get("status") != "paused"
         decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None
 
     if _outcome_recorded_for_receipt(
@@ -2333,6 +2341,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
 
 @router.post("/outcome", response_model=GenericResponse)
 def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, Any]:
+    clear_evidence_context_cache()
     """
     Record analyst outcome and optionally update centroids.
     POST /api/s2p/outcome
@@ -2418,6 +2427,10 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
         invalidate_preview_observation(invoice_id)
         conservation_after_snapshot = _receipt_conservation_snapshot(http_request)
         payload_snapshot = dict(payload)
+        # The outcome endpoint is the authoritative commit boundary. Normalize
+        # this before receipt gating and response serialization because a
+        # scorer adapter may omit the flag from its result payload.
+        payload_snapshot["learning_applied"] = payload_snapshot.get("status") != "paused"
         decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None
 
     if _outcome_recorded_for_receipt(
@@ -2445,7 +2458,6 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
     )
     if request.reason_code:
         payload_snapshot["reason_code"] = request.reason_code
-    payload_snapshot["learning_applied"] = payload_snapshot.get("status") != "paused"
     _record_outcome_shadow(
         http_request,
         operation="outcome_shadow",

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime, timezone
+from threading import RLock
+from time import monotonic
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -19,12 +21,44 @@ from app.services.receipt_store import get_receipt_store
 from app.services.s2p_evidence_templates import S2PEvidenceEngine, evidence_context_from_record
 from app.services.s2p_situation_pattern import S2PInvoiceTraversalPattern
 from app.services.s2p_trust_explanations import format_trust_explanation
-from copilot_sdk.situation import SituationAnalyzer
+from copilot_sdk.situation import SituationAnalyzer, SituationContext
 
 router = APIRouter(prefix="/api/s2p/evidence", tags=["s2p-evidence"])
 
 _load_invoices = load_invoices
 _evidence_engine = S2PEvidenceEngine()
+_CONTEXT_CACHE_TTL_SECONDS = 120.0
+_context_cache: dict[str, tuple[float, SituationContext]] = {}
+_context_cache_lock = RLock()
+
+
+def clear_evidence_context_cache() -> None:
+    """Drop request-derived context after a score/learning mutation."""
+    with _context_cache_lock:
+        _context_cache.clear()
+
+
+def _cached_situation_context(invoice_id: str | None, graph_store: Any | None) -> SituationContext | None:
+    if not invoice_id:
+        return None
+    cache_key = f"{id(graph_store)}:{invoice_id}"
+    with _context_cache_lock:
+        cached = _context_cache.get(cache_key)
+        if cached is None:
+            return None
+        created, context = cached
+        if monotonic() - created > _CONTEXT_CACHE_TTL_SECONDS:
+            _context_cache.pop(cache_key, None)
+            return None
+        return context
+
+
+def _store_situation_context(invoice_id: str | None, graph_store: Any | None, context: SituationContext) -> None:
+    if not invoice_id:
+        return
+    cache_key = f"{id(graph_store)}:{invoice_id}"
+    with _context_cache_lock:
+        _context_cache[cache_key] = (monotonic(), context)
 
 
 def _invoice_by_id(invoice_id: str) -> dict[str, Any] | None:
@@ -361,7 +395,10 @@ def evidence_template(
             "payload": invoice,
         }
     )
-    situation_context = analyzer.analyze_intent(intent, graph_store=graph_store, max_depth=3)
+    situation_context = _cached_situation_context(invoice_id, graph_store)
+    if situation_context is None:
+        situation_context = analyzer.analyze_intent(intent, graph_store=graph_store, max_depth=3)
+        _store_situation_context(invoice_id, graph_store, situation_context)
     variables = evidence_context_from_record(invoice)
     context_used = situation_context.metadata.get("context_used")
     if isinstance(context_used, dict):

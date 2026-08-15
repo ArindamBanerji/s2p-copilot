@@ -14,9 +14,19 @@ SERVICE_PATH = Path(__file__).resolve().parents[1] / "app" / "services" / "s2p_e
 
 @pytest.fixture(autouse=True)
 def reset_evolver_state():
+    class FixedProvider:
+        def get_state(self) -> dict[str, str]:
+            return {"status": "GREEN"}
+
+        def __call__(self) -> dict[str, str]:
+            return self.get_state()
+
+    provider = FixedProvider()
+    s2p_evolver.set_conservation_provider(provider)
     s2p_evolver.reset_s2p_evolver()
     yield
     s2p_evolver.reset_s2p_evolver()
+    s2p_evolver.set_conservation_provider(provider)
 
 
 def _stats(variant_id: str) -> dict:
@@ -195,7 +205,7 @@ def test_s2p_promotion_when_threshold_exceeded():
     for _ in range(S2P_EVOLVER_CONFIG.promotion_min_samples):
         s2p_evolver.record_triage_outcome("EVIDENCE_ORDER_v2", is_correct=True, category="price_variance")
 
-    result = s2p_evolver.check_promotion({"status": "GREEN"})
+    result = s2p_evolver.check_promotion()
 
     assert result is not None
     assert result["family"] == "evidence_ordering"

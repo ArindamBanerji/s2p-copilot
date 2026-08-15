@@ -7,7 +7,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 
-from copilot_sdk.backend import create_conservation_router, create_measurement_state_router
+from copilot_sdk.backend import (
+    create_conservation_router,
+    create_evolution_router,
+    create_measurement_state_router,
+)
 from copilot_sdk.evolution import ScorerBackedProvider
 from copilot_sdk.backend.self_computation_router import mount_self_computation_router
 from copilot_sdk.backend.counterfactual_router import create_counterfactual_router
@@ -257,6 +261,12 @@ app.include_router(
 )
 app.include_router(create_transfer_router(app.state.scorer))
 app.include_router(s2p_router)
+app.include_router(
+    create_evolution_router(
+        domain="s2p",
+        evolver_factory=get_evolver,
+    )
+)
 app.include_router(s2p_auto_approve_router)
 app.include_router(s2p_audit_export_router)
 app.include_router(s2p_evolution_router)

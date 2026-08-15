@@ -17,9 +17,22 @@ ROUTER_PATH = Path(__file__).resolve().parents[1] / "app" / "routers" / "s2p_evo
 
 @pytest.fixture(autouse=True)
 def reset_evolver_state():
+    class FixedProvider:
+        def __init__(self, status: str = "GREEN") -> None:
+            self.status = status
+
+        def get_state(self) -> dict[str, str]:
+            return {"status": self.status}
+
+        def __call__(self) -> dict[str, str]:
+            return self.get_state()
+
+    provider = FixedProvider()
+    s2p_evolver.set_conservation_provider(provider)
     s2p_evolver.reset_s2p_evolver()
-    yield
+    yield provider
     s2p_evolver.reset_s2p_evolver()
+    s2p_evolver.set_conservation_provider(provider)
 
 
 def _seed_qualifying_candidate() -> None:
@@ -31,10 +44,11 @@ def _seed_qualifying_candidate() -> None:
         )
 
 
-def test_promotion_blocked_on_amber():
+def test_promotion_blocked_on_amber(reset_evolver_state):
     _seed_qualifying_candidate()
 
-    result = s2p_evolver.check_promotion({"status": "AMBER"})
+    reset_evolver_state.status = "AMBER"
+    result = s2p_evolver.check_promotion()
 
     assert result is not None
     assert result["promoted"] is False
@@ -44,7 +58,7 @@ def test_promotion_blocked_on_amber():
 def test_promotion_allowed_on_green():
     _seed_qualifying_candidate()
 
-    result = s2p_evolver.check_promotion({"status": "GREEN"})
+    result = s2p_evolver.check_promotion()
 
     assert result is not None
     assert result["promoted_id"] == "EVIDENCE_ORDER_v2"
@@ -60,8 +74,9 @@ def test_no_literal_green_in_code():
         assert "conservation_state='GREEN'" not in source
 
 
-def test_provider_returns_live_state(monkeypatch):
+def test_provider_returns_live_state(monkeypatch, reset_evolver_state):
     _seed_qualifying_candidate()
+    reset_evolver_state.status = "AMBER"
     seen_requests = []
 
     def live_provider(request):

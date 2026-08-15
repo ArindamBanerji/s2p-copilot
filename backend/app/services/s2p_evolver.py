@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import replace
+import os
+from pathlib import Path
 from typing import Any, cast
 
 from copilot_sdk.evolution import (
     ConservationStateProvider,
     PromptVariantEvolver,
+    SQLiteVariantStore,
     VariantSpec,
 )
 
@@ -21,7 +24,18 @@ from app.services.s2p_evolution_dimensions import (
 
 
 _INITIAL_VARIANTS: tuple[VariantSpec, ...] = tuple(S2P_VARIANTS)
-_s2p_evolver = PromptVariantEvolver(config=S2P_EVOLVER_CONFIG)
+
+
+def _evolution_store() -> SQLiteVariantStore:
+    configured_path = os.environ.get("S2P_EVOLUTION_DB_PATH")
+    if configured_path:
+        return SQLiteVariantStore(configured_path)
+    data_dir = Path(os.environ.get("CI_DATA_DIR", Path(__file__).resolve().parents[2] / "data"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return SQLiteVariantStore(data_dir / "s2p_evolution.sqlite3")
+
+
+_s2p_evolver = PromptVariantEvolver(config=S2P_EVOLVER_CONFIG, store=_evolution_store())
 
 
 def set_conservation_provider(provider: ConservationStateProvider) -> None:
@@ -29,7 +43,7 @@ def set_conservation_provider(provider: ConservationStateProvider) -> None:
 
     global _s2p_evolver
     config = replace(S2P_EVOLVER_CONFIG, conservation_state_provider=provider)
-    _s2p_evolver = PromptVariantEvolver(config=config)
+    _s2p_evolver = PromptVariantEvolver(config=config, store=_s2p_evolver.store)
     _register_initial_variants()
 
 

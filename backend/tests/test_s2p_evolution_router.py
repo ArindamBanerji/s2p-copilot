@@ -104,7 +104,7 @@ def test_evolution_promotion_check_endpoint():
     # therefore promote the qualifying candidate; an unsafe scorer must return
     # the historical conservation-blocked shape.
     if promotion.get("promoted") is False:
-        assert promotion["reason"] == "conservation"
+        assert promotion["reason"] == "conservation_gate_unavailable"
     else:
         assert promotion["promoted_id"] == "EVIDENCE_ORDER_v2"
 

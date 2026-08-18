@@ -88,4 +88,4 @@ def test_provider_returns_live_state(monkeypatch, reset_evolver_state):
 
     assert response.status_code == 200
     assert seen_requests
-    assert response.json()["promotion"]["reason"] == "conservation"
+    assert response.json()["promotion"]["reason"] == "conservation_gate_unavailable"

@@ -27,6 +27,7 @@ class S2PScoreResponse(FlexibleResponse):
     factor_vector: list[float] | None = None
     factor_names: list[str] | None = None
     decision_id: str | None = None
+    proposal_id: str | None = None
     process_context: dict[str, Any] | None = None
     active_variant: dict[str, Any] | None = None
     auto_approve: dict[str, Any] | None = None

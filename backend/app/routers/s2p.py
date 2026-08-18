@@ -1977,6 +1977,7 @@ class ScoreResponse(BaseModel):
     factor_vector: list[float]
     factor_names: list[str]
     decision_id: str
+    proposal_id: Optional[str] = None
     process_context: Optional[dict] = None
     active_variant: Optional[dict] = None
     auto_approve: Optional[dict] = None
@@ -2110,6 +2111,33 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
     except Exception:
         log.exception("S2P threshold decision enrichment failed")
         threshold_decision = None
+    proposal_id: str | None = None
+    proposal_service = getattr(http_request.app.state, "proposal_service", None)
+    if proposal_service is not None:
+        try:
+            proposal = proposal_service.create_from_score(
+                score_result,
+                str(lookup_id),
+                factor_vector,
+                {
+                    "evidence_chain": [
+                        {
+                            "source": "profile_scorer",
+                            "finding": f"recommended action: {score_result.action}",
+                            "weight": float(score_result.confidence),
+                        },
+                        {
+                            "source": "factor_vector",
+                            "finding": "scoring factors captured at decision time",
+                            "weight": 1.0,
+                        },
+                    ],
+                    "similar_decisions": [],
+                },
+            )
+            proposal_id = proposal.proposal_id
+        except Exception:
+            logger.exception("S2P decision-change proposal creation failed")
     t6 = time.perf_counter()
 
     if t6 - t0 > 3.0:
@@ -2151,6 +2179,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
 
     response = ScoreResponse(
         **core,
+        proposal_id=proposal_id,
         process_context=process_context,
         active_variant=active_variant,
         auto_approve=auto_approve,

@@ -63,6 +63,8 @@ from app.routers.s2p_performance import router as s2p_performance_router
 from app.routers.s2p_preview import router as s2p_preview_router
 from app.routers.s2p_process_fusion import router as s2p_process_fusion_router
 from app.routers.s2p_pvg import router as s2p_pvg_router
+from app.routers.s2p_proposals import create_proposal_router
+from app.services.proposal_service import ProposalService, ProposalStore
 from app.routers.s2p_simulation import router as s2p_simulation_router
 from app.routers.s2p_suppliers import router as s2p_suppliers_router
 from app.s2p_graph_status import (
@@ -192,6 +194,8 @@ app.state.s2p_graph_reader = S2PGraphReader(
     store=app.state.scorer.graph_store,
     domain="s2p",
 )
+app.state.proposal_store = ProposalStore(str(DATA_DIR / "s2p_proposals.sqlite3"))
+app.state.proposal_service = ProposalService(store=app.state.proposal_store)
 # Supplier enrichment uses the same domain-scoped AGE graph as decisions.
 # There is no production SQLite side store: AGE capability failures surface
 # during startup or through the enrichment request rather than being hidden.
@@ -261,6 +265,7 @@ app.include_router(
 )
 app.include_router(create_transfer_router(app.state.scorer))
 app.include_router(s2p_router)
+app.include_router(create_proposal_router(app.state.proposal_service))
 app.include_router(
     create_evolution_router(
         domain="s2p",

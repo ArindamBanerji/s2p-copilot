@@ -64,7 +64,9 @@ from app.routers.s2p_preview import router as s2p_preview_router
 from app.routers.s2p_process_fusion import router as s2p_process_fusion_router
 from app.routers.s2p_pvg import router as s2p_pvg_router
 from app.routers.s2p_proposals import create_proposal_router
+from app.routers.s2p_ledger import create_ledger_router
 from app.services.proposal_service import ProposalService, ProposalStore
+from app.services.compounding_ledger import CompoundingLedger
 from app.routers.s2p_simulation import router as s2p_simulation_router
 from app.routers.s2p_suppliers import router as s2p_suppliers_router
 from app.s2p_graph_status import (
@@ -196,6 +198,23 @@ app.state.s2p_graph_reader = S2PGraphReader(
 )
 app.state.proposal_store = ProposalStore(str(DATA_DIR / "s2p_proposals.sqlite3"))
 app.state.proposal_service = ProposalService(store=app.state.proposal_store)
+
+
+def _live_iks_observation() -> dict[str, object]:
+    trajectory = app.state.scorer.trajectory()
+    return {
+        "iks_value": float(getattr(trajectory, "current_iks", 0.0)),
+        "decisions": int(getattr(trajectory, "decisions_total", 0)),
+        "source": "s2p_scorer.trajectory",
+    }
+
+
+app.state.compounding_ledger = CompoundingLedger(
+    proposal_store=app.state.proposal_store,
+    db_path=str(DATA_DIR / "s2p_compounding_ledger.sqlite3"),
+    iks_provider=_live_iks_observation,
+    conservation_provider=lambda: cached_conservation_state_provider(app.state),
+)
 # Supplier enrichment uses the same domain-scoped AGE graph as decisions.
 # There is no production SQLite side store: AGE capability failures surface
 # during startup or through the enrichment request rather than being hidden.
@@ -266,6 +285,7 @@ app.include_router(
 app.include_router(create_transfer_router(app.state.scorer))
 app.include_router(s2p_router)
 app.include_router(create_proposal_router(app.state.proposal_service))
+app.include_router(create_ledger_router(app.state.compounding_ledger))
 app.include_router(
     create_evolution_router(
         domain="s2p",

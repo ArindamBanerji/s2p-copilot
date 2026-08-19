@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.domains.s2p.config import S2PDomainConfig
+from app.routers.s2p_autonomy import create_s2p_autonomy_router
+from app.services.s2p_autonomy import S2PAutonomyManager
 
 
 client = TestClient(app)
@@ -22,9 +27,17 @@ def test_sp_02_promotion_requires_conservation_for_authority() -> None:
     assert response.json()["reason"] == "conservation_red"
 
 
-def test_sp_03_green_promotion_requires_verified_evidence_and_shadow_volume() -> None:
-    client.post("/api/s2p/promotion/quantity_mismatch/advance", json={})
-    response = client.post("/api/s2p/promotion/quantity_mismatch/advance", json={"shadow_decisions": 10, "conservation_state": "GREEN", "evidence_tier": "T_O"})
+def test_sp_03_green_promotion_requires_verified_evidence_and_shadow_volume(tmp_path: Path) -> None:
+    manager = S2PAutonomyManager(tmp_path, app.state.scorer)
+    isolated_app = FastAPI()
+    isolated_app.include_router(create_s2p_autonomy_router(manager))
+
+    with TestClient(isolated_app) as isolated_client:
+        isolated_client.post("/api/s2p/promotion/format_compliance/advance", json={})
+        response = isolated_client.post(
+            "/api/s2p/promotion/format_compliance/advance",
+            json={"shadow_decisions": 10, "conservation_state": "GREEN", "evidence_tier": "T_O"},
+        )
     assert response.json()["new_stage"] == "promoted"
 
 

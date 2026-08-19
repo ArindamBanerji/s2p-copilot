@@ -1,6 +1,7 @@
 import os
 import logging
 import sys
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -67,6 +68,8 @@ from app.routers.s2p_proposals import create_proposal_router
 from app.routers.s2p_ledger import create_ledger_router
 from app.services.proposal_service import ProposalService, ProposalStore
 from app.services.compounding_ledger import CompoundingLedger
+from app.services.s2p_autonomy import S2PAutonomyManager
+from app.routers.s2p_autonomy import create_s2p_autonomy_router
 from app.routers.s2p_simulation import router as s2p_simulation_router
 from app.routers.s2p_suppliers import router as s2p_suppliers_router
 from app.s2p_graph_status import (
@@ -215,6 +218,11 @@ app.state.compounding_ledger = CompoundingLedger(
     iks_provider=_live_iks_observation,
     conservation_provider=lambda: cached_conservation_state_provider(app.state),
 )
+app.state.s2p_autonomy = S2PAutonomyManager(
+    DATA_DIR,
+    app.state.scorer,
+    app.state.compounding_ledger,
+)
 # Supplier enrichment uses the same domain-scoped AGE graph as decisions.
 # There is no production SQLite side store: AGE capability failures surface
 # during startup or through the enrichment request rather than being hidden.
@@ -260,6 +268,30 @@ app.middleware("http")(
 )
 
 
+@app.middleware("http")
+async def enrich_s2p_score_with_frozen_twin(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path != "/api/s2p/score" or response.status_code >= 400:
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    try:
+        payload = json.loads(body.decode("utf-8"))
+        if not isinstance(payload, dict):
+            return response
+        comparison = app.state.s2p_autonomy.parallel_score(
+            list(payload.get("factor_vector") or []),
+            str(payload.get("category") or ""),
+        )
+        if comparison is not None:
+            payload["frozen_twin"] = comparison
+        from starlette.responses import JSONResponse
+
+        headers = {key: value for key, value in response.headers.items() if key.lower() != "content-length"}
+        return JSONResponse(payload, status_code=response.status_code, headers=headers)
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
+        return response
+
+
 app.include_router(learn_router)
 app.include_router(
     create_conservation_router(
@@ -286,6 +318,7 @@ app.include_router(create_transfer_router(app.state.scorer))
 app.include_router(s2p_router)
 app.include_router(create_proposal_router(app.state.proposal_service))
 app.include_router(create_ledger_router(app.state.compounding_ledger))
+app.include_router(create_s2p_autonomy_router(app.state.s2p_autonomy))
 app.include_router(
     create_evolution_router(
         domain="s2p",

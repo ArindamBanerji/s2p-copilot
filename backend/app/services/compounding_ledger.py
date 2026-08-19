@@ -85,6 +85,15 @@ class CompoundingLedger:
                 )
                 """
             )
+            self._connection.execute(
+                """CREATE TABLE IF NOT EXISTS governance_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    observed_at TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    category TEXT,
+                    payload TEXT NOT NULL
+                )"""
+            )
             self._connection.commit()
 
     def close(self) -> None:
@@ -199,8 +208,28 @@ class CompoundingLedger:
             outcome = self.proposal_store.get_outcome(proposal.proposal_id)
             if outcome is not None and proposal.outcome_receipt_id:
                 entries.append(self._outcome_event(proposal, outcome))
-        entries.sort(key=lambda item: (str(item["timestamp"]), str(item["proposal_id"])), reverse=True)
+        entries.sort(key=lambda item: (str(item["timestamp"]), str(item.get("proposal_id", ""))), reverse=True)
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT observed_at, event_type, category, payload FROM governance_events ORDER BY observed_at DESC, id DESC LIMIT ?",
+                (max(int(limit), 0),),
+            ).fetchall()
+        for row in rows:
+            payload = _json_safe(json.loads(str(row[3])))
+            if isinstance(payload, dict):
+                entries.append({"timestamp": str(row[0]), "event_type": str(row[1]), "category": row[2], **payload})
+        entries.sort(key=lambda item: (str(item["timestamp"]), str(item.get("proposal_id", ""))), reverse=True)
         return entries[: max(int(limit), 0)]
+
+    def record_governance_event(self, event_type: str, category: str | None, payload: Mapping[str, Any]) -> dict[str, Any]:
+        event = {"timestamp": _now_iso(), "event_type": event_type, "category": category, **_json_safe(dict(payload))}
+        with self._lock:
+            self._connection.execute(
+                "INSERT INTO governance_events (observed_at, event_type, category, payload) VALUES (?, ?, ?, ?)",
+                (event["timestamp"], event_type, category, json.dumps(_json_safe(dict(payload)), sort_keys=True)),
+            )
+            self._connection.commit()
+        return event
 
     def summary(self) -> dict[str, Any]:
         proposals = self.proposal_store.list_recent(max(self.proposal_store.count(), 1))

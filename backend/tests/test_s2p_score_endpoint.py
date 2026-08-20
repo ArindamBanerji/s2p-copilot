@@ -43,20 +43,19 @@ VALID_REQUEST = {
 }
 
 
-def test_score_timeout_returns_503_when_mutation_lock_is_held(monkeypatch):
-    monkeypatch.setattr(s2p_router, "SCORE_TIMEOUT", 0.05)
-    lock = s2p_router.get_mutation_lock("s2p")
-    assert lock.acquire(timeout=1.0)
+def test_score_timeout_returns_503_when_same_invoice_lock_is_held():
+    lock_manager = s2p_router._S2P_SCORE_LOCKS
+    assert lock_manager.acquire(VALID_REQUEST["event_id"], timeout=1.0)
     try:
         started = time.perf_counter()
         response = client.post("/api/s2p/score", json=VALID_REQUEST)
         elapsed = time.perf_counter() - started
     finally:
-        lock.release()
+        lock_manager.release(VALID_REQUEST["event_id"])
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "Score path busy — retry"
-    assert elapsed < 1.0
+    assert response.json()["detail"] == f"Score path busy for {VALID_REQUEST['event_id']} — retry"
+    assert elapsed < 2.5
 
 
 def reset_sdk_scorer():

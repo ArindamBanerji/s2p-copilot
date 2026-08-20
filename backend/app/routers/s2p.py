@@ -17,6 +17,7 @@ import math
 import os
 import threading
 import time
+from threading import Lock
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
@@ -61,7 +62,75 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 learn_router = APIRouter(prefix="/api", tags=["S2P"])
 log = logging.getLogger(__name__)
-SCORE_TIMEOUT = float(os.environ.get("S2P_SCORE_TIMEOUT", "3.0"))
+SCORE_TIMEOUT = float(os.environ.get("S2P_SCORE_TIMEOUT", "2.0"))
+
+
+class _InvoiceLockEntry:
+    def __init__(self) -> None:
+        self.lock = Lock()
+        self.waiters = 0
+        self.holders = 0
+
+
+class InvoiceLockManager:
+    """Serialize mutations for one invoice without blocking other invoices."""
+
+    def __init__(self, max_locks: int = 200) -> None:
+        self._entries: dict[str, _InvoiceLockEntry] = {}
+        self._meta_lock = Lock()
+        self._max_locks = max_locks
+
+    def acquire(self, invoice_id: str, timeout: float = SCORE_TIMEOUT) -> bool:
+        key = str(invoice_id or "unknown")
+        with self._meta_lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                self._evict_idle_locked()
+                entry = _InvoiceLockEntry()
+                self._entries[key] = entry
+            entry.waiters += 1
+        acquired = entry.lock.acquire(timeout=timeout)
+        with self._meta_lock:
+            entry.waiters -= 1
+            if acquired:
+                entry.holders += 1
+        if not acquired:
+            self._cleanup(key, entry)
+        return acquired
+
+    def release(self, invoice_id: str) -> None:
+        key = str(invoice_id or "unknown")
+        with self._meta_lock:
+            entry = self._entries.get(key)
+            if entry is None or entry.holders == 0:
+                raise RuntimeError(f"Invoice lock is not held: {key}")
+            entry.holders -= 1
+            entry.lock.release()
+            self._cleanup_locked(key, entry)
+
+    def _evict_idle_locked(self) -> None:
+        if len(self._entries) < self._max_locks:
+            return
+        for key, entry in list(self._entries.items()):
+            if entry.holders == 0 and entry.waiters == 0:
+                del self._entries[key]
+                if len(self._entries) < self._max_locks:
+                    return
+
+    def _cleanup(self, key: str, entry: _InvoiceLockEntry) -> None:
+        with self._meta_lock:
+            self._cleanup_locked(key, entry)
+
+    def _cleanup_locked(self, key: str, entry: _InvoiceLockEntry) -> None:
+        if entry.holders == 0 and entry.waiters == 0 and self._entries.get(key) is entry:
+            del self._entries[key]
+
+    def size(self) -> int:
+        with self._meta_lock:
+            return len(self._entries)
+
+
+_S2P_SCORE_LOCKS = InvoiceLockManager()
 _SIDE_EFFECT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="s2p-side-effect")
 _GRAPH_LINK_ADVISORY_LOCK = threading.RLock()
 _SCORE_CONSERVATION_STATUS_TTL_SECONDS = 2.0
@@ -2041,10 +2110,16 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
     scorer = _sdk_scorer(http_request)
     t1 = time.perf_counter()
 
-    score_lock = get_mutation_lock("s2p")
-    acquired = score_lock.acquire(timeout=SCORE_TIMEOUT)
-    if not acquired:
-        raise HTTPException(status_code=503, detail="Score path busy — retry")
+    score_lock_key = str(lookup_id)
+    invoice_acquired = _S2P_SCORE_LOCKS.acquire(score_lock_key, timeout=SCORE_TIMEOUT)
+    if not invoice_acquired:
+        raise HTTPException(status_code=503, detail=f"Score path busy for {score_lock_key} — retry")
+    domain_lock = get_mutation_lock("s2p")
+    # The domain lock protects shared scorer/graph writes.  It is a queue,
+    # not an admission gate: per-invoice contention above is the bounded
+    # request-level timeout, so distinct invoices are never rejected merely
+    # because another invoice is committing its decision.
+    domain_lock.acquire()
     try:
         try:
             score_result = scorer.score(
@@ -2083,7 +2158,8 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
             log.exception("S2P score cache invalidation failed")
         t5 = time.perf_counter()
     finally:
-        score_lock.release()
+        domain_lock.release()
+        _S2P_SCORE_LOCKS.release(score_lock_key)
 
     conservation_status = conservation_snapshot
     try:

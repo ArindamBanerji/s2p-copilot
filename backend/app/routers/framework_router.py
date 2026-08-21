@@ -13,7 +13,7 @@ No app.domains.soc.* imports allowed.
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
+from typing import Any, Mapping, Optional, cast
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -601,7 +601,8 @@ async def graph_explorer_query(request: _GraphQueryRequest):
     if spec is None:
         raise HTTPException(status_code=400, detail="Unknown graph query name")
     try:
-        rows = await _get_age_client().run_query(spec["cypher"], dict(spec["params"]))
+        params = cast(Mapping[str, Any], spec["params"])
+        rows = await _get_age_client().run_query(spec["cypher"], dict(params))
     except Exception as exc:
         raise HTTPException(status_code=503, detail="AGE query failed") from exc
     return {"rows": rows, "count": len(rows), "query": spec["cypher"]}
@@ -674,7 +675,8 @@ async def graph_run_prebuilt(query_name: str):
     if spec is None:
         raise HTTPException(status_code=404, detail="Unknown graph query name")
     try:
-        rows = await _get_age_client().run_query(spec["cypher"], dict(spec["params"]))
+        params = cast(Mapping[str, Any], spec["params"])
+        rows = await _get_age_client().run_query(spec["cypher"], dict(params))
     except Exception as exc:
         raise HTTPException(status_code=503, detail="AGE query failed") from exc
     return {"rows": rows, "count": len(rows), "query": spec["cypher"]}

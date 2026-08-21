@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
-from typing import Any
+from typing import Any, cast
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.routers.s2p_explorer import _centroids_from_scorer, _read_dk_weights
@@ -142,7 +142,7 @@ class OptimizerExportService:
             raw = S2PDomainConfig.get_profile_centroids()
         if hasattr(raw, "tolist"):
             raw = raw.tolist()
-        return self._round_nested(raw)
+        return cast(list[list[list[float]]], self._round_nested(raw))
 
     def _raw_centroids(self, scorer: Any) -> Any:
         if scorer is not None:

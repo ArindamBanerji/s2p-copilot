@@ -49,6 +49,7 @@ class CheckpointService:
         await graph_service.run_query(
             """CREATE (cp:Checkpoint {
                 id:               $id,
+                domain:           's2p',
                 timestamp:        datetime(),
                 reason:           $reason,
                 mu_snapshot:      $mu,
@@ -75,6 +76,7 @@ class CheckpointService:
         try:
             result = await graph_service.run_query(
                 """MATCH (cp:Checkpoint)
+                   WHERE cp.domain = 's2p'
                    RETURN cp.id             AS id,
                           toString(cp.timestamp) AS timestamp,
                           cp.reason         AS reason,
@@ -115,7 +117,7 @@ class CheckpointService:
         """
         try:
             result = await graph_service.run_query(
-                "MATCH (cp:Checkpoint {id: $id}) RETURN cp",
+                "MATCH (cp:Checkpoint {id: $id}) WHERE cp.domain = 's2p' RETURN cp",
                 {"id": checkpoint_id},
             )
         except Exception as exc:

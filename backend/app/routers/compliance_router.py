@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter
 
@@ -40,8 +40,10 @@ def _demo_suppliers() -> list[dict[str, Any]]:
 
 @router.post("/screen", response_model=GenericResponse)
 def screen_compliance(payload: dict[str, Any]) -> dict[str, Any]:
-    transaction = payload.get("transaction") if isinstance(payload.get("transaction"), dict) else payload
-    supplier = payload.get("supplier") if isinstance(payload.get("supplier"), dict) else {}
+    transaction_value = payload.get("transaction")
+    transaction = cast(dict[str, Any], transaction_value) if isinstance(transaction_value, dict) else payload
+    supplier_value = payload.get("supplier")
+    supplier = cast(dict[str, Any], supplier_value) if isinstance(supplier_value, dict) else {}
     return ComplianceScreener().screen(transaction, supplier)
 
 

@@ -2,6 +2,7 @@ import os
 import logging
 import sys
 import json
+from typing import cast
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -249,7 +250,7 @@ def get_s2p_graph_reader(request: Request) -> S2PGraphReader:
     reader = getattr(request.app.state, "s2p_graph_reader", None)
     if reader is None:
         raise HTTPException(status_code=503, detail="S2P graph reader unavailable")
-    return reader
+    return cast(S2PGraphReader, reader)
 
 
 app.add_middleware(

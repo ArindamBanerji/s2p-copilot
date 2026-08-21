@@ -33,7 +33,7 @@ class ShadowModeService:
     ) -> None:
         """Mark a Decision node as shadow_mode=True."""
         await graph_service.run_query(
-            "MATCH (d:Decision {id: $id}) WHERE d.domain = 's2p' SET d.shadow_mode = true",
+            "MATCH (d:Decision {id: $id}) WHERE d.domain = 's2p' SET d.domain = 's2p', d.shadow_mode = true",
             {"id": decision_id},
         )
         log.debug(
@@ -52,7 +52,8 @@ class ShadowModeService:
         await graph_service.run_query(
             """MATCH (d:Decision {id: $id})
                WHERE d.domain = 's2p'
-               SET d.analyst_action = $analyst_action,
+               SET d.domain = 's2p',
+                   d.analyst_action = $analyst_action,
                    d.agreement = (d.action = $analyst_action)""",
             {"id": decision_id, "analyst_action": analyst_action},
         )

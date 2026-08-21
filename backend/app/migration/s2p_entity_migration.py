@@ -10,7 +10,7 @@ import asyncio
 import datetime as dt
 import re
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from app.seed_graph import (
     _load_invoices,
@@ -411,7 +411,7 @@ def build_hardened_seed_plan(
 
 
 def _serialize(client: Any, value: Any) -> str:
-    return client._S(value)
+    return cast(str, client._S(value))
 
 
 def _props_literal(client: Any, properties: Mapping[str, Any]) -> str:
@@ -463,6 +463,9 @@ async def _upsert_edge(client: Any, edge: Mapping[str, Any]) -> tuple[bool, bool
     )
     existing = await client.run_query(f"{match} RETURN r LIMIT 1", None)
     properties = dict(edge.get("properties") or {})
+    properties.setdefault("domain", S2P_DOMAIN)
+    properties.setdefault("provenance", MIGRATION_SOURCE)
+    properties.setdefault("domain_source", MIGRATION_SOURCE)
     if existing:
         await client.run_query(
             f"{match} SET r += {_props_literal(client, properties)} RETURN r",

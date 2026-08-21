@@ -1054,6 +1054,8 @@ def _current_conservation_status(http_request: Request) -> str:
 
         graph_store = _graph_store_from_request(http_request)
         counts = _cached_conservation_counts(graph_store, _graph_domain(graph_store))
+        if int(counts["verified_count"]) == 0:
+            return "GREEN"
         check = conservation_status(
             verified_count=int(counts["verified_count"]),
             correct_count=int(counts["correct_count"]),
@@ -1119,6 +1121,60 @@ def _cached_score_conservation_status_only(http_request: Request) -> str:
     if now - timestamp > _SCORE_CONSERVATION_STATUS_TTL_SECONDS:
         return "UNKNOWN"
     return status
+
+
+def _score_write_governance(http_request: Request) -> dict[str, Any]:
+    """Read live conservation and evidence state before a mutating scorer call."""
+    graph_store = _graph_store_from_request(http_request)
+    domain = _graph_domain(graph_store)
+    # Governance consumes the score-path snapshot.  Recomputing the graph
+    # status here bypasses the shared cache and makes concurrent score/learn
+    # requests observe a different conservation decision than the read path.
+    status = _cached_score_conservation_status_only(http_request).strip().upper()
+    counts = _cached_conservation_counts(graph_store, domain)
+    if int(counts["verified_count"]) == 0:
+        status = "GREEN"
+    return {
+        "conservation_status": status,
+        "evidence_tier": "T_O" if int(counts["verified_count"]) > 0 else "T_S",
+        "verified_count": int(counts["verified_count"]),
+        "correct_count": int(counts["correct_count"]),
+        "total_decisions": int(counts["total_decisions"]),
+    }
+
+
+def _held_write_response(
+    *,
+    governance: dict[str, Any],
+    decision_id: str | None = None,
+    outcome: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "gate": "HELD",
+        "learning_applied": False,
+        "evidence_tier": governance["evidence_tier"],
+        "conservation_status": governance["conservation_status"],
+        "verified_count": governance["verified_count"],
+        "reason": "conservation_amber",
+    }
+    if decision_id is not None:
+        payload["decision_id"] = decision_id
+    if outcome is not None:
+        payload["outcome"] = outcome
+    return payload
+
+
+def _reject_red_write(governance: dict[str, Any]) -> None:
+    if governance["conservation_status"] == "RED":
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "gate": "BLOCKED",
+                "reason": "conservation_red",
+                "conservation_status": "RED",
+                "evidence_tier": governance["evidence_tier"],
+            },
+        )
 
 
 def _is_learning_paused(conservation: Any) -> bool:
@@ -2052,6 +2108,11 @@ class ScoreResponse(BaseModel):
     auto_approve: Optional[dict] = None
     novelty_score: Optional[float] = None
     threshold_decision: Optional[dict] = None
+    gate: Optional[str] = None
+    conservation_status: Optional[str] = None
+    evidence_tier: Optional[str] = None
+    learning_applied: Optional[bool] = None
+    reason: Optional[str] = None
 
 
 @router.post("/score", response_model=S2PScoreResponse)
@@ -2108,6 +2169,10 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
     computed_factors = compute_all_factors(invoice, context=context)
     factor_vector = [computed_factors[name] for name in S2PDomainConfig.factors]
     scorer = _sdk_scorer(http_request)
+    governance = _score_write_governance(http_request)
+    _reject_red_write(governance)
+    if governance["conservation_status"] == "AMBER":
+        return _held_write_response(governance=governance)
     t1 = time.perf_counter()
 
     score_lock_key = str(lookup_id)
@@ -2140,6 +2205,10 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
             "factor_vector": list(factor_vector),
             "factor_names": list(S2PDomainConfig.factors),
             "decision_id": score_result.decision_id,
+            "gate": "PASS",
+            "conservation_status": governance["conservation_status"],
+            "evidence_tier": governance["evidence_tier"],
+            "learning_applied": False,
         }
         conservation_snapshot = _cached_score_conservation_status_only(http_request)
         t3 = time.perf_counter()
@@ -2161,7 +2230,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         domain_lock.release()
         _S2P_SCORE_LOCKS.release(score_lock_key)
 
-    conservation_status = conservation_snapshot
+    conservation_status = governance["conservation_status"]
     try:
         auto_approve = _should_auto_approve(
             request.category,
@@ -2337,6 +2406,14 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         context["reason_code"] = request.reason_code
     scorer = _sdk_scorer(http_request)
     reader = _s2p_graph_reader(http_request)
+    governance = _score_write_governance(http_request)
+    _reject_red_write(governance)
+    if governance["conservation_status"] == "AMBER":
+        return _held_write_response(
+            governance=governance,
+            decision_id=request.decision_id,
+            outcome=request.outcome,
+        )
 
     with get_mutation_lock("s2p"):
         try:
@@ -2407,6 +2484,9 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         # learning_applied into their response payload; the outcome endpoint
         # itself is the authoritative commit boundary.
         payload_snapshot["learning_applied"] = payload_snapshot.get("status") != "paused"
+        payload_snapshot["gate"] = "PASS"
+        payload_snapshot["conservation_status"] = governance["conservation_status"]
+        payload_snapshot["evidence_tier"] = governance["evidence_tier"]
         decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None
 
     if _outcome_recorded_for_receipt(
@@ -2467,6 +2547,14 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
 
     scorer = _sdk_scorer(http_request)
     reader = _s2p_graph_reader(http_request)
+    governance = _score_write_governance(http_request)
+    _reject_red_write(governance)
+    if governance["conservation_status"] == "AMBER":
+        return _held_write_response(
+            governance=governance,
+            decision_id=request.decision_id,
+            outcome=request.outcome,
+        )
     outcome_context = {
         "amount": request.amount,
         "at_risk": request.at_risk,
@@ -2536,6 +2624,9 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
         # this before receipt gating and response serialization because a
         # scorer adapter may omit the flag from its result payload.
         payload_snapshot["learning_applied"] = payload_snapshot.get("status") != "paused"
+        payload_snapshot["gate"] = "PASS"
+        payload_snapshot["conservation_status"] = governance["conservation_status"]
+        payload_snapshot["evidence_tier"] = governance["evidence_tier"]
         decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None
 
     if _outcome_recorded_for_receipt(

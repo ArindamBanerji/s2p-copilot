@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -192,5 +192,4 @@ def _correlation(values: list[float], outcomes: list[float]) -> float:
     value_var = sum((value - value_mean) ** 2 for value in values)
     outcome_var = sum((outcome - outcome_mean) ** 2 for outcome in outcomes)
     denom = (value_var * outcome_var) ** 0.5
-    return numerator / denom if denom else 0.0
-    return {factor: defaults.get(factor, {"variance": 0.30, "outcome_corr": 0.05}) for factor in factors}
+    return cast(float, numerator / denom) if denom else 0.0

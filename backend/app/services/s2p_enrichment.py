@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from copilot_sdk.graph.enrichment import (
     EnrichmentSourceSet,
@@ -426,7 +426,7 @@ def _api_provenance(value: ProvenancedValue) -> str:
         return "scraped_external"
     if value.source == "verified_outcomes":
         return "real"
-    return value.provenance_tier
+    return cast(str, value.provenance_tier)
 
 
 def _verified_metric(value: Any, source_count: int, min_decisions: int, label: str) -> ProvenancedValue:

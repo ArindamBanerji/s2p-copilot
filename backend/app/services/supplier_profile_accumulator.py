@@ -359,7 +359,7 @@ class SupplierProfileAccumulator:
         if len(pairs) < TREND_MIN_POINTS:
             return None
         xs = [float(day) for day, _ in pairs]
-        ys = [correct for _, correct in pairs]
+        ys: list[float] = [float(correct) for _, correct in pairs]
         mean_x = sum(xs) / len(xs)
         mean_y = sum(ys) / len(ys)
         den_x = sum((x - mean_x) ** 2 for x in xs)
@@ -367,7 +367,7 @@ class SupplierProfileAccumulator:
         if den_x == 0 or den_y == 0:
             return None
         numerator = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
-        return numerator / ((den_x * den_y) ** 0.5)
+        return float(numerator / ((den_x * den_y) ** 0.5))
 
     def _compute_avg_lead_time(self, events: list[SupplierEvent]) -> float | None:
         values = [event.lead_time_days for event in events if event.lead_time_days is not None]

@@ -498,6 +498,7 @@ class InterventionControls:
             await self.db.run_query(
                 """CREATE (i:Intervention {
                     id:           $id,
+                    domain:       's2p',
                     type:         $type,
                     initiated_by: $initiated_by,
                     reason:       $reason,

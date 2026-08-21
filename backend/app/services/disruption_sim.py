@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import asdict
-from typing import Any
+from typing import Any, cast
 
 DISRUPTION_TYPES = {
     "delay": {"cost_factor_per_week": 0.05, "desc": "Delivery delay"},
@@ -99,7 +99,7 @@ class DisruptionSimulator:
                     "cost_delta_per_unit": round(candidate.cost_delta_per_unit, 2),
                 }
             )
-        alternatives.sort(key=lambda row: (-float(row["otif"]), float(row["lead_time_delta_days"])))
+        alternatives.sort(key=lambda row: (-float(cast(float, row["otif"])), float(cast(float, row["lead_time_delta_days"]))))
         return alternatives
 
     def _classify_severity(self, cost: float, category_count: int, alternatives: list[dict[str, Any]] | None = None) -> str:
@@ -113,13 +113,13 @@ class DisruptionSimulator:
 
     def _estimate_cost(self, disruption_type: str, days: int, spend: float, scenario: dict[str, Any]) -> float:
         if disruption_type == "delay":
-            return spend * DISRUPTION_TYPES["delay"]["cost_factor_per_week"] * (days / 7.0)
+            return spend * cast(float, DISRUPTION_TYPES["delay"]["cost_factor_per_week"]) * (days / 7.0)
         if disruption_type == "shutdown":
-            return spend * DISRUPTION_TYPES["shutdown"]["cost_factor"]
+            return spend * cast(float, DISRUPTION_TYPES["shutdown"]["cost_factor"])
         if disruption_type == "quality_drop":
-            return spend * DISRUPTION_TYPES["quality_drop"]["rework_factor"]
+            return spend * cast(float, DISRUPTION_TYPES["quality_drop"]["rework_factor"])
         if disruption_type == "price_spike":
-            return spend * float(scenario.get("price_increase_pct") or 0.0) * DISRUPTION_TYPES["price_spike"]["pass_through"]
+            return spend * float(scenario.get("price_increase_pct") or 0.0) * cast(float, DISRUPTION_TYPES["price_spike"]["pass_through"])
         return spend * 0.05
 
     def _supplier(self, supplier_id: str) -> SupplierProfile:

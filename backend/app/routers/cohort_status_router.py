@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from fastapi import APIRouter
 
@@ -22,9 +22,9 @@ def create_cohort_status_router(
     @cached_static("cohort-status", copilot="s2p")
     def get_cohort_status() -> dict[str, Any]:
         store = graph_store_factory() if graph_store_factory is not None else None
-        return CohortStatusService(
+        return cast(dict[str, Any], CohortStatusService(
             graph_store=store,
             oracle_artifact_path=oracle_artifact_path,
-        ).get_status()
+        ).get_status())
 
     return router

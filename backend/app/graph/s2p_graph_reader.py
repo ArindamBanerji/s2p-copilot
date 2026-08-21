@@ -65,21 +65,33 @@ class S2PGraphReader:
         )
 
     def count_verified(self) -> int:
+        count_fn = getattr(self.store, "count_verified", None)
+        if not callable(count_fn):
+            return 0
+        count_verified = cast(Callable[[str], Any], count_fn)
         return cast(int, self._read(
             "count_verified",
-            lambda: self.store.count_verified(self.domain),
+            lambda: count_verified(self.domain),
         ))
 
     def count_verified_decisions(self) -> int:
+        count_fn = getattr(self.store, "count_verified_decisions", None)
+        if not callable(count_fn):
+            return 0
+        count_verified_decisions = cast(Callable[[str], Any], count_fn)
         return cast(int, self._read(
             "count_verified_decisions",
-            lambda: self.store.count_verified_decisions(self.domain),
+            lambda: count_verified_decisions(self.domain),
         ))
 
     def count_correct(self) -> int:
+        count_fn = getattr(self.store, "count_correct", None)
+        if not callable(count_fn):
+            return 0
+        count_correct = cast(Callable[[str], Any], count_fn)
         return cast(int, self._read(
             "count_correct",
-            lambda: self.store.count_correct(self.domain),
+            lambda: count_correct(self.domain),
         ))
 
     def count_decisions(self) -> int:

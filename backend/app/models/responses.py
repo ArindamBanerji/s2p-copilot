@@ -33,6 +33,11 @@ class S2PScoreResponse(FlexibleResponse):
     auto_approve: dict[str, Any] | None = None
     novelty_score: float | None = None
     threshold_decision: dict[str, Any] | None = None
+    gate: str | None = None
+    conservation_status: str | None = None
+    evidence_tier: str | None = None
+    learning_applied: bool | None = None
+    reason: str | None = None
 
 
 class LearningGateResponse(FlexibleResponse):

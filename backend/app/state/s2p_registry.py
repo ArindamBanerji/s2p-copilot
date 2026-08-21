@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import inspect
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any, Callable, cast
+
+from pydantic import BaseModel
 
 from copilot_sdk.state import TabStateCache, register_tab_state_cache
 from copilot_sdk.backend.conservation_utils import compute_conservation_status_payload
@@ -40,10 +42,10 @@ def create_s2p_tab_state_cache(app_state: Any) -> TabStateCache:
     graph_store = getattr(app_state, "graph_store", None)
 
     def conservation_payload() -> dict[str, Any]:
-        return compute_conservation_status_payload(
+        return cast(dict[str, Any], compute_conservation_status_payload(
             "s2p",
             s2p_router.cached_conservation_state_provider(app_state),
-        )
+        ))
 
     _register(
         cache,
@@ -225,7 +227,7 @@ def _register(
     tier: str,
     invalidated_by: tuple[str, ...] = ("score", "learn", "reset"),
     reads_scorer: bool = False,
-    schema: type[S2PObjectResponse] = S2PObjectResponse,
+    schema: type[BaseModel] = S2PObjectResponse,
 ) -> None:
     cache.register(
         key,
@@ -248,7 +250,7 @@ def _register_cold(
     compute_fn: Callable[[], Any],
     service_fn: Callable[..., Any],
     *,
-    schema: type[S2PObjectResponse] = S2PObjectResponse,
+    schema: type[BaseModel] = S2PObjectResponse,
 ) -> None:
     _register(
         cache,

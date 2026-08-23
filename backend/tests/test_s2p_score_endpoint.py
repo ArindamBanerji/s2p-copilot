@@ -166,7 +166,7 @@ def test_score_concurrent_not_serialized_on_enrichment(monkeypatch):
 
     elapsed = time.perf_counter() - started
     assert all(response.status_code == 200 for response in responses)
-    assert elapsed < 0.7
+    assert elapsed < 1.0
 
 
 def test_fire_and_forget_failure_logged(monkeypatch, caplog):

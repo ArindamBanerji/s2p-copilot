@@ -73,6 +73,7 @@ from app.services.s2p_autonomy import S2PAutonomyManager
 from app.routers.s2p_autonomy import create_s2p_autonomy_router
 from app.routers.s2p_simulation import router as s2p_simulation_router
 from app.routers.s2p_suppliers import router as s2p_suppliers_router
+from app.s2p_shadow import create_s2p_shadow_store
 from app.s2p_graph_status import (
     create_s2p_active_graph_store,
     initialize_s2p_active_graph_config,
@@ -242,7 +243,14 @@ set_l5_dk_welford_tracker(l5_startup_status.pop("welford_tracker", None))
 app.state.l5_startup_status = l5_startup_status
 app.state.s2p_reward_function = app.state.scorer._reward_fn
 app.state.s2p_evolution = S2PEvolutionService(app.state.scorer)
-app.state.s2p_shadow = initialize_s2p_shadow_state(store=app.state.graph_store)
+shadow_store = create_s2p_shadow_store(
+    active_graph=app.state.s2p_active_graph_config.graph,
+    active_domain=app.state.s2p_active_graph_config.domain,
+    profile=_resolve_profile(),
+)
+app.state.s2p_shadow = initialize_s2p_shadow_state(
+    store=shadow_store or app.state.graph_store,
+)
 app.state.s2p_tab_state_cache = create_s2p_tab_state_cache(app.state)
 
 

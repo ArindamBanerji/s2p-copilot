@@ -47,6 +47,7 @@ _DEFAULT_CTX: Dict[str, Any] = {
     "factors": ["manual_review_required"],
     "confidence": 0.60,
 }
+_DOMAIN = "s2p"
 
 
 def _run_sync(coro):
@@ -63,6 +64,7 @@ def _entry_to_dict(entry: LedgerEntry) -> Dict[str, Any]:
     """Map a sealed decision entry to the decision row shape expected by callers."""
     outcome_val = None if entry.outcome in ("pending", "system") else entry.outcome
     return {
+        "domain": _DOMAIN,
         "id": entry.decision_id,
         "decision_id": entry.decision_id,
         "alert_id": entry.alert_id,
@@ -84,6 +86,7 @@ def _entry_to_dict(entry: LedgerEntry) -> Dict[str, Any]:
 def _outcome_to_dict(entry: OutcomeEntry, alert_id: Optional[str] = None) -> Dict[str, Any]:
     """Map an immutable outcome event to an API-friendly dict."""
     result = {
+        "domain": _DOMAIN,
         "type": "outcome",
         "decision_id": entry.decision_id,
         "decision_entry_hash": entry.decision_entry_hash,

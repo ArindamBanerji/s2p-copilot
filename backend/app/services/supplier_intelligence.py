@@ -68,7 +68,11 @@ class SupplierIntelligenceComposer:
         weekly_decision_rate: float = 5.0,
     ) -> None:
         self.graph_store = graph_store
-        self.reader = reader or (S2PGraphReader(store=graph_store) if graph_store is not None else None)
+        self.reader = reader or (
+            S2PGraphReader(store=graph_store, domain="s2p")
+            if graph_store is not None
+            else None
+        )
         self.accumulator = accumulator
         self.suppliers = suppliers if suppliers is not None else load_suppliers()
         self.invoices = invoices if invoices is not None else load_invoices()

@@ -1,7 +1,8 @@
-"""S2P shared-graph shadow configuration and diagnostics.
+"""S2P shadow configuration, namespace isolation, and diagnostics.
 
-Shadow state is non-authoritative and uses the already-selected S2P GraphStore.
-This module must never construct a second AGE connection or graph.
+Shadow state is non-authoritative.  When a distinct shadow graph is configured,
+startup creates a distinct store for it; otherwise an explicitly injected store
+remains supported for isolated tests.
 """
 
 from __future__ import annotations
@@ -69,11 +70,22 @@ class S2PShadowConfig:
         source = os.environ if env is None else env
         enabled = _parse_bool(source.get("S2P_SHADOW_AGE"), default=False)
         strict = _parse_bool(source.get("S2P_SHADOW_STRICT"), default=False)
-        test_mode = _parse_bool(source.get("S2P_AGE_TEST_MODE"), default=False)
-        domain = (source.get("S2P_AGE_DOMAIN") or "s2p").strip()
+        test_mode = _parse_bool(
+            source.get("S2P_SHADOW_AGE_TEST_MODE") or source.get("S2P_AGE_TEST_MODE"),
+            default=False,
+        )
+        domain = (
+            source.get("S2P_SHADOW_AGE_DOMAIN")
+            or source.get("S2P_AGE_DOMAIN")
+            or "s2p"
+        ).strip()
+        shadow_dsn = source.get("S2P_SHADOW_AGE_DSN")
+        shadow_graph = source.get("S2P_SHADOW_AGE_GRAPH")
         legacy_dsn = source.get("S2P_AGE_DSN")
         legacy_graph = source.get("S2P_AGE_GRAPH")
-        if env is None and enabled and not (legacy_dsn or legacy_graph):
+        configured_dsn = shadow_dsn or legacy_dsn
+        configured_graph = shadow_graph or legacy_graph
+        if env is None and enabled and not (configured_dsn or configured_graph):
             try:
                 graph_config = GraphConfig.load("s2p")
             except GraphConfigError as exc:
@@ -84,8 +96,8 @@ class S2PShadowConfig:
         else:
             # Legacy values remain visible in diagnostics for compatibility,
             # but are never used to construct a graph store.
-            dsn = legacy_dsn
-            graph = legacy_graph
+            dsn = configured_dsn
+            graph = configured_graph
 
         if not domain:
             raise S2PShadowConfigError("S2P_AGE_DOMAIN must not be blank")
@@ -126,6 +138,42 @@ class S2PShadowState:
     config: S2PShadowConfig
     diagnostics: "S2PShadowDiagnostics"
     store: Any | None = None
+
+
+def create_s2p_shadow_store(
+    *,
+    active_graph: str | None,
+    active_domain: str = "s2p",
+    profile: str = "production",
+) -> Any | None:
+    """Create an isolated shadow store when its configured graph differs.
+
+    The active store remains the compatibility fallback for legacy deployments
+    that do not configure a separate namespace.  A configured distinct graph
+    is never allowed to share the active store.
+    """
+    config = S2PShadowConfig.from_env()
+    if not config.enabled or not config.graph or config.graph == active_graph:
+        return None
+    if config.domain != active_domain or config.domain != "s2p":
+        raise S2PShadowConfigError("S2P shadow graph must use domain='s2p'")
+    if not config.dsn:
+        raise S2PShadowConfigError(
+            "S2P shadow graph requires S2P_SHADOW_AGE_DSN when using a separate namespace"
+        )
+
+    from copilot_sdk.graph.factory import create_graph_store
+
+    return create_graph_store(
+        backend="age",
+        domain=config.domain,
+        dsn=config.dsn,
+        graph_name=config.graph,
+        env={},
+        test_mode=config.test_mode,
+        shared_graph_authorization=f"{config.domain}:{config.graph}",
+        profile=profile,
+    )
 
 
 @dataclass(frozen=True)
@@ -211,8 +259,7 @@ def initialize_s2p_shadow_state(
     config = S2PShadowConfig.from_env(env)
     coordinator = diagnostics or S2PShadowDiagnostics()
     # ``store_factory`` is retained as a compatibility parameter for isolated
-    # callers, but is deliberately ignored: shared-graph shadowing cannot
-    # construct a second physical store.
+    # callers.  Production startup supplies the namespace-specific store.
     del store_factory
     return S2PShadowState(
         config=config,
@@ -228,5 +275,6 @@ __all__ = [
     "S2PShadowEvent",
     "S2PShadowState",
     "SHADOW_STATUSES",
+    "create_s2p_shadow_store",
     "initialize_s2p_shadow_state",
 ]

@@ -144,7 +144,7 @@ def _graph_reader_from_request(request: Request) -> S2PGraphReader | None:
         return reader
     if scorer_store is None:
         return None
-    return S2PGraphReader(store=scorer_store)
+    return S2PGraphReader(store=scorer_store, domain="s2p")
 
 
 def _cluster_name(summary: dict[str, Any]) -> str:

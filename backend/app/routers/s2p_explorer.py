@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import math
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 import numpy as np
@@ -13,6 +13,7 @@ import numpy as np
 from app.domains.s2p.config import S2PDomainConfig
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import ExplorerCentroidResponse, GenericResponse
+from app.routers.s2p import _reject_red_write, _score_write_governance
 from copilot_sdk.graph.protocol import GraphStore
 
 
@@ -28,7 +29,7 @@ def _get_scorer(http_request: Request) -> Any:
 
 
 def _get_config() -> type[S2PDomainConfig]:
-    return S2PDomainConfig
+    return cast(type[S2PDomainConfig], S2PDomainConfig)
 
 
 def _get_graph_reader(http_request: Request, scorer: Any) -> S2PGraphReader:
@@ -429,6 +430,8 @@ def import_centroids(payload: dict[str, Any], http_request: Request) -> dict[str
         raise HTTPException(status_code=400, detail=validation_error)
 
     conservation_status = _current_conservation_status(http_request)
+    governance = _score_write_governance(http_request)
+    _reject_red_write(governance)
     if conservation_status != "GREEN":
         raise HTTPException(
             status_code=409,
@@ -470,6 +473,7 @@ def import_centroids(payload: dict[str, Any], http_request: Request) -> dict[str
         "n_cells": config.n_categories * config.n_actions,
         "n_values": config.n_categories * config.n_actions * config.n_factors,
         "conservation_status": conservation_status,
+        "evidence_tier": governance["evidence_tier"],
     }
 
 

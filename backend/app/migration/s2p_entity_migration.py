@@ -429,14 +429,15 @@ async def _upsert_node(client: Any, node: Mapping[str, Any]) -> tuple[bool, bool
     identity = _serialize(client, entity_id)
     natural_key = REQUIRED_ENTITY_KEYS.get(label, "entity_id")
     existing = await client.run_query(
-        f"MATCH (n:{label}) WHERE n.entity_id = {identity} "
-        f"OR n.{natural_key} = {identity} RETURN n LIMIT 1",
+        f"MATCH (n:{label}) WHERE n.domain = 's2p' AND "
+        f"(n.entity_id = {identity} OR n.{natural_key} = {identity}) "
+        f"RETURN n LIMIT 1",
         None,
     )
     if existing:
         await client.run_query(
-            f"MATCH (n:{label}) WHERE n.entity_id = {identity} "
-            f"OR n.{natural_key} = {identity} "
+            f"MATCH (n:{label}) WHERE n.domain = 's2p' AND "
+            f"(n.entity_id = {identity} OR n.{natural_key} = {identity}) "
             f"SET n += {_props_literal(client, properties)} RETURN n",
             None,
         )
@@ -461,11 +462,12 @@ async def _upsert_edge(client: Any, edge: Mapping[str, Any]) -> tuple[bool, bool
         f"(b:{target['label']} {{"
         f"{target['key']}: {target_value}}})"
     )
-    existing = await client.run_query(f"{match} RETURN r LIMIT 1", None)
     properties = dict(edge.get("properties") or {})
     properties.setdefault("domain", S2P_DOMAIN)
     properties.setdefault("provenance", MIGRATION_SOURCE)
     properties.setdefault("domain_source", MIGRATION_SOURCE)
+    match = f"{match} WHERE r.domain = 's2p'"
+    existing = await client.run_query(f"{match} RETURN r LIMIT 1", None)
     if existing:
         await client.run_query(
             f"{match} SET r += {_props_literal(client, properties)} RETURN r",
@@ -476,6 +478,7 @@ async def _upsert_edge(client: Any, edge: Mapping[str, Any]) -> tuple[bool, bool
         f"""
         MATCH (a:{source['label']} {{{source['key']}: {source_value}}})
         MATCH (b:{target['label']} {{{target['key']}: {target_value}}})
+        WHERE a.domain = 's2p' AND b.domain = 's2p'
         CREATE (a)-[r:{edge_type} {_props_literal(client, properties)}]->(b)
         RETURN r
         """,
@@ -494,7 +497,7 @@ async def _ensure_invoice_index(dsn: str, graph_name: str) -> bool:
       VARIADIC ARRAY[properties, '"invoice_id"'::agtype]
     ))'''
     try:
-        with psycopg.connect(dsn, autocommit=True) as conn:  # type: ignore[var-annotated]
+        with cast(Any, psycopg.connect(dsn, autocommit=True)) as conn:
             conn.execute("LOAD 'age'")
             conn.execute("SET search_path = ag_catalog, '$user', public")
             conn.execute(query)

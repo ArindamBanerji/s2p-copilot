@@ -50,6 +50,16 @@ QUERY_REGISTRY = {
 }
 
 
+def _s2p_query_spec(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Return a registry query only when it is explicitly S2P-scoped."""
+    cypher = str(spec.get("cypher") or "")
+    params = dict(spec.get("params") or {})
+    if "$domain" not in cypher or "domain" not in cypher.lower():
+        raise HTTPException(status_code=403, detail="Graph query is not S2P-scoped")
+    params["domain"] = FRAMEWORK_DOMAIN
+    return cypher, params
+
+
 # ============================================================================
 # Request/Response Models (framework endpoints only)
 # ============================================================================
@@ -601,11 +611,11 @@ async def graph_explorer_query(request: _GraphQueryRequest):
     if spec is None:
         raise HTTPException(status_code=400, detail="Unknown graph query name")
     try:
-        params = cast(Mapping[str, Any], spec["params"])
-        rows = await _get_age_client().run_query(spec["cypher"], dict(params))
+        cypher, params = _s2p_query_spec(spec)
+        rows = await _get_age_client().run_query(cypher, params)
     except Exception as exc:
         raise HTTPException(status_code=503, detail="AGE query failed") from exc
-    return {"rows": rows, "count": len(rows), "query": spec["cypher"]}
+    return {"rows": rows, "count": len(rows), "query": cypher}
 
 
 @router.get("/soc/graph/top-nodes")
@@ -675,11 +685,11 @@ async def graph_run_prebuilt(query_name: str):
     if spec is None:
         raise HTTPException(status_code=404, detail="Unknown graph query name")
     try:
-        params = cast(Mapping[str, Any], spec["params"])
-        rows = await _get_age_client().run_query(spec["cypher"], dict(params))
+        cypher, params = _s2p_query_spec(spec)
+        rows = await _get_age_client().run_query(cypher, params)
     except Exception as exc:
         raise HTTPException(status_code=503, detail="AGE query failed") from exc
-    return {"rows": rows, "count": len(rows), "query": spec["cypher"]}
+    return {"rows": rows, "count": len(rows), "query": cypher}
 
 
 # ---------------------------------------------------------------------------

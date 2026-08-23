@@ -236,7 +236,8 @@ class InterventionControls:
         if preview:
             try:
                 result = await self.db.run_query(
-                    "MATCH (cp:Checkpoint {id: $id}) RETURN cp",
+                    "MATCH (cp:Checkpoint {id: $id}) "
+                    "WHERE cp.domain = 's2p' RETURN cp",
                     {"id": snapshot_id},
                 )
             except Exception as exc:
@@ -263,7 +264,7 @@ class InterventionControls:
             graph_service=self.db,
         )
         if "error" in rollback_result:
-            return rollback_result
+            return cast(Dict, rollback_result)
 
         log.info(
             "[INTERVENTION] rollback snapshot_id=%s by=%s", snapshot_id, initiated_by
@@ -413,6 +414,7 @@ class InterventionControls:
         try:
             rows = await self.db.run_query(
                 """MATCH (i:Intervention)
+                   WHERE i.domain = 's2p'
                    RETURN i ORDER BY i.timestamp DESC LIMIT 1""",
             )
             if rows:
@@ -447,6 +449,7 @@ class InterventionControls:
         try:
             rows = await self.db.run_query(
                 """MATCH (i:Intervention)
+                   WHERE i.domain = 's2p'
                    RETURN i.id           AS id,
                           i.type         AS type,
                           i.initiated_by AS initiated_by,

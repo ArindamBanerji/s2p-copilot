@@ -46,6 +46,8 @@ age_available.cache_clear()
 class S2PAgeTestEnvironment:
     active: dict[str, str]
     shadow: dict[str, str]
+    shadow_namespace: str
+    shadow_namespace_env: dict[str, str]
 
 
 @pytest.fixture(scope="session")
@@ -66,10 +68,12 @@ def s2p_age_test_env() -> S2PAgeTestEnvironment:
         pytest.skip("AGE not reachable")
 
     active_graph_name = f"protocol_v2_test_s2p_active_{uuid4().hex[:12]}"
+    shadow_graph_name = f"protocol_v2_test_s2p_shadow_{uuid4().hex[:12]}"
     with psycopg.connect(dsn, connect_timeout=3, autocommit=True) as conn:
         conn.execute("LOAD 'age'")
         conn.execute('SET search_path = ag_catalog, "$user", public')
         conn.execute(f"SELECT create_graph('{active_graph_name}')")
+        conn.execute(f"SELECT create_graph('{shadow_graph_name}')")
 
     environment = S2PAgeTestEnvironment(
         active={
@@ -85,6 +89,14 @@ def s2p_age_test_env() -> S2PAgeTestEnvironment:
             "S2P_AGE_GRAPH": active_graph_name,
             "S2P_AGE_TEST_MODE": "1",
         },
+        shadow_namespace=shadow_graph_name,
+        shadow_namespace_env={
+            "S2P_SHADOW_AGE": "1",
+            "S2P_SHADOW_AGE_DSN": dsn,
+            "S2P_SHADOW_AGE_GRAPH": shadow_graph_name,
+            "S2P_SHADOW_AGE_DOMAIN": "s2p",
+            "S2P_SHADOW_AGE_TEST_MODE": "1",
+        },
     )
     try:
         yield environment
@@ -93,3 +105,4 @@ def s2p_age_test_env() -> S2PAgeTestEnvironment:
             conn.execute("LOAD 'age'")
             conn.execute('SET search_path = ag_catalog, "$user", public')
             conn.execute(f"SELECT drop_graph('{active_graph_name}', true)")
+            conn.execute(f"SELECT drop_graph('{shadow_graph_name}', true)")

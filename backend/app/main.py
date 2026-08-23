@@ -48,6 +48,7 @@ from app.routers.cohort_status_router import create_cohort_status_router
 from app.routers.s2p_discovery import router as s2p_discovery_router
 from app.routers.s2p_early_warning import router as s2p_early_warning_router
 from app.routers.s2p_evolution import router as s2p_evolution_router
+from app.routers.s2p_demo_beats import router as s2p_demo_beats_router
 from app.routers.s2p_explorer import router as s2p_explorer_router
 from app.routers.factor_proposer_router import router as s2p_factor_proposer_router, warm_factor_snapshots
 from app.routers.s2p_evidence import router as s2p_evidence_router
@@ -337,6 +338,7 @@ app.include_router(
 app.include_router(s2p_auto_approve_router)
 app.include_router(s2p_audit_export_router)
 app.include_router(s2p_evolution_router)
+app.include_router(s2p_demo_beats_router)
 app.include_router(s2p_explorer_router)
 app.include_router(s2p_factor_proposer_router)
 app.include_router(s2p_centroid_router)

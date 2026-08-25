@@ -16,3 +16,5 @@ backend/.mypy_cache/
 graphify-out/*.txt
 backend/app/data/s2p.db
 backend/app/data/s2p.db
+*.sqlite3-wal
+*.sqlite3-shm

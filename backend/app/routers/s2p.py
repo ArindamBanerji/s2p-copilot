@@ -2246,6 +2246,13 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         auto_approve = None
 
     novelty_score = _record_score_novelty_from_snapshot(factor_vector, request.category, centroid_snapshot, scorer)
+    frozen_twin = None
+    try:
+        frozen_twin = http_request.app.state.s2p_autonomy.parallel_score(
+            list(factor_vector), request.category
+        )
+    except (AttributeError, TypeError, ValueError):
+        logger.exception("S2P frozen-twin enrichment failed")
     try:
         process_context = _score_process_context_with_signal(cross_copilot_signal)
     except Exception:
@@ -2332,6 +2339,8 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         threshold_decision=threshold_decision,
     )
     payload = cast(dict[str, Any], _json_safe(response.model_dump()))
+    if frozen_twin is not None:
+        payload["frozen_twin"] = frozen_twin
     S2PScoreResponse.model_validate(payload)
     return payload
 

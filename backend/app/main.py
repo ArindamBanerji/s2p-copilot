@@ -1,7 +1,6 @@
 import os
 import logging
 import sys
-import json
 from typing import cast
 from pathlib import Path
 
@@ -276,30 +275,6 @@ app.middleware("http")(
         mutation_paths=S2P_MUTATION_PATHS,
     )
 )
-
-
-@app.middleware("http")
-async def enrich_s2p_score_with_frozen_twin(request: Request, call_next):
-    response = await call_next(request)
-    if request.url.path != "/api/s2p/score" or response.status_code >= 400:
-        return response
-    body = b"".join([chunk async for chunk in response.body_iterator])
-    try:
-        payload = json.loads(body.decode("utf-8"))
-        if not isinstance(payload, dict):
-            return response
-        comparison = app.state.s2p_autonomy.parallel_score(
-            list(payload.get("factor_vector") or []),
-            str(payload.get("category") or ""),
-        )
-        if comparison is not None:
-            payload["frozen_twin"] = comparison
-        from starlette.responses import JSONResponse
-
-        headers = {key: value for key, value in response.headers.items() if key.lower() != "content-length"}
-        return JSONResponse(payload, status_code=response.status_code, headers=headers)
-    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
-        return response
 
 
 app.include_router(learn_router)

@@ -109,7 +109,7 @@ def _centroids(scorer: Any) -> np.ndarray:
         centroids = getattr(profile, "mu", None)
     if centroids is None:
         return np.asarray(S2PDomainConfig.get_profile_centroids(), dtype=float)
-    return np.asarray(centroids, dtype=float)
+    return cast(np.ndarray, np.asarray(centroids, dtype=float))
 
 
 @router.get("/evolution/extinction")

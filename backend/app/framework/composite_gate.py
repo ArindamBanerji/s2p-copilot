@@ -102,12 +102,12 @@ class CompositeDiscriminant:
 
         confidence    = float(sorted_probs[0])
         margin        = float(sorted_probs[0] - sorted_probs[1]) if len(sorted_probs) > 1 else confidence
-        entropy       = float(-np.sum(probs * np.log(probs + 1e-10)))
+        entropy       = float(np.sum(probs * np.log(probs + 1e-10))) * -1.0
         top3_mass     = float(np.sum(sorted_probs[:3]))
         prob_std      = float(np.std(probs))
         dist_ratio    = float(sorted_dists[0] / (sorted_dists[1] + 1e-10)) if len(sorted_dists) > 1 else 0.0
         dist_gap      = float(sorted_dists[1] - sorted_dists[0]) if len(sorted_dists) > 1 else 0.0
-        factor_extremity   = float(np.max(f) - np.min(f)) if len(f) > 0 else 0.0
+        factor_extremity   = (float(np.max(f)) - float(np.min(f))) if len(f) > 0 else 0.0
         factor_norm        = float(np.linalg.norm(f))
         factor_center_dist = float(np.linalg.norm(f - 0.5))
 

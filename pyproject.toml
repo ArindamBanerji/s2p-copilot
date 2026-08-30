@@ -13,3 +13,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0.0", "pytest-asyncio", "httpx"]
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = ["$MYPY_CONFIG_FILE_DIR/backend", "$MYPY_CONFIG_FILE_DIR/../copilot-sdk", "$MYPY_CONFIG_FILE_DIR/../ci-platform", "$MYPY_CONFIG_FILE_DIR/../graph-attention-engine-v50"]
+follow_imports = "skip"
+warn_unused_configs = true

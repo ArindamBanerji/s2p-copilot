@@ -1,0 +1,181 @@
+{
+  "demo": "E20 conservation gate",
+  "backend": "http://localhost:8002",
+  "category": "contract_gap",
+  "tensor_shape": [
+    5,
+    5,
+    8
+  ],
+  "penalty_ratio": 5.0,
+  "theta_formula": "23.53/(alpha*V)",
+  "initial": {
+    "category_verified_decisions": 0,
+    "category_status": "RED",
+    "global_status": "GREEN",
+    "auto_approve_allowed": false
+  },
+  "evidence": {
+    "scores_submitted": 30,
+    "outcomes_confirmed": 30,
+    "correct_confirmations": 30
+  },
+  "final": {
+    "category_verified_decisions": 30,
+    "category_accuracy": 0.8737373737373737,
+    "global_status": "GREEN",
+    "alpha": 0.8,
+    "q": 0.8737373737373737,
+    "V": 198,
+    "theta_min": 0.1485,
+    "signal": 138.4,
+    "auto_approve": {
+      "would_auto_approve": false,
+      "blocked_reason": "conservation_not_green",
+      "readiness": {
+        "category": "contract_gap",
+        "threshold": 0.95,
+        "auto_approved_count": 0,
+        "pending_verification_count": 0,
+        "spot_checked_count": 0,
+        "verified_correct_count": 30,
+        "verified_incorrect_count": 0,
+        "last_threshold_change": null,
+        "conservation_status": "RED",
+        "verified_count": 30,
+        "rolling_q": 1.0,
+        "derived_category_readiness": "blocked",
+        "warnings": []
+      },
+      "event": {
+        "event_id": "P40B-SHADOW-8e498bbea3674eb29861e833d81ad9c1",
+        "decision_id": "815c60e6ec1c",
+        "invoice_id": null,
+        "supplier_id": null,
+        "category": "contract_gap",
+        "recommended_action": "auto_approve",
+        "confidence": 0.974531636674656,
+        "threshold": 0.95,
+        "gate_decision": "blocked",
+        "status": "blocked",
+        "blocked_reason": "conservation_not_green",
+        "conservation_status_at_decision": "RED",
+        "verified_count_at_decision": 30,
+        "rolling_q_at_decision": 1.0,
+        "created_at": "2026-08-30T19:09:35+00:00",
+        "source": "auto_approve_shadow",
+        "learning_applied": false,
+        "outcome_written": false,
+        "verified": false
+      },
+      "shadow_only": true,
+      "learning_applied": false,
+      "outcome_written": false,
+      "verified": false,
+      "p39_evidence": {},
+      "warnings": []
+    },
+    "gate_status": {
+      "config": {
+        "enabled": true,
+        "mode": "shadow",
+        "initial_threshold": 0.95,
+        "min_threshold": 0.8,
+        "spot_check_rate": 0.02,
+        "min_verified_decisions": 100,
+        "random_seed": null,
+        "require_conservation_green": true
+      },
+      "enabled": true,
+      "mode": "shadow",
+      "conservation_status": "RED",
+      "category_states": {
+        "price_variance": {
+          "category": "price_variance",
+          "threshold": 0.95,
+          "auto_approved_count": 0,
+          "pending_verification_count": 0,
+          "spot_checked_count": 0,
+          "verified_correct_count": 79,
+          "verified_incorrect_count": 21,
+          "last_threshold_change": null,
+          "conservation_status": "RED",
+          "verified_count": 100,
+          "rolling_q": 0.79,
+          "derived_category_readiness": "blocked",
+          "warnings": []
+        },
+        "quantity_mismatch": {
+          "category": "quantity_mismatch",
+          "threshold": 0.95,
+          "auto_approved_count": 0,
+          "pending_verification_count": 0,
+          "spot_checked_count": 0,
+          "verified_correct_count": 32,
+          "verified_incorrect_count": 4,
+          "last_threshold_change": null,
+          "conservation_status": "RED",
+          "verified_count": 36,
+          "rolling_q": 0.8888888888888888,
+          "derived_category_readiness": "blocked",
+          "warnings": []
+        },
+        "duplicate_risk": {
+          "category": "duplicate_risk",
+          "threshold": 0.95,
+          "auto_approved_count": 0,
+          "pending_verification_count": 0,
+          "spot_checked_count": 0,
+          "verified_correct_count": 0,
+          "verified_incorrect_count": 0,
+          "last_threshold_change": null,
+          "conservation_status": "RED",
+          "verified_count": 0,
+          "rolling_q": 0.0,
+          "derived_category_readiness": "blocked",
+          "warnings": []
+        },
+        "contract_gap": {
+          "category": "contract_gap",
+          "threshold": 0.95,
+          "auto_approved_count": 0,
+          "pending_verification_count": 0,
+          "spot_checked_count": 0,
+          "verified_correct_count": 30,
+          "verified_incorrect_count": 0,
+          "last_threshold_change": null,
+          "conservation_status": "RED",
+          "verified_count": 30,
+          "rolling_q": 1.0,
+          "derived_category_readiness": "blocked",
+          "warnings": []
+        },
+        "format_compliance": {
+          "category": "format_compliance",
+          "threshold": 0.95,
+          "auto_approved_count": 0,
+          "pending_verification_count": 0,
+          "spot_checked_count": 0,
+          "verified_correct_count": 32,
+          "verified_incorrect_count": 0,
+          "last_threshold_change": null,
+          "conservation_status": "RED",
+          "verified_count": 32,
+          "rolling_q": 1.0,
+          "derived_category_readiness": "blocked",
+          "warnings": []
+        }
+      },
+      "derived_category_readiness": {
+        "price_variance": "blocked",
+        "quantity_mismatch": "blocked",
+        "duplicate_risk": "blocked",
+        "contract_gap": "blocked",
+        "format_compliance": "blocked"
+      },
+      "p39_evidence": {},
+      "warnings": []
+    },
+    "auto_approve_safe": false
+  }
+}

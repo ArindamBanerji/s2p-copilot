@@ -346,9 +346,27 @@ app.include_router(create_tab_state_router(app.state.s2p_tab_state_cache))
 
 @app.on_event("startup")
 async def warm_s2p_tab_state_cache() -> None:
+    _warm_s2p_learn_store_connections()
     warm_financial_snapshots(app.state.graph_store)
     warm_factor_snapshots(app.state.scorer)
     await app.state.s2p_tab_state_cache.warm_up()
+
+
+def _warm_s2p_learn_store_connections() -> None:
+    """Open the graph connections used by the first learn request."""
+    stores = [app.state.graph_store]
+    shadow = getattr(app.state, "s2p_shadow", None)
+    shadow_store = getattr(shadow, "store", None)
+    if shadow_store is not None:
+        stores.append(shadow_store)
+    for store in stores:
+        get_decision = getattr(store, "get_decision", None)
+        if not callable(get_decision):
+            continue
+        try:
+            get_decision("__startup_learn_warmup__", domain="s2p")
+        except Exception as exc:
+            logger.debug("S2P learn connection warmup skipped: %s", exc)
 
 
 @app.get("/health")

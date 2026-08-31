@@ -85,6 +85,26 @@ class GraphContextStore:
             raise self._failure
         return list(self._result or [])
 
+    def query_duplicate_context(self, invoice_id, supplier_id, amount, **kwargs):
+        """Model an empty duplicate-neighbor query for context-only tests."""
+        if self._failure is not None:
+            raise self._failure
+        return []
+
+    def _S(self, value):
+        return repr(str(value))
+
+    def _run_query(self, query):
+        if self._failure is not None:
+            raise self._failure
+        if "Invoice {" in query:
+            if self._result:
+                return [{"n": row.get("node", row)} for row in self._result]
+            marker = "invoice_id: "
+            invoice_id = query.split(marker, 1)[1].split("}", 1)[0].strip("'\"")
+            return self.query_context(invoice_id, 2, domain=self.domain)
+        return []
+
     def __getattr__(self, name):
         return getattr(self._delegate, name)
 

@@ -15,6 +15,9 @@ from copilot_sdk.graph.memory_store import InMemoryGraphStore
 class S2PTestGraphStore(InMemoryGraphStore):
     """Complete unit-test GraphStore with AGE event filtering/order semantics."""
 
+    def __init__(self, domain: str = "s2p") -> None:
+        super().__init__(domain=domain, decision_id_prefix="S2P-")
+
     def get_evolution_events(self, domain: str, **kwargs: Any) -> list[dict[str, Any]]:
         event_type = kwargs.get("event_type")
         events = super().get_evolution_events(
@@ -58,6 +61,42 @@ graph = \"soc_graph\"
 )
 os.environ["GRAPH_CONFIG_PATH"] = str(_config_path)
 age_available.cache_clear()
+
+
+from app import s2p_graph_status as _s2p_graph_status
+
+_create_s2p_active_graph_store = _s2p_graph_status.create_s2p_active_graph_store
+
+
+def _isolated_active_graph_store(config: Any, *, store_factory: Any = None) -> Any:
+    """Use an isolated store for local setup while preserving explicit AGE tests."""
+    if config.requested_backend == "age":
+        return _create_s2p_active_graph_store(config, store_factory=store_factory)
+    return S2PTestGraphStore(domain="s2p")
+
+
+# app.main imports this factory after conftest has loaded. Redirect only the
+# test bootstrap; production configuration and factory behavior are unchanged.
+_s2p_graph_status.create_s2p_active_graph_store = _isolated_active_graph_store
+
+from app import main as _s2p_main
+
+_build_s2p_scorer = _s2p_main.build_s2p_scorer
+
+
+def _isolated_build_s2p_scorer(
+    db_path: str | None = None,
+    graph_store: Any = None,
+    *,
+    profile: str | None = None,
+) -> Any:
+    """Keep only DSN-less teardown construction on the complete memory store."""
+    if graph_store is None and not os.environ.get("GRAPH_CONFIG_PATH"):
+        graph_store = S2PTestGraphStore(domain="s2p")
+    return _build_s2p_scorer(db_path, graph_store=graph_store, profile=profile)
+
+
+_s2p_main.build_s2p_scorer = _isolated_build_s2p_scorer
 
 
 @dataclass(frozen=True)
@@ -143,3 +182,19 @@ def isolated_age_compatible_evolver(monkeypatch: pytest.MonkeyPatch) -> None:
     from copilot_sdk.evolution.graph_store import GraphVariantStore
 
     monkeypatch.setattr(GraphVariantStore, "reset", reset_store)
+
+
+@pytest.fixture(autouse=True)
+def isolated_app_graph_state() -> Generator[None, None, None]:
+    """Start each test with an isolated complete GraphStore on app.state."""
+    from app.graph.s2p_graph_reader import S2PGraphReader
+    from app.routers.s2p_evidence import clear_evidence_context_cache
+
+    store = S2PTestGraphStore(domain="s2p")
+    scorer = _build_s2p_scorer(graph_store=store)
+    _s2p_main.app.state.scorer = scorer
+    _s2p_main.app.state.graph_store = store
+    _s2p_main.app.state.s2p_graph_reader = S2PGraphReader(store=store)
+    _s2p_main.app.state.s2p_reward_function = scorer._reward_fn
+    clear_evidence_context_cache()
+    yield

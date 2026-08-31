@@ -228,6 +228,7 @@ app.state.s2p_autonomy = S2PAutonomyManager(
     DATA_DIR,
     app.state.scorer,
     app.state.compounding_ledger,
+    graph_store=app.state.graph_store,
 )
 # Supplier enrichment uses the same domain-scoped AGE graph as decisions.
 # There is no production SQLite side store: AGE capability failures surface

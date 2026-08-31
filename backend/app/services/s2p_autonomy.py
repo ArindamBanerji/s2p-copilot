@@ -8,22 +8,72 @@ from typing import Any, Mapping
 
 from copilot_sdk.evolution import ScorerBackedProvider
 from copilot_sdk.graph.protocol import GraphStore
-from copilot_sdk.promotion import PromotionEngine, PromotionResult, PromotionStage, PromotionStore, S2PPromotionPolicy
+from copilot_sdk.promotion import (
+    PromotionEngine,
+    PromotionRecord,
+    PromotionResult,
+    PromotionStore,
+    S2PPromotionPolicy,
+)
 from copilot_sdk.twin import FrozenTwin, FrozenTwinStore
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.graph.s2p_graph_reader import S2PGraphReader
 
 
+class GraphPromotionStore(PromotionStore):
+    """PromotionStore interface backed by the configured domain GraphStore."""
+
+    def __init__(self, graph_store: GraphStore, domain: str) -> None:
+        self.graph_store = graph_store
+        self.domain = str(domain)
+
+    def save(self, record: PromotionRecord) -> None:
+        self.graph_store.save_promotion(self.domain, record.record_id, record.to_dict())
+
+    def load(self, record_id: str) -> PromotionRecord | None:
+        state = self.graph_store.get_promotion(self.domain, record_id)
+        return PromotionRecord.from_dict(state) if state is not None else None
+
+    def load_by_class(self, copilot: str, decision_class: str) -> PromotionRecord | None:
+        for record in self.list_all(copilot):
+            if record.decision_class == decision_class:
+                return record
+        return None
+
+    def list_all(self, copilot: str) -> list[PromotionRecord]:
+        return [
+            PromotionRecord.from_dict(state)
+            for state in self.graph_store.list_promotions(self.domain)
+            if str(state.get("copilot")) == str(copilot)
+        ]
+
+    def close(self) -> None:
+        """The application owns the shared GraphStore lifecycle."""
+
+
 class S2PAutonomyManager:
     """Persist per-category authority and an immutable S2P day-0 baseline."""
 
-    def __init__(self, data_dir: str | Path, scorer: Any, ledger: Any | None = None) -> None:
+    def __init__(
+        self,
+        data_dir: str | Path,
+        scorer: Any,
+        ledger: Any | None = None,
+        graph_store: GraphStore | None = None,
+    ) -> None:
         self.scorer = scorer
         self.ledger = ledger
         data_path = Path(data_dir)
+        selected_graph_store = graph_store or getattr(scorer, "graph_store", None)
+        if not isinstance(selected_graph_store, GraphStore):
+            raise RuntimeError("S2P autonomy requires the configured GraphStore")
         self.conservation = ScorerBackedProvider(scorer, "s2p")
-        self.engine = PromotionEngine(policy=S2PPromotionPolicy(), store=PromotionStore(str(data_path / "s2p_promotion.sqlite3")), conservation_provider=self.conservation)
+        self.engine = PromotionEngine(
+            policy=S2PPromotionPolicy(),
+            store=GraphPromotionStore(selected_graph_store, "s2p"),
+            conservation_provider=self.conservation,
+        )
         self.twin = FrozenTwin(FrozenTwinStore(data_path / "frozen_twins"))
         try:
             self.twin.load("s2p")

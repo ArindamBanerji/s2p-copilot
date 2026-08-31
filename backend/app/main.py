@@ -367,8 +367,21 @@ def _warm_s2p_learn_store_connections() -> None:
             get_decision("__startup_learn_warmup__", domain="s2p")
         except Exception as exc:
             logger.debug("S2P learn connection warmup skipped: %s", exc)
+    try:
+        from app.domains.s2p.config import S2PDomainConfig
+
+        get_centroid = getattr(app.state.scorer, "get_centroid", None)
+        if callable(get_centroid):
+            get_centroid(S2PDomainConfig.categories[0], S2PDomainConfig.actions[0])
+
+        fingerprint = getattr(app.state.scorer, "fingerprint", None)
+        if callable(fingerprint):
+            fingerprint(persist=False)
+    except Exception as exc:
+        logger.debug("S2P learn-path warmup skipped: %s", exc)
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health():
     return {"status": "ok", "service": "s2p-copilot", "version": "0.1.0"}

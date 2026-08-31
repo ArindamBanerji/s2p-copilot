@@ -1,0 +1,3 @@
+LOAD 'age';
+CREATE EXTENSION IF NOT EXISTS age;
+GRANT USAGE ON SCHEMA ag_catalog TO postgres;

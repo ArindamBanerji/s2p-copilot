@@ -79,7 +79,10 @@ class S2PInvoiceTraversalPattern:
         invoice_id = _first(context, "invoice_id", "event_id", "source_invoice_id", "source_event_id")
         decision_id = _first(context, "decision_id") or intent.decision_id
         invoice = find_invoice(str(invoice_id)) if invoice_id else None
-        decision = _find_decision(active_reader, decision_id, invoice_id)
+        # A known fixture invoice does not need a graph lookup to build its
+        # sourced context. Avoid an unnecessary AGE round trip when no target
+        # decision was requested; explicit decision requests still use graph.
+        decision = _find_decision(active_reader, decision_id, invoice_id) if decision_id else None
         if invoice is None and decision is not None:
             invoice_id = _decision_value(decision, "invoice_id", "source_invoice_id", "entity_id")
             invoice = find_invoice(str(invoice_id)) if invoice_id else None

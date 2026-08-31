@@ -1,0 +1,58 @@
+services:
+  postgres-age:
+    image: apache/age:release_PG16_1.5.0
+    container_name: s2p-postgres-age
+    environment:
+      POSTGRES_DB: s2p
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_age_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/10-age.sql:ro
+    networks:
+      - s2p-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d s2p"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  s2p-backend:
+    build:
+      context: ..
+      dockerfile: s2p-copilot/Dockerfile
+    container_name: s2p-backend
+    depends_on:
+      postgres-age:
+        condition: service_healthy
+    environment:
+      CI_DEV_MODE: "true"
+      GRAPH_BACKEND: age
+      GRAPH_DSN: postgresql://postgres:postgres@postgres-age:5432/s2p
+      AGE_DSN: postgresql://postgres:postgres@postgres-age:5432/s2p
+      GRAPH_NAME: s2p_graph
+      AGE_GRAPH_NAME: s2p_graph
+      CI_DATA_DIR: /app/data
+      S2P_ACTIVE_GRAPH_BACKEND: age
+      S2P_ACTIVE_AGE_DSN: postgresql://postgres:postgres@postgres-age:5432/s2p
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./data:/app/data:ro
+    networks:
+      - s2p-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8002/api/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+
+volumes:
+  postgres_age_data:
+
+networks:
+  s2p-net:
+    driver: bridge

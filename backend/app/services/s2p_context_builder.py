@@ -592,7 +592,7 @@ class S2PContextBuilder:
     def _decision_rows(self, category: str) -> list[dict[str, Any]]:
         if self.reader is None:
             return []
-        return self.reader.get_decisions(category=category, limit=400)
+        return cast(list[dict[str, Any]], self.reader.get_decisions(category=category, limit=400))
 
     def _invoice(self, invoice_id: str | None) -> dict[str, Any] | None:
         if not invoice_id:

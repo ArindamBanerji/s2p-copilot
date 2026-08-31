@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from typing import Any, cast
 
 from fastapi.testclient import TestClient
 
@@ -16,6 +17,7 @@ from app.routers import s2p as s2p_router
 from app.services.receipt_store import reset_receipt_store
 from app.services.s2p_evolver import reset_s2p_evolver
 from app.services.supplier_profile_accumulator import accumulator as supplier_profile_accumulator
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
 client = TestClient(app)
@@ -23,7 +25,7 @@ client = TestClient(app)
 
 def _reset_app_state():
     reset_receipt_store()
-    app.state.scorer = build_s2p_scorer(":memory:")
+    app.state.scorer = build_s2p_scorer(graph_store=InMemoryGraphStore(domain="s2p"))
     app.state.graph_store = app.state.scorer.graph_store
     app.state.s2p_reward_function = app.state.scorer._reward_fn
     s2p_router._clear_score_conservation_status_cache()
@@ -58,7 +60,7 @@ def _score(event_id: str) -> dict:
         },
     )
     assert response.status_code == 200
-    return response.json()
+    return cast(dict[str, Any], response.json())
 
 
 def _learn(decision_id: str, actual_action: str, outcome: str = "confirmed") -> dict:
@@ -71,31 +73,24 @@ def _learn(decision_id: str, actual_action: str, outcome: str = "confirmed") -> 
         },
     )
     assert response.status_code == 200
-    return response.json()
+    return cast(dict[str, Any], response.json())
 
 
 def _evidence_rows() -> list[dict]:
-    return [
-        dict(row)
-        for row in app.state.graph_store.connection.execute(
-            "SELECT * FROM evidence_receipts WHERE domain = ? ORDER BY chain_index",
-            ("s2p",),
-        ).fetchall()
-    ]
+    rows = []
+    for row in app.state.graph_store._evidence_receipts.values():
+        copied = dict(row)
+        copied["canonical_payload_json"] = json.dumps(copied["canonical_payload"])
+        rows.append(copied)
+    return sorted(rows, key=lambda row: int(row["chain_index"]))
 
 
 def _outbox_rows() -> list[dict]:
-    return [
-        dict(row)
-        for row in app.state.graph_store.connection.execute(
-            "SELECT * FROM outbox WHERE domain = ? ORDER BY outbox_id",
-            ("s2p",),
-        ).fetchall()
-    ]
+    return [dict(row) for row in app.state.graph_store._outbox]
 
 
 def _outcome_count() -> int:
-    return int(app.state.graph_store.connection.execute("SELECT COUNT(*) FROM outcomes").fetchone()[0])
+    return len(app.state.graph_store._outcomes)
 
 
 def test_learn_appends_evidence_receipt_before_outcome_write(monkeypatch) -> None:

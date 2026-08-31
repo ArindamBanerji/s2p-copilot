@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from typing import Any, cast
 import os
 import sys
 
@@ -45,7 +46,7 @@ def _receipt(**overrides) -> OutcomeReceipt:
         "timestamp": "2026-01-01T00:00:00Z",
         "scored_action": "auto_approve",
         "confidence": 0.91,
-        "factor_vector": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+        "factor_vector": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.5],
         "category": "price_variance",
         "human_action": "auto_approve",
     }
@@ -71,7 +72,7 @@ def _score(event_id: str = "S2P-INV-0001") -> dict:
         },
     )
     assert response.status_code == 200
-    return response.json()
+    return cast(dict[str, Any], response.json())
 
 
 def _learn(
@@ -92,7 +93,7 @@ def _learn(
         json=payload,
     )
     assert response.status_code == 200
-    return response.json()
+    return cast(dict[str, Any], response.json())
 
 
 def test_receipt_dataclass_has_pd_audit_fields() -> None:

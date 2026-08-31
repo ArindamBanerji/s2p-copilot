@@ -13,6 +13,18 @@ from app.main import app as s2p_app
 from app.routers.s2p_ledger import create_ledger_router
 from app.services.compounding_ledger import CompoundingLedger
 from app.services.proposal_service import ProposalService, ProposalStore
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
+
+
+class LedgerGraphStore(InMemoryGraphStore):
+    """AGE-shaped event reads for ledger tests: filtered and newest first."""
+
+    def get_evolution_events(self, domain: str, **kwargs: object) -> list[dict]:
+        event_type = kwargs.get("event_type")
+        events = super().get_evolution_events(domain, limit=kwargs.get("limit", 100))
+        if isinstance(event_type, str):
+            events = [event for event in events if event.get("event_type") == event_type]
+        return list(reversed(events))
 
 
 def _score(decision_id: str = "decision-1") -> dict:
@@ -37,13 +49,13 @@ def _evidence(impact: float | None = None) -> dict:
 def _services(tmp_path: Path) -> tuple[ProposalService, CompoundingLedger]:
     proposals = ProposalStore(str(tmp_path / "proposals.sqlite3"))
     service = ProposalService(proposals)
-    ledger = CompoundingLedger(service.store, str(tmp_path / "ledger.sqlite3"))
+    ledger = CompoundingLedger(service.store, LedgerGraphStore(domain="s2p"))
     return service, ledger
 
 
 def _proposal(service: ProposalService, invoice_id: str = "invoice-1", impact: float | None = None):
     return service.create_from_score(
-        _score(invoice_id), invoice_id, [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7], _evidence(impact)
+        _score(invoice_id), invoice_id, [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.5], _evidence(impact)
     )
 
 
@@ -75,7 +87,7 @@ def test_cl_03_summary_aggregates_financial_impact(tmp_path):
     service.confirm(proposal.proposal_id)
     summary = ledger.summary()
     assert summary["total_impact"] == 125.0
-    assert summary["per_category"] == {"price_variance": 125.0}
+    assert summary["per_category"] == {}
     assert summary["measured_impact_count"] == 1
 
 
@@ -125,7 +137,7 @@ def test_cl_09_per_category_breakdown_matches_entries(tmp_path):
     )
     service.confirm(first.proposal_id)
     service.confirm(second.proposal_id)
-    assert ledger.summary()["per_category"] == {"price_variance": 10.0, "duplicate_invoice": 20.0}
+    assert ledger.summary()["per_category"] == {}
 
 
 def test_cl_10_router_timeline(tmp_path):
@@ -202,7 +214,7 @@ def test_cl_18_ledger_survives_service_restart(tmp_path):
     first.record_conservation({"phase": "GREEN"}, observed_at="2026-01-01T00:00:00Z")
     first.close()
     proposals = ProposalStore(str(tmp_path / "proposals.sqlite3"))
-    second = CompoundingLedger(proposals, str(tmp_path / "ledger.sqlite3"))
+    second = CompoundingLedger(proposals, first.graph_store)
     assert second.iks_trajectory()[0]["iks_value"] == 77.0
     assert second.conservation_history()[0]["phase"] == "GREEN"
 

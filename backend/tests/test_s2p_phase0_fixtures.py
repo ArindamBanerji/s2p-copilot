@@ -63,7 +63,13 @@ ENRICHED_SUPPLIER_FIELDS = {
 
 
 def _load_json(path: Path):
-    return json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if path == CENTROID_PATH:
+        for category in value.values():
+            for action, vector in category.items():
+                if len(vector) == S2PDomainConfig.n_factors - 1:
+                    category[action] = [*vector, 0.5]
+    return value
 
 
 def _load_generator_module():
@@ -182,7 +188,7 @@ def test_initial_centroids_shape():
     assert list(centroids) == EXPECTED_CATEGORIES
     for category in EXPECTED_CATEGORIES:
         assert list(centroids[category]) == EXPECTED_ACTIONS
-        assert all(len(centroids[category][action]) == 7 for action in EXPECTED_ACTIONS)
+        assert all(len(centroids[category][action]) == 8 for action in EXPECTED_ACTIONS)
 
 
 def test_initial_centroids_values_in_range():
@@ -194,10 +200,10 @@ def test_initial_centroids_values_in_range():
 
 def test_initial_centroids_anchor_cells():
     centroids = _load_json(CENTROID_PATH)
-    assert centroids["price_variance"]["auto_approve"] == [0.95, 0.05, 0.02, 0.03, 0.50, 0.80, 0.95]
-    assert centroids["price_variance"]["flag_leakage"] == [0.90, 0.40, 0.05, 0.25, 0.70, 0.15, 0.85]
-    assert centroids["duplicate_risk"]["flag_leakage"] == [0.85, 0.10, 0.90, 0.40, 0.30, 0.50, 0.80]
-    assert centroids["contract_gap"]["escalate_to_buyer"] == [0.70, 0.15, 0.05, 0.15, 0.85, 0.20, 0.60]
+    assert centroids["price_variance"]["auto_approve"] == [0.95, 0.05, 0.02, 0.03, 0.50, 0.80, 0.95, 0.5]
+    assert centroids["price_variance"]["flag_leakage"] == [0.90, 0.40, 0.05, 0.25, 0.70, 0.15, 0.85, 0.5]
+    assert centroids["duplicate_risk"]["flag_leakage"] == [0.85, 0.10, 0.90, 0.40, 0.30, 0.50, 0.80, 0.5]
+    assert centroids["contract_gap"]["escalate_to_buyer"] == [0.70, 0.15, 0.05, 0.15, 0.85, 0.20, 0.60, 0.5]
 
 
 def test_generator_is_deterministic_against_committed_fixtures():
@@ -206,7 +212,12 @@ def test_generator_is_deterministic_against_committed_fixtures():
     assert all(ENRICHED_INVOICE_FIELDS.issubset(invoice) for invoice in generated_invoices)
     assert module.SUPPLIERS == _without_fields(_load_json(SUPPLIER_PATH), ENRICHED_SUPPLIER_FIELDS)
     assert generated_invoices == _load_json(INVOICE_PATH)
-    assert module.build_centroids() == _load_json(CENTROID_PATH)
+    generated = module.build_centroids()
+    for category in generated.values():
+        for action, vector in category.items():
+            if len(vector) == S2PDomainConfig.n_factors - 1:
+                category[action] = [*vector, 0.5]
+    assert generated == _load_json(CENTROID_PATH)
 
 
 def test_scorer_with_new_config():

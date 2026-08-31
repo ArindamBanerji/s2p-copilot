@@ -15,21 +15,36 @@ No app.domains.soc.* imports allowed.
 from fastapi import APIRouter, HTTPException, Query
 from typing import Any, Mapping, Optional, cast
 from datetime import datetime
+import inspect
 from pydantic import BaseModel
 
-from copilot_sdk.config import GraphConfig
-from ci_platform.graph.age_client import AGEClient
+from copilot_sdk.graph.protocol import GraphStore
 
 
-_age_client = None
+_graph_store: GraphStore | None = None
 
 
-def _get_age_client() -> AGEClient:
-    global _age_client
-    if _age_client is None:
-        config = GraphConfig.load("s2p")
-        _age_client = AGEClient(dsn=config.dsn, graph_name=config.graph)
-    return _age_client
+def configure_graph_store(graph_store: GraphStore) -> None:
+    """Bind framework reads to the initialized, domain-scoped S2P GraphStore."""
+    global _graph_store
+    if graph_store is None:
+        raise ValueError("framework router requires a configured GraphStore")
+    _graph_store = graph_store
+
+
+def _get_graph_store() -> GraphStore:
+    if _graph_store is None:
+        raise RuntimeError("S2P framework GraphStore has not been configured")
+    return _graph_store
+
+
+async def _run_graph_query(query: str, params: Mapping[str, Any] | None = None) -> Any:
+    """Run a framework read through the configured GraphStore adapter."""
+    runner = getattr(_get_graph_store(), "_run_query", None)
+    if not callable(runner):
+        raise RuntimeError("Configured S2P GraphStore does not support framework reads")
+    result = runner(query, params)
+    return await result if inspect.isawaitable(result) else result
 
 router = APIRouter()
 FRAMEWORK_DOMAIN = "s2p"
@@ -120,7 +135,7 @@ async def get_centroid_evolution(
     Returns [] if no Decision nodes have centroid_delta_norm set yet.
     """
     try:
-        rows = await _get_age_client().run_query(
+        rows = await _run_graph_query(
             """
             MATCH (d:Decision)
             WHERE d.domain = $domain
@@ -169,7 +184,7 @@ async def get_convergence_calendar():
     live deployment state when available. Falls back to documented defaults
     when state is not yet initialised.
     """
-    from app.services.convergence_calendar import build_convergence_calendar, SOC_FACTORS
+    raise HTTPException(status_code=501, detail="Convergence calendar is not implemented for S2P")
 
     # ── defaults (used when deployment state unavailable) ──────────────────
     DEFAULT_SIGMA  = 0.15
@@ -185,12 +200,11 @@ async def get_convergence_calendar():
 
     # ── try to read live state ──────────────────────────────────────────────
     try:
-        from app.services.gae_state import get_learning_state
-        ls = get_learning_state()
+        raise HTTPException(status_code=501, detail="Convergence calendar is not implemented for S2P")
 
         # Decision count per factor — query AGE decision nodes grouped by factor
         try:
-            rows = await _get_age_client().run_query(
+            rows = await _run_graph_query(
                 """
                 MATCH (d:Decision)
                 WHERE d.domain = $domain AND d.primary_factor IS NOT NULL
@@ -263,7 +277,7 @@ async def get_ols_status_endpoint():
 
     try:
         # Read OLS history from Decision nodes (ols_score property)
-        result = await _get_age_client().run_query(
+        result = await _run_graph_query(
             "MATCH (d:Decision) WHERE d.domain = $domain AND d.ols_score IS NOT NULL "
             "RETURN d.ols_score AS ols_score ORDER BY d.decision_number ASC",
             {"domain": FRAMEWORK_DOMAIN},
@@ -274,7 +288,7 @@ async def get_ols_status_endpoint():
 
     try:
         # Read override counts per analyst
-        result = await _get_age_client().run_query(
+        result = await _run_graph_query(
             "MATCH (d:Decision) WHERE d.domain = $domain AND d.analyst_id IS NOT NULL AND d.was_override = true "
             "RETURN d.analyst_id AS analyst_id, count(*) AS cnt",
             {"domain": FRAMEWORK_DOMAIN},
@@ -285,7 +299,7 @@ async def get_ols_status_endpoint():
 
     try:
         # Check warm_start flag from LearningState node if present
-        result = await _get_age_client().run_query(
+        result = await _run_graph_query(
             "MATCH (ls:LearningState) "
             "WHERE ls.domain = $domain "
             "RETURN ls.warm_start_active AS warm_start LIMIT 1",
@@ -325,58 +339,7 @@ async def get_flywheel_comparison(alert_id: str = "ALERT-001", category: str = "
         "delta": {"confidence_gain", "action_changed", "edge_count_gain", "interpretation"},
     }
     """
-    from app.services.flywheel_comparison import build_flywheel_comparison
-
-    try:
-        # Count TRIGGERED_EVOLUTION edges for this category
-        edge_result = await _get_age_client().run_query(
-            "MATCH (d:Decision)-[:TRIGGERED_EVOLUTION]->(e:EvolutionEvent) "
-            "WHERE d.domain = $domain AND d.category = $category "
-            "RETURN count(e) AS edge_count",
-            {"category": category, "domain": FRAMEWORK_DOMAIN},
-        )
-        edge_count = int(edge_result[0]["edge_count"]) if edge_result else 0
-
-        if edge_count < 10:
-            return build_flywheel_comparison(
-                current_edges=edge_count,
-                current_factor_4=0.40,
-                current_confidence=0.71,
-                current_action="investigate",
-                current_provenance="",
-                category=category,
-            )
-
-        # Read latest factor_4 and confidence from most recent Decision for category
-        decision_result = await _get_age_client().run_query(
-            "MATCH (d:Decision) WHERE d.domain = $domain AND d.category = $category "
-            "RETURN d.factor_snapshot[3] AS factor_4, d.confidence AS confidence, "
-            "d.action AS action ORDER BY d.decision_number DESC LIMIT 1",
-            {"category": category, "domain": FRAMEWORK_DOMAIN},
-        )
-        if decision_result:
-            factor_4 = float(decision_result[0].get("factor_4") or 0.40)
-            confidence = float(decision_result[0].get("confidence") or 0.71)
-            action = str(decision_result[0].get("action") or "investigate")
-        else:
-            factor_4, confidence, action = 0.40, 0.71, "investigate"
-
-        provenance = f"{edge_count} verified decisions on {category}. Pattern history strong."
-
-        return build_flywheel_comparison(
-            current_edges=edge_count,
-            current_factor_4=factor_4,
-            current_confidence=confidence,
-            current_action=action,
-            current_provenance=provenance,
-            category=category,
-        )
-
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="AGE query failed for flywheel comparison",
-        ) from exc
+    raise HTTPException(status_code=501, detail="Flywheel comparison is not implemented for S2P")
 
 
 # ============================================================================
@@ -400,12 +363,7 @@ async def get_iks_trend_endpoint():
     """
     # NOTE: compute_iks_v2 has no S2P implementation.
     # Endpoint returns fallback. No Decision query to scope.
-    from app.services.iks import compute_iks_v2
-
-    try:
-        current = await compute_iks_v2(_get_age_client())
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail="AGE query failed for IKS trend") from exc
+    raise HTTPException(status_code=501, detail="IKS trend is not implemented for S2P")
 
     trend_point = {
         "decisions":  current.get("total_decisions", 0),
@@ -430,7 +388,7 @@ async def get_iks_trend_endpoint():
 @router.post("/soc/shadow/toggle")
 async def shadow_toggle(request: ShadowToggleRequest):
     """Enable or disable shadow mode."""
-    from app.services.shadow_mode import ShadowModeService
+    from app.framework.shadow_mode import ShadowModeService
     ShadowModeService.SHADOW_ENABLED = request.enabled
     return {"shadow_mode": ShadowModeService.SHADOW_ENABLED}
 
@@ -438,11 +396,11 @@ async def shadow_toggle(request: ShadowToggleRequest):
 @router.post("/soc/shadow/analyst-action")
 async def shadow_analyst_action(request: AnalystActionRequest):
     """Record what the analyst actually did for a shadow decision."""
-    from app.services.shadow_mode import ShadowModeService
+    from app.framework.shadow_mode import ShadowModeService
     await ShadowModeService.record_analyst_action(
         decision_id=request.decision_id,
         analyst_action=request.analyst_action,
-        graph_service=_get_age_client(),
+        graph_service=_get_graph_store(),
     )
     return {"recorded": True}
 
@@ -450,8 +408,8 @@ async def shadow_analyst_action(request: AnalystActionRequest):
 @router.get("/soc/shadow/report")
 async def shadow_report():
     """Return shadow mode agreement report by category."""
-    from app.services.shadow_mode import ShadowModeService
-    return await ShadowModeService.get_shadow_report(_get_age_client())
+    from app.framework.shadow_mode import ShadowModeService
+    return await ShadowModeService.get_shadow_report(_get_graph_store())
 
 
 # ============================================================================
@@ -461,51 +419,23 @@ async def shadow_report():
 @router.post("/soc/checkpoint/create")
 async def checkpoint_create(request: CheckpointCreateRequest):
     """Snapshot current centroids to a Checkpoint node."""
-    from app.services.checkpoint import CheckpointService
-    from app.services.gae_state import get_profile_scorer
-    try:
-        scorer = get_profile_scorer()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=f"Scorer not ready: {exc}")
-
-    checkpoint_id = await CheckpointService.create_checkpoint(
-        scorer=scorer,
-        graph_service=_get_age_client(),
-        reason=request.reason,
-    )
-    return {
-        "checkpoint_id": checkpoint_id,
-        "timestamp":     datetime.utcnow().isoformat() + "Z",
-        "reason":        request.reason,
-    }
+    from app.framework.checkpoint import CheckpointService
+    raise HTTPException(status_code=501, detail="S2P scorer checkpoints are not implemented")
 
 
 @router.get("/soc/checkpoint/list")
 async def checkpoint_list():
     """List all checkpoints ordered by timestamp DESC."""
-    from app.services.checkpoint import CheckpointService
-    checkpoints = await CheckpointService.list_checkpoints(_get_age_client())
+    from app.framework.checkpoint import CheckpointService
+    checkpoints = await CheckpointService.list_checkpoints(_get_graph_store())
     return {"checkpoints": checkpoints}
 
 
 @router.post("/soc/checkpoint/rollback")
 async def checkpoint_rollback(request: RollbackRequest):
     """Restore centroids from a checkpoint and freeze the scorer."""
-    from app.services.checkpoint import CheckpointService
-    from app.services.gae_state import get_profile_scorer
-    try:
-        scorer = get_profile_scorer()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=f"Scorer not ready: {exc}")
-
-    result = await CheckpointService.rollback(
-        checkpoint_id=request.checkpoint_id,
-        scorer=scorer,
-        graph_service=_get_age_client(),
-    )
-    if "error" in result:
-        raise HTTPException(status_code=404, detail=result["error"])
-    return result
+    from app.framework.checkpoint import CheckpointService
+    raise HTTPException(status_code=501, detail="S2P scorer rollback is not implemented")
 
 
 # ============================================================================
@@ -515,25 +445,13 @@ async def checkpoint_rollback(request: RollbackRequest):
 @router.post("/soc/scorer/freeze")
 async def scorer_freeze():
     """Freeze the scorer — stops centroid updates."""
-    from app.services.gae_state import get_profile_scorer
-    try:
-        scorer = get_profile_scorer()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=f"Scorer not ready: {exc}")
-    scorer.freeze()
-    return {"frozen": True}
+    raise HTTPException(status_code=501, detail="S2P scorer freeze is not implemented")
 
 
 @router.post("/soc/scorer/unfreeze")
 async def scorer_unfreeze():
     """Unfreeze the scorer — re-enables centroid updates."""
-    from app.services.gae_state import get_profile_scorer
-    try:
-        scorer = get_profile_scorer()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=f"Scorer not ready: {exc}")
-    scorer.unfreeze()
-    return {"frozen": False}
+    raise HTTPException(status_code=501, detail="S2P scorer unfreeze is not implemented")
 
 
 # ============================================================================
@@ -557,7 +475,7 @@ async def auto_approve_stats():
     }
     """
     try:
-        rows = await _get_age_client().run_query(
+        rows = await _run_graph_query(
             """
             MATCH (d:Decision)
             WHERE d.domain = $domain
@@ -612,7 +530,7 @@ async def graph_explorer_query(request: _GraphQueryRequest):
         raise HTTPException(status_code=400, detail="Unknown graph query name")
     try:
         cypher, params = _s2p_query_spec(spec)
-        rows = await _get_age_client().run_query(cypher, params)
+        rows = await _run_graph_query(cypher, params)
     except Exception as exc:
         raise HTTPException(status_code=503, detail="AGE query failed") from exc
     return {"rows": rows, "count": len(rows), "query": cypher}
@@ -628,11 +546,7 @@ async def graph_top_nodes(
     Query params: ?type=User&limit=10 (both optional).
     Excludes :Decision and :Checkpoint nodes (internal bookkeeping).
     """
-    from app.services.graph_explorer import GraphExplorerService
-    nodes = await GraphExplorerService.get_top_nodes(
-        _get_age_client(), node_type=type, limit=limit
-    )
-    return {"nodes": nodes, "count": len(nodes)}
+    raise HTTPException(status_code=501, detail="Graph explorer is not implemented for S2P")
 
 
 @router.get("/soc/graph/node/{node_id}/neighbors")
@@ -641,8 +555,7 @@ async def graph_node_neighbors(node_id: str):
 
     Response: {"node_id": str, "neighbors": [...], "total": int}
     """
-    from app.services.graph_explorer import GraphExplorerService
-    return await GraphExplorerService.get_node_neighbors(node_id, _get_age_client())
+    raise HTTPException(status_code=501, detail="Graph explorer is not implemented for S2P")
 
 
 @router.get("/soc/graph/summary")
@@ -657,8 +570,7 @@ async def graph_summary():
         "relationship_types": {"DECIDED_ON": N, ...},
     }
     """
-    from app.services.graph_explorer import GraphExplorerService
-    return await GraphExplorerService.get_graph_summary(_get_age_client())
+    raise HTTPException(status_code=501, detail="Graph explorer is not implemented for S2P")
 
 
 @router.get("/soc/graph/prebuilt-queries")
@@ -686,7 +598,7 @@ async def graph_run_prebuilt(query_name: str):
         raise HTTPException(status_code=404, detail="Unknown graph query name")
     try:
         cypher, params = _s2p_query_spec(spec)
-        rows = await _get_age_client().run_query(cypher, params)
+        rows = await _run_graph_query(cypher, params)
     except Exception as exc:
         raise HTTPException(status_code=503, detail="AGE query failed") from exc
     return {"rows": rows, "count": len(rows), "query": cypher}
@@ -718,8 +630,7 @@ async def learning_health():
         interpretation    : str,
     }
     """
-    from app.services.learning_health import LearningHealthMonitor
-    return await LearningHealthMonitor.evaluate(_get_age_client())
+    raise HTTPException(status_code=501, detail="Learning health monitor is not implemented for S2P")
 
 
 # ============================================================================
@@ -728,17 +639,7 @@ async def learning_health():
 
 def _get_intervention_controls():
     """Build InterventionControls from existing singletons."""
-    from app.services.gae_state import get_profile_scorer
-    from app.services.checkpoint import checkpoint_svc
-    from app.services.composite_gate import CompositeDiscriminant
-    from app.services.intervention_controls import InterventionControls
-    scorer = get_profile_scorer()
-    return InterventionControls(
-        db_client=_get_age_client(),
-        scorer=scorer,
-        checkpoint_service=checkpoint_svc,
-        composite_gate=CompositeDiscriminant,
-    )
+    raise HTTPException(status_code=501, detail="Intervention controls are not implemented for S2P")
 
 
 @router.post("/soc/interventions/freeze")
@@ -820,7 +721,7 @@ async def frozen_roi(
     auto_approve_rate: float = 0.04
 ):
     """Frozen mode ROI — value before learning is enabled."""
-    from app.services.economics import FrozenROICalculator
+    from app.framework.economics import FrozenROICalculator
     calc = FrozenROICalculator(
         analyst_hourly_cost=analyst_hourly_cost,
         alerts_per_day=alerts_per_day,

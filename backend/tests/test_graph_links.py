@@ -2,19 +2,21 @@ from __future__ import annotations
 
 from pathlib import Path
 import threading
+from typing import Any, cast
 
 from fastapi.testclient import TestClient
 
 from app.graph_contract import S2P_GRAPH_CONTRACT
 from app.main import app, build_s2p_scorer
 from app.routers import s2p
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _reset_scorer() -> None:
-    app.state.scorer = build_s2p_scorer()
+    app.state.scorer = build_s2p_scorer(graph_store=InMemoryGraphStore(domain="s2p"))
     app.state.graph_store = app.state.scorer.graph_store
     from app.graph.s2p_graph_reader import S2PGraphReader
 
@@ -59,7 +61,7 @@ def _score_then_outcome(client: TestClient, invoice_id: str = "S2P-GS-LINK-001")
         },
     )
     assert outcome_response.status_code == 200
-    return score
+    return cast(dict[str, Any], score)
 
 
 def test_no_invoice_map_in_source():

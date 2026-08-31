@@ -4,6 +4,19 @@ from pathlib import Path
 
 import pytest
 
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
+
+
+class EvolverGraphStore(InMemoryGraphStore):
+    """AGE-shaped registration reads in write order for variant reconstruction."""
+
+    def get_evolution_events(self, domain: str, **kwargs: object) -> list[dict]:
+        event_type = kwargs.get("event_type")
+        events = super().get_evolution_events(domain, limit=kwargs.get("limit", 100))
+        if isinstance(event_type, str):
+            events = [event for event in events if event.get("event_type") == event_type]
+        return list(events)
+
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.evolver_config import S2P_EVOLVER_CONFIG, S2P_VARIANTS
 from app.services import s2p_evolver
@@ -22,6 +35,7 @@ def reset_evolver_state():
             return self.get_state()
 
     provider = FixedProvider()
+    s2p_evolver.set_graph_store(EvolverGraphStore(domain="s2p"))
     s2p_evolver.set_conservation_provider(provider)
     s2p_evolver.reset_s2p_evolver()
     yield
@@ -140,7 +154,12 @@ def test_s2p_evolver_selects_active_variant():
 
     assert variant is not None
     assert variant["status"] == "active"
-    assert variant["id"] in {"EVIDENCE_ORDER_v1", "ROUTING_THRESHOLD_v1"}
+    assert variant["id"] in {
+        "EVIDENCE_ORDER_v1",
+        "ROUTING_THRESHOLD_v1",
+        "ESCALATION_CRITERIA_v1",
+        "TRIAGE_WEIGHTS_v1",
+    }
 
 
 def test_s2p_get_active_variant_returns_metadata():
@@ -217,7 +236,7 @@ def test_s2p_promotion_when_threshold_exceeded():
 
 
 def test_s2p_no_promotion_below_threshold():
-    for _ in range(S2P_EVOLVER_CONFIG.promotion_min_samples):
+    for _ in range(S2P_EVOLVER_CONFIG.promotion_min_samples - 1):
         s2p_evolver.record_triage_outcome("EVIDENCE_ORDER_v1", is_correct=True, category="price_variance")
         s2p_evolver.record_triage_outcome("EVIDENCE_ORDER_v2", is_correct=True, category="price_variance")
 

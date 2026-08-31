@@ -5,6 +5,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -41,7 +42,7 @@ def _service(tmp_path: Path) -> ProposalService:
 
 
 def _proposal(service: ProposalService, invoice_id: str = "invoice-1") -> DecisionChangeProposal:
-    return service.create_from_score(_score(), invoice_id, [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7], _evidence())
+    return service.create_from_score(_score(), invoice_id, [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.5], _evidence())
 
 
 def _router_client(service: ProposalService) -> TestClient:
@@ -59,7 +60,7 @@ def test_pr_01_create_from_score_produces_complete_proposal(tmp_path):
     assert proposal.decision_id == "decision-1"
     assert proposal.proposed_action == "hold_for_review"
     assert proposal.status == "proposed"
-    assert proposal.factor_vector == [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+    assert proposal.factor_vector == [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.5]
     assert len(proposal.evidence_chain) == 2
     assert proposal.expected_kpi_delta == {"exception_rate": -0.12}
     assert proposal.rollback_path == {"action": "hold_for_review", "reason": "verified outcome degraded"}
@@ -234,7 +235,7 @@ def test_pr_17_concurrent_proposals_are_persisted(tmp_path):
     service = _service(tmp_path)
 
     def create(index: int) -> str:
-        return _proposal(service, f"invoice-{index}").proposal_id
+        return cast(str, _proposal(service, f"invoice-{index}").proposal_id)
 
     with ThreadPoolExecutor(max_workers=8) as pool:
         ids = list(pool.map(create, range(24)))

@@ -13,53 +13,33 @@ from app.domains.s2p.config import S2PDomainConfig
 from app.main import app, build_s2p_scorer
 from app.routers import s2p as s2p_router
 from app.routers import s2p_preview
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
 def _sqlite_count(store, table: str) -> int:
-    return int(
-        store.connection.execute(
-            f"SELECT COUNT(*) FROM {table} WHERE domain = ?",
-            ("s2p",),
-        ).fetchone()[0]
-    )
+    return {
+        "observations": len(store._observations),
+        "observation_factor_vectors": len(store._observation_factor_vectors),
+        "observation_entity_edges": len(store._observation_entity_edges),
+    }[table]
 
 
 def _observation_rows(store) -> list[dict]:
-    return [
-        dict(row)
-        for row in store.connection.execute(
-            "SELECT * FROM observations WHERE domain = ? ORDER BY created_at",
-            ("s2p",),
-        ).fetchall()
-    ]
+    return sorted((dict(row) for row in store._observations.values()), key=lambda row: row["created_at"])
 
 
 def _factor_vector_rows(store) -> list[dict]:
-    return [
-        dict(row)
-        for row in store.connection.execute(
-            """
-            SELECT * FROM observation_factor_vectors
-            WHERE domain = ?
-            ORDER BY created_at
-            """,
-            ("s2p",),
-        ).fetchall()
-    ]
+    return sorted(
+        (dict(row) for row in store._observation_factor_vectors.values()),
+        key=lambda row: row["created_at"],
+    )
 
 
 def _edge_rows(store) -> list[dict]:
-    return [
-        dict(row)
-        for row in store.connection.execute(
-            """
-            SELECT * FROM observation_entity_edges
-            WHERE domain = ?
-            ORDER BY created_at
-            """,
-            ("s2p",),
-        ).fetchall()
-    ]
+    return sorted(
+        (dict(row) for row in store._observation_entity_edges),
+        key=lambda row: row["created_at"],
+    )
 
 
 def _score_payload(event_id: str) -> dict:
@@ -82,7 +62,7 @@ def test_preview_queue_writes_observations_not_decisions_or_conservation():
     original_scorer = app.state.scorer
     original_graph_store = app.state.graph_store
     try:
-        scorer = build_s2p_scorer(":memory:")
+        scorer = build_s2p_scorer(graph_store=InMemoryGraphStore(domain="s2p"))
         app.state.scorer = scorer
         app.state.graph_store = scorer.graph_store
         s2p_preview.reset_preview_state()
@@ -120,7 +100,7 @@ def test_preview_queue_writes_observations_not_decisions_or_conservation():
         assert all(row["entity_id"] for row in edges)
         assert all(row["dimension"] == S2PDomainConfig.n_factors for row in vectors)
         assert all(row["factor_names"] for row in vectors)
-        assert all(row["factor_vector_json"] for row in vectors)
+        assert all(row["factor_vector"] for row in vectors)
     finally:
         app.state.scorer = original_scorer
         app.state.graph_store = original_graph_store
@@ -132,7 +112,7 @@ def test_main_score_still_creates_decision():
     original_scorer = app.state.scorer
     original_graph_store = app.state.graph_store
     try:
-        scorer = build_s2p_scorer(":memory:")
+        scorer = build_s2p_scorer(graph_store=InMemoryGraphStore(domain="s2p"))
         app.state.scorer = scorer
         app.state.graph_store = scorer.graph_store
         s2p_router._clear_score_conservation_status_cache()

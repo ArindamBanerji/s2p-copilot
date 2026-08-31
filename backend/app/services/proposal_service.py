@@ -12,6 +12,7 @@ from uuid import NAMESPACE_URL, uuid5
 from copilot_sdk.outcome.models import VerifiedOutcome
 
 from app.domains.s2p.proposals import DecisionChangeProposal
+from copilot_sdk.graph.protocol import GraphStore
 
 
 class OutcomeAdapter(Protocol):
@@ -197,12 +198,91 @@ class ProposalStore:
         return None if existing is None else json.dumps(existing, sort_keys=True)
 
 
+class GraphProposalStore:
+    """GraphStore-backed proposal persistence for the production S2P path."""
+
+    _DOMAIN = "s2p"
+
+    def __init__(self, graph_store: GraphStore) -> None:
+        self._graph_store = graph_store
+
+    def save(self, proposal: DecisionChangeProposal) -> None:
+        existing = self._graph_store.get_evolution_state(self._DOMAIN, proposal.proposal_id)
+        previous_outcome = None if existing is None else existing.get("outcome")
+        self._graph_store.save_evolution_state(self._DOMAIN, proposal.proposal_id, {
+            "proposal": proposal.to_dict(), "outcome": previous_outcome,
+        })
+
+    def get(self, proposal_id: str) -> DecisionChangeProposal | None:
+        state = self._graph_store.get_evolution_state(self._DOMAIN, proposal_id)
+        if state is None:
+            return None
+        payload = state.get("proposal")
+        if not isinstance(payload, dict):
+            raise ValueError(f"Malformed proposal state: {proposal_id}")
+        return DecisionChangeProposal.from_dict(payload)
+
+    def get_by_invoice(self, invoice_id: str) -> list[DecisionChangeProposal]:
+        proposals = []
+        for state in self._graph_store.list_evolutions(self._DOMAIN):
+            payload = state.get("proposal")
+            if not isinstance(payload, dict):
+                raise ValueError("Malformed proposal state in GraphStore")
+            proposal = DecisionChangeProposal.from_dict(payload)
+            if proposal.invoice_id == invoice_id:
+                proposals.append(proposal)
+        return sorted(proposals, key=lambda item: item.created_at, reverse=True)
+
+    def list_recent(self, limit: int = 50) -> list[DecisionChangeProposal]:
+        proposals = []
+        for state in self._graph_store.list_evolutions(self._DOMAIN):
+            payload = state.get("proposal")
+            if not isinstance(payload, dict):
+                raise ValueError("Malformed proposal state in GraphStore")
+            proposals.append(DecisionChangeProposal.from_dict(payload))
+        proposals.sort(key=lambda item: item.created_at, reverse=True)
+        return proposals[: max(int(limit), 0)]
+
+    def link_outcome(self, proposal_id: str, receipt_id: str,
+                     outcome_payload: Mapping[str, Any] | None = None) -> None:
+        proposal = self.get(proposal_id)
+        if proposal is None:
+            raise KeyError(f"Unknown proposal_id: {proposal_id}")
+        updated = DecisionChangeProposal.from_dict(
+            {**proposal.to_dict(), "outcome_receipt_id": receipt_id}
+        )
+        existing = self._graph_store.get_evolution_state(self._DOMAIN, proposal_id)
+        previous_outcome = None if existing is None else existing.get("outcome")
+        self._graph_store.save_evolution_state(self._DOMAIN, proposal_id, {
+            "proposal": updated.to_dict(),
+            "outcome": outcome_payload if outcome_payload is not None else previous_outcome,
+        })
+
+    def count(self, status: str | None = None) -> int:
+        return sum(1 for proposal in self.list_recent(10**9)
+                   if status is None or proposal.status == status)
+
+    def get_outcome(self, proposal_id: str) -> dict[str, Any] | None:
+        state = self._graph_store.get_evolution_state(self._DOMAIN, proposal_id)
+        if state is None:
+            return None
+        outcome = state.get("outcome")
+        if outcome is None:
+            return None
+        if not isinstance(outcome, dict):
+            raise ValueError(f"Malformed outcome state: {proposal_id}")
+        return dict(outcome)
+
+    def close(self) -> None:
+        """The application owns the shared GraphStore lifecycle."""
+
+
 class ProposalService:
     """Create proposals and close their human-verification outcome loop."""
 
     def __init__(
         self,
-        store: ProposalStore | None = None,
+        store: ProposalStore | GraphProposalStore | None = None,
         outcome_adapter: OutcomeAdapter | None = None,
     ) -> None:
         self.store = store or ProposalStore()

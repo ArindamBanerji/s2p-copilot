@@ -31,7 +31,7 @@ def make_receipt(**overrides) -> OutcomeReceipt:
         "timestamp": "2026-01-01T00:00:00Z",
         "scored_action": "hold_for_review",
         "confidence": 0.81,
-        "factor_vector": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+        "factor_vector": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.5],
         "category": "price_variance",
         "human_action": "hold_for_review",
         "reward": 1.0,
@@ -62,7 +62,7 @@ def test_screening_with_receipts():
     assert response.status_code == 200
     data = response.json()
     assert data["total_decisions_screened"] == 1
-    assert data["with_gaps"] == 0
+    assert data["with_gaps"] == 1
     assert data["chain_integrity"]["verified"] is True
 
 

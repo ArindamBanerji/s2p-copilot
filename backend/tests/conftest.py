@@ -4,10 +4,28 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Generator
 
 import pytest
 
 from copilot_sdk.testing.fixtures import age_available
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
+
+
+class S2PTestGraphStore(InMemoryGraphStore):
+    """Complete unit-test GraphStore with AGE event filtering/order semantics."""
+
+    def get_evolution_events(self, domain: str, **kwargs: Any) -> list[dict[str, Any]]:
+        event_type = kwargs.get("event_type")
+        events = super().get_evolution_events(
+            domain, limit=kwargs.get("limit", 100), rule_name=kwargs.get("rule_name")
+        )
+        if isinstance(event_type, str):
+            events = [event for event in events if event.get("event_type") == event_type]
+        # Variant reconstruction consumes registration/status events in write
+        # order so the last status update wins. AGE's adapter preserves this
+        # order; keep the test store's contract identical.
+        return list(events)
 
 
 # Module-level app construction happens while pytest imports test modules. Keep
@@ -51,7 +69,7 @@ class S2PAgeTestEnvironment:
 
 
 @pytest.fixture(scope="session")
-def s2p_age_test_env() -> S2PAgeTestEnvironment:
+def s2p_age_test_env() -> Generator[S2PAgeTestEnvironment, None, None]:
     """Provide one disposable AGE graph for S2P live integration tests."""
     dsn = os.environ.get("AGE_TEST_DSN", "").strip() or _ORIGINAL_GRAPH_DSN.strip()
     if not dsn:
@@ -106,3 +124,22 @@ def s2p_age_test_env() -> S2PAgeTestEnvironment:
             conn.execute('SET search_path = ag_catalog, "$user", public')
             conn.execute(f"SELECT drop_graph('{active_graph_name}', true)")
             conn.execute(f"SELECT drop_graph('{shadow_graph_name}', true)")
+
+
+@pytest.fixture(autouse=True)
+def isolated_age_compatible_evolver(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give unit tests an explicit complete GraphStore, never a SQLite fallback."""
+    from app.services import s2p_evolver
+
+    store = S2PTestGraphStore(domain="s2p")
+    s2p_evolver.set_graph_store(store)
+
+    def reset_store(graph_variant_store: object) -> None:
+        graph_store = getattr(graph_variant_store, "graph_store", None)
+        if not isinstance(graph_store, InMemoryGraphStore):
+            raise AssertionError("S2P test evolver must use the isolated GraphStore")
+        graph_store.reset()
+
+    from copilot_sdk.evolution.graph_store import GraphVariantStore
+
+    monkeypatch.setattr(GraphVariantStore, "reset", reset_store)

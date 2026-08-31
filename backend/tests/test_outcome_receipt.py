@@ -45,10 +45,10 @@ def make_receipt(**overrides) -> OutcomeReceipt:
             name: value
             for name, value in zip(
                 S2PDomainConfig.factors,
-                [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+                [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.5],
             )
         },
-        "factor_vector": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+        "factor_vector": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.5],
         "category": "price_variance",
         "human_action": "hold_for_review",
         "actual_action": "hold_for_review",

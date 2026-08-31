@@ -36,8 +36,10 @@ from app.routers.s2p import (
     router as s2p_router,
     set_l5_dk_welford_tracker,
 )
-from app.services.s2p_evolver import get_evolver, set_conservation_provider
+from app.services.s2p_evolver import get_evolver, set_conservation_provider, set_graph_store
 from app.routers.s2p_audit_export import router as s2p_audit_export_router
+from app.framework import audit
+from app.routers.framework_router import configure_graph_store, router as framework_router
 from app.routers.s2p_auto_approve import router as s2p_auto_approve_router
 from app.routers.s2p_clustering import router as s2p_clustering_router
 from app.routers.compliance_router import router as s2p_compliance_router
@@ -67,7 +69,7 @@ from app.routers.s2p_process_fusion import router as s2p_process_fusion_router
 from app.routers.s2p_pvg import router as s2p_pvg_router
 from app.routers.s2p_proposals import create_proposal_router
 from app.routers.s2p_ledger import create_ledger_router
-from app.services.proposal_service import ProposalService, ProposalStore
+from app.services.proposal_service import GraphProposalStore, ProposalService
 from app.services.compounding_ledger import CompoundingLedger
 from app.services.s2p_autonomy import S2PAutonomyManager
 from app.routers.s2p_autonomy import create_s2p_autonomy_router
@@ -187,8 +189,10 @@ app.state.scorer = build_s2p_scorer(
     graph_store=create_s2p_active_graph_store(app.state.s2p_active_graph_config),
     profile=_resolve_profile(),
 )
-set_conservation_provider(ScorerBackedProvider(app.state.scorer, "s2p"))
 app.state.graph_store = app.state.scorer.graph_store
+configure_graph_store(app.state.graph_store)
+set_graph_store(app.state.graph_store)
+set_conservation_provider(ScorerBackedProvider(app.state.scorer, "s2p"))
 app.state.evolver = get_evolver()
 mount_self_computation_router(
     app,
@@ -201,7 +205,7 @@ app.state.s2p_graph_reader = S2PGraphReader(
     store=app.state.scorer.graph_store,
     domain="s2p",
 )
-app.state.proposal_store = ProposalStore(str(DATA_DIR / "s2p_proposals.sqlite3"))
+app.state.proposal_store = GraphProposalStore(app.state.graph_store)
 app.state.proposal_service = ProposalService(store=app.state.proposal_store)
 
 
@@ -216,7 +220,7 @@ def _live_iks_observation() -> dict[str, object]:
 
 app.state.compounding_ledger = CompoundingLedger(
     proposal_store=app.state.proposal_store,
-    db_path=str(DATA_DIR / "s2p_compounding_ledger.sqlite3"),
+    graph_store=app.state.graph_store,
     iks_provider=_live_iks_observation,
     conservation_provider=lambda: cached_conservation_state_provider(app.state),
 )
@@ -278,6 +282,7 @@ app.middleware("http")(
 
 
 app.include_router(learn_router)
+app.include_router(framework_router, prefix="/api")
 app.include_router(
     create_conservation_router(
         "s2p",
@@ -346,6 +351,7 @@ app.include_router(create_tab_state_router(app.state.s2p_tab_state_cache))
 
 @app.on_event("startup")
 async def warm_s2p_tab_state_cache() -> None:
+    audit.configure_graph_store(app.state.graph_store)
     _warm_s2p_learn_store_connections()
     warm_financial_snapshots(app.state.graph_store)
     warm_factor_snapshots(app.state.scorer)

@@ -238,10 +238,7 @@ class S2PGraphReader:
         lower = max(0.0, numeric_amount - tolerance)
         upper = numeric_amount + tolerance
 
-        try:
-            self._age_store()
-        except GraphUnavailableError:
-            return []
+        self._age_store()
 
         def read() -> list[dict[str, Any]]:
             store = self._age_store()

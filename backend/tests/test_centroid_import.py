@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.domains.s2p.config import S2PDomainConfig
 from app.main import app, build_s2p_scorer
 from app.routers import s2p_explorer
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
 client = TestClient(app)
@@ -16,7 +17,7 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def reset_scorer_state(tmp_path):
-    scorer = build_s2p_scorer(str(tmp_path / "s2p-import-test.db"))
+    scorer = build_s2p_scorer(graph_store=InMemoryGraphStore(domain="s2p"))
     app.state.scorer = scorer
     app.state.graph_store = scorer.graph_store
     app.state.s2p_reward_function = scorer._reward_fn
@@ -177,14 +178,14 @@ def test_green_conservation_import_updates_isolated_centroids(monkeypatch):
 def test_export_reads_imported_centroids(monkeypatch):
     monkeypatch.setattr(s2p_explorer, "_current_conservation_status", lambda _request: "GREEN")
     centroids = _valid_centroids(0.33)
-    centroids[0][0] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+    centroids[0][0] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.5]
 
     response = _post({"centroids": centroids})
     assert response.status_code == 200
     exported = client.get("/api/s2p/explorer/centroid/price_variance/auto_approve")
 
     assert exported.status_code == 200
-    assert exported.json()["centroid"] == [*centroids[0][0], 0.5]
+    assert exported.json()["centroid"] == centroids[0][0]
 
 
 def test_checkpoint_failure_rolls_back(monkeypatch):

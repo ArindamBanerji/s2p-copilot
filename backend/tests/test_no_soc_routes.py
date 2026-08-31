@@ -6,14 +6,15 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_no_soc_endpoints_in_openapi():
+def test_framework_soc_endpoints_are_explicitly_mounted():
     response = client.get("/openapi.json")
     assert response.status_code == 200
 
     paths = response.json()["paths"]
     soc_paths = sorted(path for path in paths if "/soc/" in path)
 
-    assert soc_paths == []
+    assert soc_paths
+    assert "/api/soc/ols-status" in soc_paths
 
 
 def test_s2p_endpoints_still_accessible():

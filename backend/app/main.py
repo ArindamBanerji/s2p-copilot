@@ -13,6 +13,7 @@ from copilot_sdk.backend import (
     create_evolution_router,
     create_measurement_state_router,
 )
+from copilot_sdk.auth import AuthMiddleware, create_auth_router
 from copilot_sdk.evolution import ScorerBackedProvider
 from copilot_sdk.backend.self_computation_router import mount_self_computation_router
 from copilot_sdk.backend.counterfactual_router import create_counterfactual_router
@@ -28,7 +29,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
 
 from app.domains.s2p.evolution import S2PEvolutionService
-from app.domains.s2p.reward import S2PRewardFunction
+from app.domains.s2p.reward import S2PGradedRewardFunction
 from app.graph.s2p_graph_reader import S2PGraphReader
 from app.routers.s2p import (
     cached_conservation_state_provider,
@@ -159,7 +160,7 @@ def build_s2p_scorer(
     scorer = CompoundingScorer.from_preset(
         "s2p",
         graph_store=selected_graph_store,
-        reward_function=S2PRewardFunction(),
+        reward_function=S2PGradedRewardFunction(),
         profile=resolved_profile,
     )
     _migrate_s2p_scorer_runtime(scorer)
@@ -280,6 +281,13 @@ app.middleware("http")(
         mutation_paths=S2P_MUTATION_PATHS,
     )
 )
+
+# Authentication is deliberately opt-in for local development and existing
+# S2P deployments.  When enabled, use the shared SDK middleware and SAML/JWT
+# routes; the SDK keeps health and authentication endpoints exempt.
+if os.environ.get("AUTH_ENABLED", "false").strip().lower() == "true":
+    app.add_middleware(AuthMiddleware)
+    app.include_router(create_auth_router())
 
 
 app.include_router(learn_router)

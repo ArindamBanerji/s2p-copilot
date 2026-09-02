@@ -41,6 +41,7 @@ from app.domains.s2p.auto_approve import (
 )
 from app.domains.s2p.config import PENALTY_RATIO, S2PDomainConfig
 from app.domains.s2p.factors import S2PEvent, compute_all_factors
+from app.domains.s2p.reward import S2PRewardFunction
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse, LearningGateResponse, S2PScoreResponse
 from app.routers.s2p_data_helpers import find_invoice, load_invoices
@@ -2607,6 +2608,17 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             request.outcome,
             outcome_context,
         )
+        # Preserve the established /outcome response contract for clients of
+        # this legacy route. The SDK-shaped /api/learn route above remains the
+        # canonical graded RL path and reports rewards in [0, 1].
+        if request.outcome == "override":
+            compatibility_raw = S2PRewardFunction().compute(
+                str(decision.get("recommended_action", decision.get("action", ""))),
+                request.analyst_action,
+                outcome_context,
+            )
+            payload["reward_raw"] = compatibility_raw
+            payload["reward"] = compatibility_raw * PENALTY_RATIO
         payload["outcome"] = request.outcome
         _clear_score_conservation_status_cache()
         _persist_l5_centroid_state(

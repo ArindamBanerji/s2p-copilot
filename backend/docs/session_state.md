@@ -50,3 +50,130 @@ After: POST /api/learn and POST /api/s2p/outcome resolve the proposal implicitly
 ### State for next prompt
 DS-B1 is fixed by a real append-only epoch reset and removal of the global reset monkeypatch. S2P-1 is fixed by implicit, idempotent proposal resolution in learn/outcome after successful learning. Backend suite increased from 1837 to 1842 tests and remains fully green. 0 new regressions introduced.
 ---
+
+---
+## SLOT E ENTRY: S2P Contract Fixes — Frozen Twin, IKS, Queue Errors, Process Fusion Path
+Timestamp: 2026-09-07T15:20:47.1829516Z
+
+### Changed files
+- app/routers/s2p_demo_beats.py
+- app/routers/s2p.py
+- app/routers/s2p_preview.py
+- app/routers/s2p_control_tower.py
+- app/routers/s2p_process_fusion.py
+- tests/test_s2p_demo_beats.py
+- tests/test_s2p_iks.py
+- tests/test_s2p_preview.py
+- tests/test_s2p_control_tower.py
+- tests/test_process_fusion.py
+- docs/session_state.md
+
+### Findings and before/after contracts
+- S2P-2 Frozen Twin field mismatch:
+  - Before: /api/s2p/learning/frozen-twin returned S2P fields only: frozen_available, current_decisions, compared_decisions, frozen_decisions_would_miss, delta_accuracy, delta_coverage, coverage/accuracy fields, visual_diff, evidence fields.
+  - After: same fields remain, plus SOC-compatible/current shell fields: current_vs_frozen, decisions_frozen_would_have_missed, replay_candidates, source. Computation is unchanged.
+- S2P-3 IKS zero ambiguity:
+  - Before: /api/s2p/iks returned iks/decisions/status but no reason, so a zero looked the same whether computed from no verified decisions or stale/uncomputed state.
+  - After: response includes reason='insufficient_data' when decisions=0 and reason='computed' when verified decisions are present. Existing scorer.trajectory() computation remains the source of truth.
+- S2P-4 swallowed queue errors:
+  - Before: queue responses had no status discriminator, and preview/control queue failures could be indistinguishable from empty data to consumers.
+  - After: successful preview/control queue responses include status='ok'. Unexpected queue failures raise HTTPException with detail status='error', message, and exceptions=[]. Existing list fields remain backward compatible.
+- S2P-8 dormant 404 risk:
+  - Before: process fusion was registered only at /api/s2p/enterprise/process-fusion.
+  - After: /api/s2p/process-fusion also responds; legacy /api/s2p/enterprise/process-fusion remains available.
+
+### Baseline before / after
+- Before: 1842 passed, 0 failed, 3686 warnings in 268.37s
+- After: 1846 passed, 0 failed, 3694 warnings in 204.53s
+
+### Validation
+- Changed-file mypy: pass
+- Targeted tests:
+  - tests/test_s2p_demo_beats.py: 18 passed
+  - tests/test_s2p_iks.py: 9 passed
+  - tests/test_s2p_preview.py: 39 passed
+  - tests/test_s2p_control_tower.py: 17 passed
+  - tests/test_process_fusion.py: 9 passed
+- Sampling gate, unchanged files: 33 passed
+- Full S2P backend suite: 1846 passed, 0 failed
+- Banned pattern scan: no body_iterator or type-ignore matches under backend/app
+
+### SOC preview tab cross-check
+Still works: yes. TestClient checks returned 200 for /api/s2p/preview/queue, /api/s2p/preview/conservation, /api/s2p/preview/suppliers, and /api/s2p/insight/process-signals. SOC frontend scan confirms S2PPreviewTab calls /api/s2p/preview/queue and ProcessFusionPanel calls /api/s2p/insight/process-signals.
+
+### State for next prompt
+Slot B remains intact. Slot E fixes are additive/backward-compatible: Frozen Twin adds expected shell aliases, IKS reports computed vs insufficient_data, queue responses include status and surface failures as HTTP errors, and process fusion has both native and legacy paths. 0 new regressions introduced.
+---
+
+---
+## SLOT J ENTRY: B5 Internal Conservation Coverage Alignment
+Timestamp: 2026-09-07T12:07:40.9985867-07:00
+
+### Changed files
+- app/routers/s2p.py
+- tests/test_s2p_conservation_coverage.py
+- tests/test_s2p_preseed_integration.py
+- tests/test_s2p_evolution_router.py
+- docs/session_state.md
+
+Pre-existing Slot B/E dirty files were present and left intact:
+app/routers/s2p_control_tower.py, app/routers/s2p_demo_beats.py,
+app/routers/s2p_preview.py, app/routers/s2p_process_fusion.py,
+tests/test_process_fusion.py, tests/test_s2p_control_tower.py,
+tests/test_s2p_demo_beats.py, tests/test_s2p_iks.py, tests/test_s2p_preview.py.
+
+### Diagnosis
+- _read_conservation_counts() already read verified_count, correct_count,
+  total_decisions, penalty_ratio, categories_total, and categories_with_data.
+- Public /api/conservation/status uses compute_conservation_status_payload(),
+  which forwards category coverage to GAE conservation_status().
+- Internal _current_conservation_status() bypassed that public payload builder,
+  omitted categories_with_data/total_categories, and forced zero verified
+  decisions to GREEN.
+- _score_write_governance() also forced zero verified decisions to GREEN,
+  creating another internal/public disagreement.
+- GAE conservation_status() returns RED when verified_count or total_decisions
+  is zero, and also returns RED when category coverage args are absent.
+
+### Before / after
+- Before: internal conservation could disagree with the public conservation
+  endpoint because it dropped coverage args and rewrote zero evidence to GREEN.
+- After: internal _current_conservation_status() uses the same
+  compute_conservation_status_payload() path as the public endpoint, so coverage
+  and zero-evidence handling stay aligned.
+- After: _score_write_governance() no longer rewrites zero verified decisions
+  to GREEN.
+- COLD_START remains learning-allowed if supplied by the SDK because
+  _is_learning_paused("COLD_START") returns False.
+- Promotion-check test expectation was updated from the stale unavailable reason
+  to the live conservation red gate now surfaced by the endpoint.
+
+### Tests added / updated
+- Added internal/public agreement coverage for zero decisions, bootstrap volume
+  (1-9 decisions), and normal volume (50+ decisions).
+- Added a coverage forwarding test proving categories_with_data and
+  total_categories reach the conservation engine through the SDK payload path.
+- Added a COLD_START learning-allowed guard.
+- Added S2P-side regression coverage for SDK preseed_all_copilots.py S2P
+  seeding, using fake health/trajectory/API calls against seed_s2p_domain().
+
+### Validation
+- Pre-check baseline: 1846 passed, 0 failed, 3694 warnings in 287.51s.
+- Targeted conservation/preseed tests: 8 passed, 18 warnings.
+- Targeted conservation/evolution/preseed rerun: 9 passed, 20 warnings.
+- Affected score/auto-approve/learn target set: 122 passed, 246 warnings.
+- Sampling gate random files:
+  - tests/test_scaffold.py
+  - tests/test_cross_copilot_signals.py
+  - tests/test_provenance_label.py
+  - Result: 23 passed, 48 warnings.
+- Mypy changed Slot J Python files: pass.
+- Banned pattern scan under backend/app: no body_iterator or type-ignore matches.
+- Full S2P backend suite after fix: 1852 passed, 0 failed, 3706 warnings in
+  303.50s.
+
+### State for next prompt
+Internal and public S2P conservation status now share the same SDK payload
+calculation and category coverage inputs. Backend suite increased from 1846 to
+1852 tests and remains fully green. 0 new regressions introduced.
+---

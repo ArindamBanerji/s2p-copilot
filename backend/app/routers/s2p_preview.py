@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from copilot_sdk.state.cached_static import cached_static
 from copilot_sdk.graph.protocol import ProtocolV2GraphStore
@@ -476,6 +476,7 @@ def _preview_queue_payload(request: Request, limit: int = 5) -> dict[str, Any]:
     auto_approve_count = sum(1 for invoice in invoices if invoice["scored_action"] == "auto_approve")
     confidence_avg = sum(invoice["confidence"] for invoice in invoices) / len(invoices) if invoices else 0.0
     return {
+        "status": "ok",
         "engine_version": ENGINE_VERSION,
         "total": len(fixture_invoices),
         "showing": len(shown),
@@ -508,7 +509,20 @@ def _preview_queue_limit(request: Request, default: int = 5) -> int:
 @router.get("/queue", response_model=GenericResponse)
 @cached_static("preview-queue", copilot="s2p", url="/api/s2p/preview/queue")
 def preview_queue(request: Request) -> dict[str, Any]:
-    return _preview_queue_payload(request, _preview_queue_limit(request))
+    try:
+        return _preview_queue_payload(request, _preview_queue_limit(request))
+    except HTTPException:
+        raise
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "error", "message": "S2P preview queue data unavailable", "exceptions": []},
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"status": "error", "message": "S2P preview queue failed", "exceptions": []},
+        ) from exc
 
 
 @router.get("/conservation", response_model=GenericResponse)

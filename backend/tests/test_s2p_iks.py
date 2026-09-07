@@ -73,6 +73,7 @@ def test_iks_response_has_required_fields():
     assert "domain" in data
     assert "status" in data
     assert "learning_active" in data
+    assert "reason" in data
     assert data["domain"] == "s2p"
     assert_json_safe(data)
 
@@ -96,6 +97,7 @@ def test_iks_endpoint_reports_cold_start_when_learning_disabled():
     assert data["iks"] == 0.0
     assert data["status"] == "CALIBRATING"
     assert data["learning_active"] is False
+    assert data["reason"] == "insufficient_data"
     assert "High institutional knowledge" not in data["interpretation"]
 
 
@@ -123,6 +125,7 @@ def test_iks_endpoint_uses_app_state_scorer(monkeypatch):
     assert data["iks"] == 42.5
     assert data["decisions"] == 7
     assert data["learning_active"] is True
+    assert data["reason"] == "computed"
 
 
 def test_iks_endpoint_works_without_legacy_scorer_module():

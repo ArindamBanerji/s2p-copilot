@@ -101,10 +101,10 @@ def test_evolution_promotion_check_endpoint():
     assert_json_safe(data)
     promotion = data["promotion"]
     # The live scorer provider is authoritative.  A healthy test fixture may
-    # therefore promote the qualifying candidate; an unsafe scorer must return
-    # the historical conservation-blocked shape.
+    # therefore promote the qualifying candidate; an unsafe scorer should
+    # surface the live conservation gate that blocked promotion.
     if promotion.get("promoted") is False:
-        assert promotion["reason"] == "conservation_gate_unavailable"
+        assert promotion["reason"] == "conservation_gate_red"
     else:
         assert promotion["promoted_id"] == "EVIDENCE_ORDER_v2"
 

@@ -72,6 +72,7 @@ def test_contract_gap_routes_to_evidence():
 def test_queue_respects_limit():
     data = client.get("/api/s2p/control-tower/queue", params={"limit": 3}).json()
 
+    assert data["status"] == "ok"
     assert data["showing"] == 3
     assert len(data["queue"]) == 3
     assert data["total"] >= 3
@@ -170,3 +171,23 @@ def test_no_soc_imports_or_vocabulary_in_control_tower_router():
         "suppress",
     ):
         assert forbidden not in text
+
+
+def test_queue_error_surfaces_as_http_error():
+    from fastapi import HTTPException
+
+    from app.routers import s2p_control_tower
+
+    original = s2p_control_tower._queue_payload
+    try:
+        def fail_queue(limit: int) -> dict[str, object]:
+            raise RuntimeError("boom")
+
+        s2p_control_tower._queue_payload = fail_queue
+        s2p_control_tower.queue(3)
+    except HTTPException as exc:
+        assert exc.status_code == 500
+        assert exc.detail["status"] == "error"
+        assert exc.detail["exceptions"] == []
+    finally:
+        s2p_control_tower._queue_payload = original

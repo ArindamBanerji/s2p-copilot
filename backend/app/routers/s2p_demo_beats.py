@@ -108,8 +108,10 @@ def _centroids(scorer: Any) -> np.ndarray:
     if centroids is None:
         centroids = getattr(profile, "mu", None)
     if centroids is None:
-        return np.asarray(S2PDomainConfig.get_profile_centroids(), dtype=float)
-    return cast(np.ndarray, np.asarray(centroids, dtype=float))
+        baseline = np.asarray(S2PDomainConfig.get_profile_centroids(), dtype=float)
+        return cast(np.ndarray, baseline)
+    current = np.asarray(centroids, dtype=float)
+    return cast(np.ndarray, current)
 
 
 @router.get("/evolution/extinction")
@@ -148,6 +150,28 @@ def extinction(request: Request) -> dict[str, Any]:
     }
 
 
+def _frozen_twin_contract(payload: dict[str, Any], *, source: str) -> dict[str, Any]:
+    return {
+        **payload,
+        "current_vs_frozen": {
+            "current_accuracy": payload.get("current_accuracy"),
+            "frozen_accuracy": payload.get("frozen_accuracy"),
+            "delta_accuracy": payload.get("delta_accuracy"),
+            "current_coverage": payload.get("current_coverage"),
+            "frozen_coverage": payload.get("frozen_coverage"),
+            "delta_coverage": payload.get("delta_coverage"),
+            "compared_decisions": payload.get("compared_decisions", 0),
+        },
+        "decisions_frozen_would_have_missed": payload.get("frozen_decisions_would_miss", []),
+        "replay_candidates": [
+            item.get("decision_id")
+            for item in payload.get("visual_diff", [])
+            if isinstance(item, dict) and item.get("decision_id")
+        ],
+        "source": source,
+    }
+
+
 @router.get("/learning/frozen-twin")
 def frozen_twin(request: Request) -> dict[str, Any]:
     reader = _reader(request)
@@ -159,7 +183,7 @@ def frozen_twin(request: Request) -> dict[str, Any]:
         current = _centroids(scorer)
         initial = np.asarray(S2PDomainConfig.get_profile_centroids(), dtype=float)
         drift = float(np.linalg.norm(current - initial))
-        return {
+        payload = {
             "frozen_available": True,
             "current_decisions": len(rows),
             "compared_decisions": 0,
@@ -175,6 +199,7 @@ def frozen_twin(request: Request) -> dict[str, Any]:
             "centroid_drift_from_config_baseline": drift,
             "evidence_note": "Graph unavailable; comparison uses the live scorer and canonical S2P config baseline.",
         }
+        return _frozen_twin_contract(payload, source="live scorer and canonical S2P config baseline")
     comparisons: list[dict[str, Any]] = []
     for row in verified:
         vector = row.get("factor_vector")
@@ -198,7 +223,7 @@ def frozen_twin(request: Request) -> dict[str, Any]:
     frozen_accuracy = frozen_correct / denominator if denominator else None
     current_coverage = denominator / len(rows) if rows else None
     frozen_coverage = denominator / len(rows) if rows else None
-    return {
+    payload = {
         "frozen_available": True,
         "current_decisions": len(rows),
         "compared_decisions": denominator,
@@ -217,6 +242,7 @@ def frozen_twin(request: Request) -> dict[str, Any]:
         "evidence_tier": "T_A",
         "evidence_note": "Comparison uses the persisted immutable S2P day-one twin and live verified decisions.",
     }
+    return _frozen_twin_contract(payload, source="persisted immutable S2P day-one twin and live verified decisions")
 
 
 @router.get("/context/what-if/{invoice_id}")
@@ -336,3 +362,4 @@ def rule_vs_reasoning(
         },
         "contrast": "Same input. Same scorer state. Different decision path.",
     }
+

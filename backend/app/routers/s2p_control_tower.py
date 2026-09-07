@@ -201,8 +201,7 @@ def classify_post(payload: dict[str, Any]) -> dict[str, Any]:
     return _classify_from_inputs(payload=payload)
 
 
-@router.get("/queue", response_model=CollectionResponse)
-def queue(limit: int = Query(20, ge=1, le=100)) -> dict[str, Any]:
+def _queue_payload(limit: int) -> dict[str, Any]:
     entries = []
     for invoice in load_invoices():
         classified = _classify_invoice(invoice)
@@ -226,9 +225,28 @@ def queue(limit: int = Query(20, ge=1, le=100)) -> dict[str, Any]:
         )
     entries.sort(key=lambda item: item["priority"], reverse=True)
     return {
+        "status": "ok",
         "queue": entries[:limit],
         "items": entries[:limit],
         "total": len(entries),
         "showing": min(limit, len(entries)),
         "source": "synthetic_invoices.json",
     }
+
+
+@router.get("/queue", response_model=CollectionResponse)
+def queue(limit: int = Query(20, ge=1, le=100)) -> dict[str, Any]:
+    try:
+        return _queue_payload(limit)
+    except HTTPException:
+        raise
+    except (OSError, ValueError, KeyError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "error", "message": "S2P control tower queue data unavailable", "exceptions": []},
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"status": "error", "message": "S2P control tower queue failed", "exceptions": []},
+        ) from exc

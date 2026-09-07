@@ -9,9 +9,10 @@ from fastapi import APIRouter, Body
 from copilot_sdk.enterprise.process_ingest import ProcessExportIngester
 
 
-router = APIRouter(prefix="/api/s2p/enterprise", tags=["s2p-enterprise"])
+router = APIRouter(prefix="/api/s2p", tags=["s2p-enterprise"])
 
 
+@router.post("/enterprise/process-fusion")
 @router.post("/process-fusion")
 def process_fusion(export_data: list[dict[str, Any]] = Body(...)) -> dict[str, Any]:
     summary = ProcessExportIngester().ingest(export_data)

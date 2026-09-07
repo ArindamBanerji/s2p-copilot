@@ -28,7 +28,9 @@ def _queue(limit: int | None = None):
 
 
 def test_queue_returns_200():
-    assert _queue().status_code == 200
+    response = _queue()
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
 
 
 def test_queue_default_limit_5():
@@ -524,3 +526,22 @@ def test_preview_queue_does_not_write_age_shadow_decisions():
     finally:
         app.state.s2p_shadow = original_shadow
         preview_module.reset_preview_state()
+
+
+def test_queue_error_surfaces_as_http_error():
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from app.routers import s2p_preview
+
+    request = SimpleNamespace(query_params={}, app=SimpleNamespace(state=SimpleNamespace(scorer=object())))
+
+    try:
+        s2p_preview.preview_queue(request)
+    except HTTPException as exc:
+        assert exc.status_code == 500
+        assert exc.detail["status"] == "error"
+        assert exc.detail["exceptions"] == []
+    else:
+        raise AssertionError("preview queue failure was swallowed")

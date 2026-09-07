@@ -97,3 +97,17 @@ def test_fusion_no_write_back_claim():
     assert "write-back" not in text
     assert "write back" not in text
     assert "auto-implement" not in text
+
+
+def test_process_fusion_native_s2p_path_responds():
+    response = client.post("/api/s2p/process-fusion", json=EXPORT_EVENTS)
+
+    assert response.status_code == 200
+    assert "where" in response.json()
+
+
+def test_process_fusion_legacy_enterprise_path_remains_available():
+    response = client.post("/api/s2p/enterprise/process-fusion", json=EXPORT_EVENTS)
+
+    assert response.status_code == 200
+    assert "where" in response.json()

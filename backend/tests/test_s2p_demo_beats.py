@@ -33,8 +33,19 @@ def test_frozen_twin_has_comparison_contract() -> None:
     response = client.get("/api/s2p/learning/frozen-twin")
     assert response.status_code == 200
     payload = response.json()
-    for key in ("frozen_available", "frozen_decisions_would_miss", "delta_accuracy", "delta_coverage", "visual_diff"):
+    for key in (
+        "frozen_available",
+        "frozen_decisions_would_miss",
+        "decisions_frozen_would_have_missed",
+        "delta_accuracy",
+        "delta_coverage",
+        "visual_diff",
+        "current_vs_frozen",
+        "replay_candidates",
+        "source",
+    ):
         assert key in payload
+    assert isinstance(payload["current_vs_frozen"], dict)
 
 
 def test_frozen_twin_visual_diff_is_json_list() -> None:

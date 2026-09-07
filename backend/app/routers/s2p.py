@@ -24,7 +24,10 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Any, Optional, cast
 
-from copilot_sdk.backend.conservation_utils import compute_conservation_metrics
+from copilot_sdk.backend.conservation_utils import (
+    compute_conservation_metrics,
+    compute_conservation_status_payload,
+)
 from copilot_sdk.backend.diagnostics_models import build_diagnostics
 from copilot_sdk.graph.protocol import ProtocolV2GraphStore
 from copilot_sdk.scoring.mutation_lock import get_mutation_lock, serialize_mutation
@@ -1069,19 +1072,11 @@ def cached_conservation_state_provider(app_state: Any) -> dict[str, float | int]
 
 def _current_conservation_status(http_request: Request) -> str:
     try:
-        from gae.calibration import conservation_status
-
         graph_store = _graph_store_from_request(http_request)
-        counts = _cached_conservation_counts(graph_store, _graph_domain(graph_store))
-        if int(counts["verified_count"]) == 0:
-            return "GREEN"
-        check = conservation_status(
-            verified_count=int(counts["verified_count"]),
-            correct_count=int(counts["correct_count"]),
-            total_decisions=int(counts["total_decisions"]),
-            penalty_ratio=float(counts["penalty_ratio"]),
-        )
-        return str(check.status)
+        domain = _graph_domain(graph_store)
+        counts = _cached_conservation_counts(graph_store, domain)
+        payload = compute_conservation_status_payload(domain, counts)
+        return str(payload["status"])
     except Exception:
         log.exception("Unable to evaluate conservation status for auto-approve gate")
         return "UNKNOWN"
@@ -1151,8 +1146,6 @@ def _score_write_governance(http_request: Request) -> dict[str, Any]:
     # requests observe a different conservation decision than the read path.
     status = _cached_score_conservation_status_only(http_request).strip().upper()
     counts = _cached_conservation_counts(graph_store, domain)
-    if int(counts["verified_count"]) == 0:
-        status = "GREEN"
     return {
         "conservation_status": status,
         "evidence_tier": "T_O" if int(counts["verified_count"]) > 0 else "T_S",
@@ -1785,6 +1778,7 @@ def _iks_from_trajectory(trajectory: Any) -> dict[str, Any]:
         "d_max": 0.20,
         "mean_drift": 0.0,
         "decisions": decisions,
+        "reason": "computed" if decisions > 0 else "insufficient_data",
         "domain": "s2p",
         "status": _iks_status(iks_value, decisions),
         "learning_active": decisions > 0,

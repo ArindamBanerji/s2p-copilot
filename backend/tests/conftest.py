@@ -166,22 +166,12 @@ def s2p_age_test_env() -> Generator[S2PAgeTestEnvironment, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def isolated_age_compatible_evolver(monkeypatch: pytest.MonkeyPatch) -> None:
+def isolated_age_compatible_evolver() -> None:
     """Give unit tests an explicit complete GraphStore, never a SQLite fallback."""
     from app.services import s2p_evolver
 
     store = S2PTestGraphStore(domain="s2p")
     s2p_evolver.set_graph_store(store)
-
-    def reset_store(graph_variant_store: object) -> None:
-        graph_store = getattr(graph_variant_store, "graph_store", None)
-        if not isinstance(graph_store, InMemoryGraphStore):
-            raise AssertionError("S2P test evolver must use the isolated GraphStore")
-        graph_store.reset()
-
-    from copilot_sdk.evolution.graph_store import GraphVariantStore
-
-    monkeypatch.setattr(GraphVariantStore, "reset", reset_store)
 
 
 @pytest.fixture(autouse=True)

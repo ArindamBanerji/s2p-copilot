@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from copilot_sdk.evolution.graph_store import GraphVariantStore
+from copilot_sdk.evolution.variant_store import VariantSpec
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
@@ -251,6 +253,23 @@ def test_s2p_reset_re_registers_variants():
     assert len(s2p_evolver.get_registered_variants()) == 8
     assert s2p_evolver.get_active_variant(family="evidence_ordering")["id"] == "EVIDENCE_ORDER_v1"
     assert _stats("EVIDENCE_ORDER_v1")["total"] == 0
+
+
+def test_graph_variant_store_reset_starts_new_epoch_without_deleting_history():
+    graph_store = EvolverGraphStore(domain="s2p")
+    store = GraphVariantStore(graph_store, "s2p")
+    spec = VariantSpec(id="V1", family="family", status="active")
+    store.register_variant(spec)
+    store.record_outcome("V1", True, category="price_variance")
+
+    store.reset()
+    store.register_variant(spec)
+
+    events = graph_store.get_evolution_events("s2p", limit=100)
+    assert any(event["event_type"] == "variant_outcome" for event in events)
+    assert any(event["event_type"] == "variant_reset" for event in events)
+    assert store.get_global_stats("V1").total == 0
+    assert store.get_variant("V1") is not None
 
 
 def test_s2p_evolver_has_no_level1_imports():

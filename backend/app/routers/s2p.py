@@ -670,6 +670,24 @@ def _learning_store_from_request(http_request: Request) -> Any | None:
     return None
 
 
+
+
+def _resolve_decision_proposal(
+    http_request: Request,
+    *,
+    decision_id: str,
+    outcome: str,
+    actual_action: str,
+    reason_code: str | None = None,
+) -> dict[str, Any] | None:
+    proposal_service = getattr(http_request.app.state, "proposal_service", None)
+    resolver = getattr(proposal_service, "resolve_for_decision", None)
+    if not callable(resolver):
+        return None
+    proposal = resolver(decision_id, outcome, actual_action, reason_code)
+    return proposal.to_dict() if proposal is not None else None
+
+
 def _dk_learning_store_from_request(http_request: Request) -> Any | None:
     state = getattr(http_request.app, "state", None)
     scorer = getattr(state, "scorer", None)
@@ -2349,7 +2367,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
 @router.get("/auto-approve/stats", response_model=GenericResponse)
 @cached_static("auto-approve-stats", copilot="s2p")
 def get_auto_approve_stats_endpoint() -> dict[str, Any]:
-    return get_auto_approve_stats()
+    return cast(dict[str, Any], get_auto_approve_stats())
 
 
 @router.get("/auto-approve/expansion-proof", response_model=GenericResponse)
@@ -2361,11 +2379,14 @@ def get_auto_approve_expansion_proof(
     if selected_category not in AUTO_APPROVE_THRESHOLDS:
         raise HTTPException(status_code=404, detail=f"Unknown category: {selected_category}")
     verified_count, correct_count = _graph_verified_counts(http_request)
-    return build_expansion_proof(
-        selected_category,
-        verified_decisions=verified_count,
-        correct_decisions=correct_count,
-        conservation_status=_current_conservation_status(http_request),
+    return cast(
+        dict[str, Any],
+        build_expansion_proof(
+            selected_category,
+            verified_decisions=verified_count,
+            correct_decisions=correct_count,
+            conservation_status=_current_conservation_status(http_request),
+        ),
     )
 
 
@@ -2467,6 +2488,13 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             request.actual_action,
             request.outcome,
             context,
+        )
+        _resolve_decision_proposal(
+            http_request,
+            decision_id=request.decision_id,
+            outcome=request.outcome,
+            actual_action=request.actual_action,
+            reason_code=request.reason_code,
         )
         _clear_score_conservation_status_cache()
         _persist_l5_centroid_state(
@@ -2607,6 +2635,13 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             request.analyst_action,
             request.outcome,
             outcome_context,
+        )
+        _resolve_decision_proposal(
+            http_request,
+            decision_id=request.decision_id,
+            outcome=request.outcome,
+            actual_action=request.analyst_action,
+            reason_code=request.reason_code,
         )
         # Preserve the established /outcome response contract for clients of
         # this legacy route. The SDK-shaped /api/learn route above remains the

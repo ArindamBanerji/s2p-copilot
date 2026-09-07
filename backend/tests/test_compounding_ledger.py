@@ -240,6 +240,140 @@ def test_cl_19_score_propose_confirm_ledger_entry():
     assert response.status_code == 200
     payload = response.json()
     proposal_id = payload["proposal_id"]
-    s2p_app.state.proposal_service.confirm(proposal_id)
+    learn = TestClient(s2p_app).post(
+        "/api/learn",
+        json={
+            "decision_id": payload["decision_id"],
+            "actual_action": payload["action"],
+            "outcome": "confirmed",
+        },
+    )
+    assert learn.status_code == 200
+    proposal = s2p_app.state.proposal_service.store.get(proposal_id)
+    assert proposal is not None
+    assert proposal.status == "confirmed"
     events = s2p_app.state.compounding_ledger.timeline()
     assert any(event["proposal_id"] == proposal_id and event["event_type"] == "outcome" for event in events)
+
+
+def test_score_then_learn_resolves_proposal_and_stores_outcome():
+    client = TestClient(s2p_app)
+    response = client.post(
+        "/api/s2p/score",
+        json={
+            "event_id": "F24-PROPOSAL-LEARN",
+            "category": "price_variance",
+            "amount": 2500.0,
+            "supplier_id": "SUP-PROPOSAL-LEARN",
+            "match_status": 0.92,
+            "amount_variance_ratio": 0.08,
+            "duplicate_score": 0.04,
+            "supplier_exception_history": 0.05,
+            "payment_terms_impact": 0.48,
+            "commodity_index_correlation": 0.76,
+            "tax_regulatory_compliance": 0.90,
+        },
+    )
+    assert response.status_code == 200
+    score = response.json()
+
+    learn = client.post(
+        "/api/learn",
+        json={
+            "decision_id": score["decision_id"],
+            "actual_action": score["action"],
+            "outcome": "confirmed",
+        },
+    )
+
+    assert learn.status_code == 200
+    proposal = client.get(f"/api/s2p/proposal/{score['proposal_id']}")
+    assert proposal.status_code == 200
+    payload = proposal.json()
+    assert payload["status"] == "confirmed"
+    assert payload["outcome"] is not None
+
+
+def test_score_then_outcome_override_resolves_proposal_and_stores_outcome():
+    client = TestClient(s2p_app)
+    response = client.post(
+        "/api/s2p/score",
+        json={
+            "event_id": "F24-PROPOSAL-OVERRIDE",
+            "category": "price_variance",
+            "amount": 2500.0,
+            "supplier_id": "SUP-PROPOSAL-OVERRIDE",
+            "match_status": 0.92,
+            "amount_variance_ratio": 0.08,
+            "duplicate_score": 0.04,
+            "supplier_exception_history": 0.05,
+            "payment_terms_impact": 0.48,
+            "commodity_index_correlation": 0.76,
+            "tax_regulatory_compliance": 0.90,
+        },
+    )
+    assert response.status_code == 200
+    score = response.json()
+    override_action = "auto_approve" if score["action"] != "auto_approve" else "refer_to_specialist"
+
+    outcome = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": score["decision_id"],
+            "outcome": "override",
+            "analyst_action": override_action,
+            "analyst_id": "analyst-proposal",
+            "factor_vector": score["factor_vector"],
+            "category": score["category"],
+            "predicted_action": score["action"],
+            "reason_code": "wrong_action",
+        },
+    )
+
+    assert outcome.status_code == 200
+    proposal = client.get(f"/api/s2p/proposal/{score['proposal_id']}")
+    assert proposal.status_code == 200
+    payload = proposal.json()
+    assert payload["status"] == "overridden"
+    assert payload["outcome"] is not None
+
+
+def test_double_confirm_does_not_duplicate_proposal_outcome():
+    service = ProposalService(ProposalStore())
+    proposal = _proposal(service, invoice_id="double-confirm")
+
+    first = service.confirm(proposal.proposal_id)
+    second = service.confirm(proposal.proposal_id)
+
+    assert first.outcome_receipt_id == second.outcome_receipt_id
+    assert service.store.get_outcome(proposal.proposal_id) is not None
+
+
+def test_proposal_status_is_queryable_for_audit():
+    client = TestClient(s2p_app)
+    response = client.post(
+        "/api/s2p/score",
+        json={
+            "event_id": "F24-PROPOSAL-QUERY",
+            "category": "price_variance",
+            "amount": 2500.0,
+            "supplier_id": "SUP-PROPOSAL-QUERY",
+            "match_status": 0.92,
+            "amount_variance_ratio": 0.08,
+            "duplicate_score": 0.04,
+            "supplier_exception_history": 0.05,
+            "payment_terms_impact": 0.48,
+            "commodity_index_correlation": 0.76,
+            "tax_regulatory_compliance": 0.90,
+        },
+    )
+    assert response.status_code == 200
+    score = response.json()
+
+    proposal = client.get(f"/api/s2p/proposal/{score['proposal_id']}")
+
+    assert proposal.status_code == 200
+    payload = proposal.json()
+    assert payload["proposal_id"] == score["proposal_id"]
+    assert payload["decision_id"] == score["decision_id"]
+    assert payload["status"] == "proposed"

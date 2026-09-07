@@ -123,6 +123,14 @@ class ProposalStore:
             ).fetchall()
         return [_row_to_proposal(row) for row in rows]
 
+    def get_by_decision_id(self, decision_id: str) -> DecisionChangeProposal | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM decision_change_proposals WHERE decision_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                (str(decision_id),),
+            ).fetchone()
+        return _row_to_proposal(row) if row is not None else None
+
     def link_outcome(
         self,
         proposal_id: str,
@@ -243,6 +251,12 @@ class GraphProposalStore:
         proposals.sort(key=lambda item: item.created_at, reverse=True)
         return proposals[: max(int(limit), 0)]
 
+    def get_by_decision_id(self, decision_id: str) -> DecisionChangeProposal | None:
+        for proposal in self.list_recent(10**9):
+            if proposal.decision_id == str(decision_id):
+                return proposal
+        return None
+
     def link_outcome(self, proposal_id: str, receipt_id: str,
                      outcome_payload: Mapping[str, Any] | None = None) -> None:
         proposal = self.get(proposal_id)
@@ -338,6 +352,23 @@ class ProposalService:
         updated = DecisionChangeProposal.from_dict({**proposal.to_dict(), "outcome_receipt_id": receipt_id})
         self.store.save(updated)
         return updated
+
+    def resolve_for_decision(
+        self,
+        decision_id: str,
+        outcome: str,
+        actual_action: str,
+        reason: str | None = None,
+    ) -> DecisionChangeProposal | None:
+        proposal = self.store.get_by_decision_id(str(decision_id))
+        if proposal is None:
+            return None
+        if proposal.status != "proposed":
+            return proposal
+        normalized = str(outcome).strip().lower()
+        if normalized in {"override", "overridden"}:
+            return self.override(proposal.proposal_id, actual_action, reason or "implicit_override")
+        return self.confirm(proposal.proposal_id)
 
     def get_audit_trail(self, invoice_id: str) -> list[dict[str, Any]]:
         return [

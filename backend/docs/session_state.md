@@ -177,3 +177,59 @@ Internal and public S2P conservation status now share the same SDK payload
 calculation and category coverage inputs. Backend suite increased from 1846 to
 1852 tests and remains fully green. 0 new regressions introduced.
 ---
+
+---
+## SLOT N ENTRY: Proposal Resolution Guard + Cold-Start/Bootstrap Verification
+Timestamp: 2026-09-07T20:38:19.1992742-07:00
+
+### Changed files
+- app/routers/s2p.py
+- tests/test_compounding_ledger.py
+- tests/test_s2p_conservation_coverage.py
+- docs/session_state.md
+
+### Baseline before
+- S2P backend pre-check: 1852 passed, 0 failed, 3706 warnings in 287.12s.
+
+### B finding: proposal resolution after blocked learn
+Before:
+- /api/learn called _learn_with_scorer(), then always called _resolve_decision_proposal().
+- /api/s2p/outcome called _learn_with_scorer(), then always called _resolve_decision_proposal().
+- A paused or blocked SDK learn result could leave learning unapplied while marking the proposal resolved.
+
+After:
+- _learn_result_applied() centralizes learn-result interpretation.
+- /api/learn resolves proposals only when learning_applied is true and the payload is not paused, blocked, held, gate=BLOCKED, conservation RED/AMBER/UNKNOWN, or a conservation failure reason.
+- /api/s2p/outcome uses the same guard before proposal resolution.
+- Blocked/paused learn responses return learning_applied=false and gate=BLOCKED; the proposal remains proposed/pending and can be retried after conservation clears.
+
+### J finding: COLD_START/BOOTSTRAP integration
+Before:
+- COLD_START was already learning-allowed in _is_learning_paused().
+- BOOTSTRAP was treated as paused/blocked, which conflicted with the Slot N requirement that BOOTSTRAP is learning-allowed.
+
+After:
+- _is_learning_paused() treats BOOTSTRAP like COLD_START: learning allowed.
+- RED, AMBER, PAUSED, and UNKNOWN remain learning-blocking.
+- Tests verify both string and dict BOOTSTRAP payloads are not classified as paused.
+
+### Conservation chain verification
+- POST /api/learn -> SDK learn() -> paused/conservation_red -> proposal NOT resolved: verified by test_learn_paused_keeps_proposal_pending_until_retry.
+- POST /api/learn -> SDK learn() -> learned/learning_applied=true -> proposal resolved: verified by retry portion of test_learn_paused_keeps_proposal_pending_until_retry and existing proposal lifecycle tests.
+- POST /api/s2p/outcome -> SDK learn() -> blocked/conservation_unavailable -> proposal NOT resolved: verified by test_outcome_blocked_keeps_proposal_pending.
+- COLD_START/BOOTSTRAP are learning-allowed at S2P pause-classifier boundary: verified by tests/test_s2p_conservation_coverage.py.
+
+### Blast radius
+- resolve_for_decision is implemented in app/services/proposal_service.py and called through app/routers/s2p.py only.
+- _is_learning_paused callers remain S2P-side governance/evolver/outcome paths; no external app imports were changed.
+
+### Validation
+- Targeted changed test files: 25 passed + 8 passed, 0 failed.
+- Mypy changed files: pass.
+- Sampling gate random files: tests/test_s2p_simulation_router.py, tests/test_s2p_active_age_parallel.py, tests/test_framework_discipline.py: 12 passed, 0 failed.
+- Full S2P backend suite after fix: 1855 passed, 0 failed, 3712 warnings in 230.58s.
+- Banned pattern scan under backend/app for body_iterator and type-ignore: no matches.
+
+### State for next prompt
+Proposal resolution is now conditional on successful learning. Blocked or paused SDK learn results preserve pending proposals and expose gate=BLOCKED. COLD_START and BOOTSTRAP are both learning-allowed; RED/AMBER/UNKNOWN remain blocking. 0 new regressions introduced.
+---

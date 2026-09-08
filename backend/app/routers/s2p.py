@@ -1194,7 +1194,7 @@ def _is_learning_paused(conservation: Any) -> bool:
         return False
     if isinstance(conservation, str):
         status = conservation.strip().upper()
-        return status in {"RED", "AMBER", "BOOTSTRAP", "PAUSED", "UNKNOWN"}
+        return status in {"RED", "AMBER", "PAUSED", "UNKNOWN"}
     if isinstance(conservation, dict):
         if conservation.get("learning_paused") is True:
             return True
@@ -1203,9 +1203,33 @@ def _is_learning_paused(conservation: Any) -> bool:
             if value is None:
                 continue
             status = str(value).strip().upper()
-            if status in {"RED", "AMBER", "BOOTSTRAP", "PAUSED", "UNKNOWN"}:
+            if status in {"RED", "AMBER", "PAUSED", "UNKNOWN"}:
                 return True
     return False
+
+
+def _learn_result_applied(payload: dict[str, Any]) -> bool:
+    if payload.get("learning_applied") is False:
+        return False
+    status = str(payload.get("status") or "").strip().lower()
+    if status in {"paused", "blocked", "held"}:
+        return False
+    gate = str(payload.get("gate") or "").strip().upper()
+    if gate == "BLOCKED":
+        return False
+    reason = str(payload.get("reason") or payload.get("pause_reason") or "").strip().lower()
+    if reason in {
+        "conservation_red",
+        "conservation_pause",
+        "conservation_unavailable",
+        "conservation_read_failed",
+        "learning_paused",
+    }:
+        return False
+    conservation = payload.get("conservation_status") or payload.get("conservation")
+    if _is_learning_paused(conservation):
+        return False
+    return True
 
 
 def _record_evolver_outcome_if_allowed(
@@ -2483,13 +2507,24 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             request.outcome,
             context,
         )
-        _resolve_decision_proposal(
-            http_request,
-            decision_id=request.decision_id,
-            outcome=request.outcome,
-            actual_action=request.actual_action,
-            reason_code=request.reason_code,
-        )
+        learning_applied = _learn_result_applied(payload)
+        if learning_applied:
+            _resolve_decision_proposal(
+                http_request,
+                decision_id=request.decision_id,
+                outcome=request.outcome,
+                actual_action=request.actual_action,
+                reason_code=request.reason_code,
+            )
+        else:
+            log.info(
+                "S2P proposal remains pending because learning was not applied",
+                extra={
+                    "decision_id": request.decision_id,
+                    "status": payload.get("status"),
+                    "reason": payload.get("reason"),
+                },
+            )
         _clear_score_conservation_status_cache()
         _persist_l5_centroid_state(
             http_request,
@@ -2515,9 +2550,9 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         # scorer implementations return a successful outcome without copying
         # learning_applied into their response payload; the outcome endpoint
         # itself is the authoritative commit boundary.
-        payload_snapshot["learning_applied"] = payload_snapshot.get("status") != "paused"
-        payload_snapshot["gate"] = "PASS"
-        payload_snapshot["conservation_status"] = governance["conservation_status"]
+        payload_snapshot["learning_applied"] = learning_applied
+        payload_snapshot["gate"] = "PASS" if learning_applied else "BLOCKED"
+        payload_snapshot["conservation_status"] = payload_snapshot.get("conservation_status", governance["conservation_status"])
         payload_snapshot["evidence_tier"] = governance["evidence_tier"]
         decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None
 
@@ -2630,13 +2665,24 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             request.outcome,
             outcome_context,
         )
-        _resolve_decision_proposal(
-            http_request,
-            decision_id=request.decision_id,
-            outcome=request.outcome,
-            actual_action=request.analyst_action,
-            reason_code=request.reason_code,
-        )
+        learning_applied = _learn_result_applied(payload)
+        if learning_applied:
+            _resolve_decision_proposal(
+                http_request,
+                decision_id=request.decision_id,
+                outcome=request.outcome,
+                actual_action=request.analyst_action,
+                reason_code=request.reason_code,
+            )
+        else:
+            log.info(
+                "S2P proposal remains pending because outcome learning was not applied",
+                extra={
+                    "decision_id": request.decision_id,
+                    "status": payload.get("status"),
+                    "reason": payload.get("reason"),
+                },
+            )
         # Preserve the established /outcome response contract for clients of
         # this legacy route. The SDK-shaped /api/learn route above remains the
         # canonical graded RL path and reports rewards in [0, 1].
@@ -2673,9 +2719,9 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
         # The outcome endpoint is the authoritative commit boundary. Normalize
         # this before receipt gating and response serialization because a
         # scorer adapter may omit the flag from its result payload.
-        payload_snapshot["learning_applied"] = payload_snapshot.get("status") != "paused"
-        payload_snapshot["gate"] = "PASS"
-        payload_snapshot["conservation_status"] = governance["conservation_status"]
+        payload_snapshot["learning_applied"] = learning_applied
+        payload_snapshot["gate"] = "PASS" if learning_applied else "BLOCKED"
+        payload_snapshot["conservation_status"] = payload_snapshot.get("conservation_status", governance["conservation_status"])
         payload_snapshot["evidence_tier"] = governance["evidence_tier"]
         decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None
 

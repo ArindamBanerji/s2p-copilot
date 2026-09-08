@@ -108,3 +108,8 @@ def test_internal_conservation_passes_category_coverage_to_engine(monkeypatch) -
 
 def test_cold_start_status_keeps_learning_allowed() -> None:
     assert s2p._is_learning_paused("COLD_START") is False
+
+
+def test_bootstrap_status_keeps_learning_allowed() -> None:
+    assert s2p._is_learning_paused("BOOTSTRAP") is False
+    assert s2p._is_learning_paused({"status": "BOOTSTRAP"}) is False

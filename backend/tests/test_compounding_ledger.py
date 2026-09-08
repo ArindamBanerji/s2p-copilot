@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -57,6 +58,22 @@ def _proposal(service: ProposalService, invoice_id: str = "invoice-1", impact: f
     return service.create_from_score(
         _score(invoice_id), invoice_id, [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.5], _evidence(impact)
     )
+
+
+def _score_request(event_id: str, supplier_id: str) -> dict:
+    return {
+        "event_id": event_id,
+        "category": "price_variance",
+        "amount": 2500.0,
+        "supplier_id": supplier_id,
+        "match_status": 0.92,
+        "amount_variance_ratio": 0.08,
+        "duplicate_score": 0.04,
+        "supplier_exception_history": 0.05,
+        "payment_terms_impact": 0.48,
+        "commodity_index_correlation": 0.76,
+        "tax_regulatory_compliance": 0.90,
+    }
 
 
 def _client(ledger: CompoundingLedger) -> TestClient:
@@ -377,3 +394,99 @@ def test_proposal_status_is_queryable_for_audit():
     assert payload["proposal_id"] == score["proposal_id"]
     assert payload["decision_id"] == score["decision_id"]
     assert payload["status"] == "proposed"
+
+
+def test_learn_paused_keeps_proposal_pending_until_retry() -> None:
+    client = TestClient(s2p_app)
+    response = client.post(
+        "/api/s2p/score",
+        json=_score_request("F24-PROPOSAL-PAUSED-LEARN", "SUP-PROPOSAL-PAUSED-LEARN"),
+    )
+    assert response.status_code == 200
+    score = response.json()
+
+    paused_payload = {
+        "status": "paused",
+        "reason": "conservation_red",
+        "conservation_status": "RED",
+        "learning_applied": False,
+    }
+    with patch("app.routers.s2p._learn_with_scorer", return_value=paused_payload):
+        learn = client.post(
+            "/api/learn",
+            json={
+                "decision_id": score["decision_id"],
+                "actual_action": score["action"],
+                "outcome": "confirmed",
+            },
+        )
+
+    assert learn.status_code == 200
+    learn_payload = learn.json()
+    assert learn_payload["learning_applied"] is False
+    assert learn_payload["gate"] == "BLOCKED"
+    proposal = client.get(f"/api/s2p/proposal/{score['proposal_id']}")
+    assert proposal.status_code == 200
+    pending = proposal.json()
+    assert pending["status"] == "proposed"
+    assert pending["outcome"] is None
+
+    with patch(
+        "app.routers.s2p._learn_with_scorer",
+        return_value={"status": "learned", "learning_applied": True, "reward": 1.0},
+    ):
+        retry = client.post(
+            "/api/learn",
+            json={
+                "decision_id": score["decision_id"],
+                "actual_action": score["action"],
+                "outcome": "confirmed",
+            },
+        )
+
+    assert retry.status_code == 200
+    resolved = client.get(f"/api/s2p/proposal/{score['proposal_id']}").json()
+    assert resolved["status"] == "confirmed"
+    assert resolved["outcome"] is not None
+
+
+def test_outcome_blocked_keeps_proposal_pending() -> None:
+    client = TestClient(s2p_app)
+    response = client.post(
+        "/api/s2p/score",
+        json=_score_request("F24-PROPOSAL-BLOCKED-OUTCOME", "SUP-PROPOSAL-BLOCKED-OUTCOME"),
+    )
+    assert response.status_code == 200
+    score = response.json()
+    override_action = "auto_approve" if score["action"] != "auto_approve" else "refer_to_specialist"
+
+    blocked_payload = {
+        "status": "blocked",
+        "reason": "conservation_unavailable",
+        "conservation_status": "UNKNOWN",
+        "learning_applied": False,
+    }
+    with patch("app.routers.s2p._learn_with_scorer", return_value=blocked_payload):
+        outcome = client.post(
+            "/api/s2p/outcome",
+            json={
+                "decision_id": score["decision_id"],
+                "outcome": "override",
+                "analyst_action": override_action,
+                "analyst_id": "analyst-blocked-proposal",
+                "factor_vector": score["factor_vector"],
+                "category": score["category"],
+                "predicted_action": score["action"],
+                "reason_code": "wrong_action",
+            },
+        )
+
+    assert outcome.status_code == 200
+    outcome_payload = outcome.json()
+    assert outcome_payload["learning_applied"] is False
+    assert outcome_payload["gate"] == "BLOCKED"
+    proposal = client.get(f"/api/s2p/proposal/{score['proposal_id']}")
+    assert proposal.status_code == 200
+    pending = proposal.json()
+    assert pending["status"] == "proposed"
+    assert pending["outcome"] is None

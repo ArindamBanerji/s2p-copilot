@@ -1,0 +1,64 @@
+{
+  "_header": "Schema extensions required by s2p_multihop_stage1_v2.json",
+  "_file": "s2p_multihop_schema_extensions_v2.json",
+  "_file_version": "v2",
+  "_spec": "multihop_scenario_spec_v2.md",
+  "base_node_types": [
+    "Amendment",
+    "Contract",
+    "CreditNote",
+    "DeliveryTracking",
+    "GoodsReceipt",
+    "Invoice",
+    "InvoiceLine",
+    "POLine",
+    "PaymentTerm",
+    "PurchaseOrder",
+    "SubcontractAgreement",
+    "Supplier",
+    "TaxCode"
+  ],
+  "base_edge_types": [
+    "AMENDS",
+    "CREDITS",
+    "GOVERNED_BY",
+    "HAS_TAX",
+    "HAS_TERMS",
+    "IN_TRANSIT",
+    "RECEIVED_VIA",
+    "REFERENCES_PO",
+    "SUBCONTRACTS_TO",
+    "SUBMITTED_BY"
+  ],
+  "new_node_types": [
+    {
+      "type": "EntityMerger"
+    },
+    {
+      "type": "ExemptionCertificate"
+    },
+    {
+      "type": "FxRateTable"
+    },
+    {
+      "type": "Remittance"
+    },
+    {
+      "type": "TaxJurisdictionChange"
+    }
+  ],
+  "new_edge_types": [
+    {
+      "type": "EXEMPT_UNDER"
+    },
+    {
+      "type": "HAS_LINE"
+    },
+    {
+      "type": "SUPERSEDED_BY"
+    },
+    {
+      "type": "VALUED_USING"
+    }
+  ]
+}

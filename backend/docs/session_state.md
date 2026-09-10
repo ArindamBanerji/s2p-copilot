@@ -233,3 +233,49 @@ After:
 ### State for next prompt
 Proposal resolution is now conditional on successful learning. Blocked or paused SDK learn results preserve pending proposals and expose gate=BLOCKED. COLD_START and BOOTSTRAP are both learning-allowed; RED/AMBER/UNKNOWN remain blocking. 0 new regressions introduced.
 ---
+
+---
+## SLOT: S2P Stage 1 Multihop Evaluation
+Timestamp: 2026-09-09
+
+### Changed files
+- scripts/evaluate_multihop_stage1.py
+- tests/test_multihop_evaluation.py
+- data/s2p_multihop_stage1_results.json
+- data/s2p_multihop_stage1_report.md
+
+### Inputs read
+- data/s2p_multihop_stage1.json
+- data/s2p_multihop_schema_extensions.json
+- app/domains/s2p/config.py
+
+### Implementation
+- Added ScenarioGraphStore for planted S2P Stage 1 scenarios.
+- Added four comparator arms: single_pass, breadth, content_rule, and VLD.
+- Initialized S2P centroids from Stage 1 surface_factors with 5 categories, 5 actions, and 7 factors.
+- Generated all 200 result rows for 50 scenarios x 4 arms.
+- Generated markdown report with acceptance test, per-kind results, controls, per-rho table, and cross-copilot comparison.
+
+### Results
+- Acceptance test: FAIL.
+- Headline score_keyed rho >= 0.70: S2P VLD=0.562, SP=0.625, delta=-0.062.
+- Controls:
+  - Flat VLD <= SP: PASS (SP=0.600, VLD=0.600).
+  - rho=0.50 VLD near chance 0.20 +/- 0.15: PASS (VLD=0.200).
+- Per-kind accuracy:
+  - content_keyed: SP=0.600, breadth=0.600, content_rule=0.600, VLD=0.600, N=15.
+  - prerequisite: SP=0.700, breadth=0.600, content_rule=0.900, VLD=0.900, N=10.
+  - score_keyed: SP=0.680, breadth=0.480, content_rule=0.600, VLD=0.520, N=25.
+
+### Validation
+- Pre-check baseline: 1855 passed, 0 failed, 3712 warnings.
+- scripts/validate_stage1.py: ALL 10 QUALITY CHECKS + SPEC CONSTRAINTS PASSED.
+- Result row gate: 200 rows.
+- backend/app blast-radius gate: empty diff.
+- Targeted multihop tests: 10 passed, 22 warnings.
+- Mypy on changed script/test: pass.
+- Full S2P backend suite after changes: 1865 passed, 0 failed, 3732 warnings in 246.89s.
+
+### State for next prompt
+S2P Stage 1 planted positive-control evaluation is implemented and reproducible from scripts only. Controls pass, but the main score_keyed acceptance trend fails because VLD does not outperform SP at rho >= 0.70. 0 new regressions introduced.
+---

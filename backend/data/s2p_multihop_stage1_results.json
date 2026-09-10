@@ -1,0 +1,4973 @@
+[
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-001-v1",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-001-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_history_path",
+        "evidence_found": "neutral evidence for gr_history_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch gr_history_path.",
+        "step": 1
+      },
+      {
+        "branch": "supplier_otif_path",
+        "evidence_found": "misleading evidence for supplier_otif_path",
+        "factor_updates": {
+          "receipt_match": 0.4800000000000001
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch supplier_otif_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-001-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "transit_tracking_path",
+        "evidence_found": "200 units in transit, ETA in 2 days",
+        "factor_updates": {
+          "receipt_match": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked delivery tracking: the outstanding 200 units are in transit with a two-day ETA.",
+        "step": 1
+      },
+      {
+        "branch": "carrier_scan_path",
+        "evidence_found": "carrier scan confirms pickup 3 days ago",
+        "factor_updates": {
+          "receipt_match": 0.74
+        },
+        "kind": "correct",
+        "narration": "Checked the carrier scan: pickup was confirmed three days ago.",
+        "step": 2
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-001-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "transit_tracking_path",
+        "evidence_found": "200 units in transit, ETA in 2 days",
+        "factor_updates": {
+          "receipt_match": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked delivery tracking: the outstanding 200 units are in transit with a two-day ETA.",
+        "step": 1
+      },
+      {
+        "branch": "carrier_scan_path",
+        "evidence_found": "carrier scan confirms pickup 3 days ago",
+        "factor_updates": {
+          "receipt_match": 0.74
+        },
+        "kind": "correct",
+        "narration": "Checked the carrier scan: pickup was confirmed three days ago.",
+        "step": 2
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-001-v2",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-001-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_history_path",
+        "evidence_found": "neutral evidence for gr_history_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch gr_history_path.",
+        "step": 1
+      },
+      {
+        "branch": "supplier_otif_path",
+        "evidence_found": "misleading evidence for supplier_otif_path",
+        "factor_updates": {
+          "receipt_match": 0.39999999999999997
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch supplier_otif_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-001-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "transit_tracking_path",
+        "evidence_found": "no tracking record exists for the balance",
+        "factor_updates": {
+          "receipt_match": 0.2
+        },
+        "kind": "correct",
+        "narration": "Checked delivery tracking: there is no tracking record for the outstanding 200 units.",
+        "step": 1
+      },
+      {
+        "branch": "shortfall_history_path",
+        "evidence_found": "6 shortfall incidents in 12 months",
+        "factor_updates": {
+          "supplier_trust": 0.24
+        },
+        "kind": "correct",
+        "narration": "Checked shortfall history: six short-shipment incidents in the past year.",
+        "step": 2
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-001-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "transit_tracking_path",
+        "evidence_found": "no tracking record exists for the balance",
+        "factor_updates": {
+          "receipt_match": 0.2
+        },
+        "kind": "correct",
+        "narration": "Checked delivery tracking: there is no tracking record for the outstanding 200 units.",
+        "step": 1
+      },
+      {
+        "branch": "shortfall_history_path",
+        "evidence_found": "6 shortfall incidents in 12 months",
+        "factor_updates": {
+          "supplier_trust": 0.24
+        },
+        "kind": "correct",
+        "narration": "Checked shortfall history: six short-shipment incidents in the past year.",
+        "step": 2
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-001-v3",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-001-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_history_path",
+        "evidence_found": "remaining 200 units received today; GR posted after invoice",
+        "factor_updates": {
+          "receipt_match": 0.94
+        },
+        "kind": "correct",
+        "narration": "Checked receipt history: the remaining units arrived today and the receipt posted after the invoice.",
+        "step": 1
+      },
+      {
+        "branch": "supplier_otif_path",
+        "evidence_found": "misleading evidence for supplier_otif_path",
+        "factor_updates": {
+          "receipt_match": 0.5
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch supplier_otif_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-001-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_history_path",
+        "evidence_found": "remaining 200 units received today; GR posted after invoice",
+        "factor_updates": {
+          "receipt_match": 0.94
+        },
+        "kind": "correct",
+        "narration": "Checked receipt history: the remaining units arrived today and the receipt posted after the invoice.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-001-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_history_path",
+        "evidence_found": "remaining 200 units received today; GR posted after invoice",
+        "factor_updates": {
+          "receipt_match": 0.94
+        },
+        "kind": "correct",
+        "narration": "Checked receipt history: the remaining units arrived today and the receipt posted after the invoice.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-001-v4",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-001-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_history_path",
+        "evidence_found": "neutral evidence for gr_history_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch gr_history_path.",
+        "step": 1
+      },
+      {
+        "branch": "supplier_otif_path",
+        "evidence_found": "misleading evidence for supplier_otif_path",
+        "factor_updates": {
+          "receipt_match": 0.4099999999999999
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch supplier_otif_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-001-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "transit_tracking_path",
+        "evidence_found": "120 units in transit, 80 units unaccounted",
+        "factor_updates": {
+          "receipt_match": 0.55
+        },
+        "kind": "correct",
+        "narration": "Checked delivery tracking: 120 units are in transit and 80 are unaccounted for.",
+        "step": 1
+      },
+      {
+        "branch": "carrier_scan_path",
+        "evidence_found": "no scan or receipt for the 80",
+        "factor_updates": {
+          "receipt_match": 0.42
+        },
+        "kind": "correct",
+        "narration": "Checked scans and receipts: nothing evidences the remaining eighty units.",
+        "step": 2
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-001-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "transit_tracking_path",
+        "evidence_found": "120 units in transit, 80 units unaccounted",
+        "factor_updates": {
+          "receipt_match": 0.55
+        },
+        "kind": "correct",
+        "narration": "Checked delivery tracking: 120 units are in transit and 80 are unaccounted for.",
+        "step": 1
+      },
+      {
+        "branch": "carrier_scan_path",
+        "evidence_found": "no scan or receipt for the 80",
+        "factor_updates": {
+          "receipt_match": 0.42
+        },
+        "kind": "correct",
+        "narration": "Checked scans and receipts: nothing evidences the remaining eighty units.",
+        "step": 2
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-001-v5",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-001-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_history_path",
+        "evidence_found": "neutral evidence for gr_history_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch gr_history_path.",
+        "step": 1
+      },
+      {
+        "branch": "supplier_otif_path",
+        "evidence_found": "misleading evidence for supplier_otif_path",
+        "factor_updates": {
+          "receipt_match": 0.34
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch supplier_otif_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-001-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "transit_tracking_path",
+        "evidence_found": "no tracking; supplier asserts shipment verbally",
+        "factor_updates": {
+          "receipt_match": 0.18
+        },
+        "kind": "correct",
+        "narration": "Checked delivery tracking: no record exists and the supplier's claim is verbal only.",
+        "step": 1
+      },
+      {
+        "branch": "shortfall_history_path",
+        "evidence_found": "9 incidents and a contract service-level breach",
+        "factor_updates": {
+          "supplier_trust": 0.12
+        },
+        "kind": "correct",
+        "narration": "Checked shortfall history: nine incidents and a recorded service-level breach.",
+        "step": 2
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-001-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "supplier_otif_path",
+        "evidence_found": "misleading evidence for supplier_otif_path",
+        "factor_updates": {
+          "receipt_match": 0.34
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch supplier_otif_path.",
+        "step": 1
+      },
+      {
+        "branch": "carrier_scan_path",
+        "evidence_found": "neutral evidence for carrier_scan_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch carrier_scan_path.",
+        "step": 2
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-002-v1",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-002-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "CN-441 pending, covers the full 9.5% delta",
+        "factor_updates": {
+          "price_conformance": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: a credit note covering the full difference is queued but not yet applied.",
+        "step": 1
+      },
+      {
+        "branch": "price_history_path",
+        "evidence_found": "misleading evidence for price_history_path",
+        "factor_updates": {
+          "price_conformance": 0.10000000000000009
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch price_history_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-002-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "CN-441 pending, covers the full 9.5% delta",
+        "factor_updates": {
+          "price_conformance": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: a credit note covering the full difference is queued but not yet applied.",
+        "step": 1
+      },
+      {
+        "branch": "adjustment_queue_path",
+        "evidence_found": "credit applies in 4 days, payment due in 11",
+        "factor_updates": {
+          "price_conformance": 0.82
+        },
+        "kind": "correct",
+        "narration": "Checked the adjustment queue: the credit applies a week before payment is due.",
+        "step": 2
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-002-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "CN-441 pending, covers the full 9.5% delta",
+        "factor_updates": {
+          "price_conformance": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: a credit note covering the full difference is queued but not yet applied.",
+        "step": 1
+      },
+      {
+        "branch": "adjustment_queue_path",
+        "evidence_found": "credit applies in 4 days, payment due in 11",
+        "factor_updates": {
+          "price_conformance": 0.82
+        },
+        "kind": "correct",
+        "narration": "Checked the adjustment queue: the credit applies a week before payment is due.",
+        "step": 2
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-002-v2",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-002-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "no credit note or queued adjustment",
+        "factor_updates": {
+          "price_conformance": 0.22
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: nothing is queued against this invoice.",
+        "step": 1
+      },
+      {
+        "branch": "price_history_path",
+        "evidence_found": "misleading evidence for price_history_path",
+        "factor_updates": {
+          "price_conformance": 0.30000000000000004
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch price_history_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-002-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "no credit note or queued adjustment",
+        "factor_updates": {
+          "price_conformance": 0.22
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: nothing is queued against this invoice.",
+        "step": 1
+      },
+      {
+        "branch": "supplier_notice_path",
+        "evidence_found": "no notice on file; contract requires 30 days",
+        "factor_updates": {
+          "policy_conformance": 0.2
+        },
+        "kind": "correct",
+        "narration": "Checked supplier notices: no price-change notice was filed, though the contract requires thirty days.",
+        "step": 2
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-002-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "no credit note or queued adjustment",
+        "factor_updates": {
+          "price_conformance": 0.22
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: nothing is queued against this invoice.",
+        "step": 1
+      },
+      {
+        "branch": "supplier_notice_path",
+        "evidence_found": "no notice on file; contract requires 30 days",
+        "factor_updates": {
+          "policy_conformance": 0.2
+        },
+        "kind": "correct",
+        "narration": "Checked supplier notices: no price-change notice was filed, though the contract requires thirty days.",
+        "step": 2
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-002-v3",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-002-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "CN-442 pending, covers 5% of the 9.5% delta",
+        "factor_updates": {
+          "price_conformance": 0.52
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: a queued credit covers about half the difference.",
+        "step": 1
+      },
+      {
+        "branch": "price_history_path",
+        "evidence_found": "misleading evidence for price_history_path",
+        "factor_updates": {
+          "price_conformance": 0.36
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch price_history_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-002-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "CN-442 pending, covers 5% of the 9.5% delta",
+        "factor_updates": {
+          "price_conformance": 0.52
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: a queued credit covers about half the difference.",
+        "step": 1
+      },
+      {
+        "branch": "adjustment_queue_path",
+        "evidence_found": "no clause covers the remaining 4.5%",
+        "factor_updates": {
+          "contract_coverage": 0.38
+        },
+        "kind": "correct",
+        "narration": "Checked the contract: nothing justifies the uncovered remainder.",
+        "step": 2
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-002-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "CN-442 pending, covers 5% of the 9.5% delta",
+        "factor_updates": {
+          "price_conformance": 0.52
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: a queued credit covers about half the difference.",
+        "step": 1
+      },
+      {
+        "branch": "adjustment_queue_path",
+        "evidence_found": "no clause covers the remaining 4.5%",
+        "factor_updates": {
+          "contract_coverage": 0.38
+        },
+        "kind": "correct",
+        "narration": "Checked the contract: nothing justifies the uncovered remainder.",
+        "step": 2
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-002-v4",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-002-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "CN-440 already applied; net price equals contract",
+        "factor_updates": {
+          "price_conformance": 0.93
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: the credit has already been applied and the net matches the contract.",
+        "step": 1
+      },
+      {
+        "branch": "price_history_path",
+        "evidence_found": "misleading evidence for price_history_path",
+        "factor_updates": {
+          "price_conformance": 0.17000000000000004
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch price_history_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-002-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "CN-440 already applied; net price equals contract",
+        "factor_updates": {
+          "price_conformance": 0.93
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: the credit has already been applied and the net matches the contract.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-002-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "CN-440 already applied; net price equals contract",
+        "factor_updates": {
+          "price_conformance": 0.93
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: the credit has already been applied and the net matches the contract.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-002-v5",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-002-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "no credit queued; this is the 7th retroactive overcharge in 12 months",
+        "factor_updates": {
+          "price_conformance": 0.24
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: nothing is queued, and this is the seventh retroactive overcharge this year.",
+        "step": 1
+      },
+      {
+        "branch": "price_history_path",
+        "evidence_found": "misleading evidence for price_history_path",
+        "factor_updates": {
+          "price_conformance": 0.32000000000000006
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch price_history_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-002-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "no credit queued; this is the 7th retroactive overcharge in 12 months",
+        "factor_updates": {
+          "price_conformance": 0.24
+        },
+        "kind": "correct",
+        "narration": "Checked pending credits: nothing is queued, and this is the seventh retroactive overcharge this year.",
+        "step": 1
+      },
+      {
+        "branch": "supplier_notice_path",
+        "evidence_found": "two prior warnings issued and acknowledged",
+        "factor_updates": {
+          "supplier_trust": 0.16
+        },
+        "kind": "correct",
+        "narration": "Checked supplier notices: two prior warnings were issued and acknowledged.",
+        "step": 2
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-002-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "price_history_path",
+        "evidence_found": "misleading evidence for price_history_path",
+        "factor_updates": {
+          "price_conformance": 0.32000000000000006
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch price_history_path.",
+        "step": 1
+      },
+      {
+        "branch": "adjustment_queue_path",
+        "evidence_found": "neutral evidence for adjustment_queue_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch adjustment_queue_path.",
+        "step": 2
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-003-v1",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-003-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "payment_history_path",
+        "evidence_found": "neutral evidence for payment_history_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch payment_history_path.",
+        "step": 1
+      },
+      {
+        "branch": "po_line_path",
+        "evidence_found": "misleading evidence for po_line_path",
+        "factor_updates": {
+          "duplicate_risk": 0.38
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch po_line_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-003-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "entity_resolution_path",
+        "evidence_found": "identical tax ID GB-4471",
+        "factor_updates": {
+          "duplicate_risk": 0.86
+        },
+        "kind": "correct",
+        "narration": "Checked entity resolution: both supplier IDs carry the same tax registration.",
+        "step": 1
+      },
+      {
+        "branch": "remittance_path",
+        "evidence_found": "INV-S3-A paid on 2026-09-02",
+        "factor_updates": {
+          "duplicate_risk": 0.95
+        },
+        "kind": "correct",
+        "narration": "Checked remittances: the first invoice was already paid a week ago.",
+        "step": 2
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-003-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "entity_resolution_path",
+        "evidence_found": "identical tax ID GB-4471",
+        "factor_updates": {
+          "duplicate_risk": 0.86
+        },
+        "kind": "correct",
+        "narration": "Checked entity resolution: both supplier IDs carry the same tax registration.",
+        "step": 1
+      },
+      {
+        "branch": "remittance_path",
+        "evidence_found": "INV-S3-A paid on 2026-09-02",
+        "factor_updates": {
+          "duplicate_risk": 0.95
+        },
+        "kind": "correct",
+        "narration": "Checked remittances: the first invoice was already paid a week ago.",
+        "step": 2
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-003-v2",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-003-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "payment_history_path",
+        "evidence_found": "neutral evidence for payment_history_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch payment_history_path.",
+        "step": 1
+      },
+      {
+        "branch": "po_line_path",
+        "evidence_found": "misleading evidence for po_line_path",
+        "factor_updates": {
+          "duplicate_risk": 1.0
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch po_line_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-003-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "entity_resolution_path",
+        "evidence_found": "different tax IDs and non-overlapping contracted scopes",
+        "factor_updates": {
+          "duplicate_risk": 0.1
+        },
+        "kind": "correct",
+        "narration": "Checked entity resolution: different tax registrations and separate contracted scopes.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-003-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "entity_resolution_path",
+        "evidence_found": "different tax IDs and non-overlapping contracted scopes",
+        "factor_updates": {
+          "duplicate_risk": 0.1
+        },
+        "kind": "correct",
+        "narration": "Checked entity resolution: different tax registrations and separate contracted scopes.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-003-v3",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-003-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "payment_history_path",
+        "evidence_found": "neutral evidence for payment_history_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch payment_history_path.",
+        "step": 1
+      },
+      {
+        "branch": "po_line_path",
+        "evidence_found": "misleading evidence for po_line_path",
+        "factor_updates": {
+          "duplicate_risk": 0.3599999999999999
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch po_line_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-003-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "entity_resolution_path",
+        "evidence_found": "identical tax ID GB-4471",
+        "factor_updates": {
+          "duplicate_risk": 0.8
+        },
+        "kind": "correct",
+        "narration": "Checked entity resolution: both IDs carry the same tax registration.",
+        "step": 1
+      },
+      {
+        "branch": "merger_record_path",
+        "evidence_found": "merger effective 2026-08-21; original never paid",
+        "factor_updates": {
+          "duplicate_risk": 0.4
+        },
+        "kind": "correct",
+        "narration": "Checked the merger record: the entities merged in August and the original invoice was never paid.",
+        "step": 2
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-003-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "entity_resolution_path",
+        "evidence_found": "identical tax ID GB-4471",
+        "factor_updates": {
+          "duplicate_risk": 0.8
+        },
+        "kind": "correct",
+        "narration": "Checked entity resolution: both IDs carry the same tax registration.",
+        "step": 1
+      },
+      {
+        "branch": "merger_record_path",
+        "evidence_found": "merger effective 2026-08-21; original never paid",
+        "factor_updates": {
+          "duplicate_risk": 0.4
+        },
+        "kind": "correct",
+        "narration": "Checked the merger record: the entities merged in August and the original invoice was never paid.",
+        "step": 2
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-003-v4",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-003-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "payment_history_path",
+        "evidence_found": "neutral evidence for payment_history_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch payment_history_path.",
+        "step": 1
+      },
+      {
+        "branch": "po_line_path",
+        "evidence_found": "misleading evidence for po_line_path",
+        "factor_updates": {
+          "duplicate_risk": 0.41999999999999993
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch po_line_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-003-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "entity_resolution_path",
+        "evidence_found": "identical tax ID GB-4471",
+        "factor_updates": {
+          "duplicate_risk": 0.78
+        },
+        "kind": "correct",
+        "narration": "Checked entity resolution: both IDs share a tax registration.",
+        "step": 1
+      },
+      {
+        "branch": "merger_record_path",
+        "evidence_found": "one line duplicated, one line genuinely separate",
+        "factor_updates": {
+          "duplicate_risk": 0.52
+        },
+        "kind": "correct",
+        "narration": "Checked the PO lines: one line is duplicated and the other covers separate work.",
+        "step": 2
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-003-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "entity_resolution_path",
+        "evidence_found": "identical tax ID GB-4471",
+        "factor_updates": {
+          "duplicate_risk": 0.78
+        },
+        "kind": "correct",
+        "narration": "Checked entity resolution: both IDs share a tax registration.",
+        "step": 1
+      },
+      {
+        "branch": "merger_record_path",
+        "evidence_found": "one line duplicated, one line genuinely separate",
+        "factor_updates": {
+          "duplicate_risk": 0.52
+        },
+        "kind": "correct",
+        "narration": "Checked the PO lines: one line is duplicated and the other covers separate work.",
+        "step": 2
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-003-v5",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-003-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "payment_history_path",
+        "evidence_found": "neutral evidence for payment_history_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch payment_history_path.",
+        "step": 1
+      },
+      {
+        "branch": "po_line_path",
+        "evidence_found": "misleading evidence for po_line_path",
+        "factor_updates": {
+          "duplicate_risk": 0.4800000000000001
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch po_line_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-003-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "entity_resolution_path",
+        "evidence_found": "same tax ID; 4 such paired submissions this quarter",
+        "factor_updates": {
+          "duplicate_risk": 0.88
+        },
+        "kind": "correct",
+        "narration": "Checked entity resolution: the same entity has made four paired submissions under two IDs this quarter.",
+        "step": 1
+      },
+      {
+        "branch": "remittance_path",
+        "evidence_found": "3 of the 4 prior pairs were paid twice and never recovered",
+        "factor_updates": {
+          "policy_conformance": 0.14
+        },
+        "kind": "correct",
+        "narration": "Checked remittances: three of the four earlier pairs were paid twice and never recovered.",
+        "step": 2
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-003-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "po_line_path",
+        "evidence_found": "misleading evidence for po_line_path",
+        "factor_updates": {
+          "duplicate_risk": 0.4800000000000001
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch po_line_path.",
+        "step": 1
+      },
+      {
+        "branch": "merger_record_path",
+        "evidence_found": "neutral evidence for merger_record_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch merger_record_path.",
+        "step": 2
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v1",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "clause requires the PO-date rate; invoice used 0.8412, the PO-date rate",
+        "factor_updates": {
+          "contract_coverage": 0.94
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: clause requires the PO-date rate; invoice used 0.8412, the PO-date rate.",
+        "step": 1
+      },
+      {
+        "branch": "fx_rate_table_path",
+        "evidence_found": "misleading evidence for fx_rate_table_path",
+        "factor_updates": {
+          "contract_coverage": 0.8600000000000001
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch fx_rate_table_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "clause requires the PO-date rate; invoice used 0.8412, the PO-date rate",
+        "factor_updates": {
+          "contract_coverage": 0.94
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: clause requires the PO-date rate; invoice used 0.8412, the PO-date rate.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "clause requires the PO-date rate; invoice used 0.8412, the PO-date rate",
+        "factor_updates": {
+          "contract_coverage": 0.94
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: clause requires the PO-date rate; invoice used 0.8412, the PO-date rate.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v2",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "clause requires the PO-date rate; invoice used the invoice-date rate, 3.2% higher",
+        "factor_updates": {
+          "contract_coverage": 0.28
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: clause requires the PO-date rate; invoice used the invoice-date rate, 3.2% higher.",
+        "step": 1
+      },
+      {
+        "branch": "fx_rate_table_path",
+        "evidence_found": "misleading evidence for fx_rate_table_path",
+        "factor_updates": {
+          "contract_coverage": 1.0
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch fx_rate_table_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "clause requires the PO-date rate; invoice used the invoice-date rate, 3.2% higher",
+        "factor_updates": {
+          "contract_coverage": 0.28
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: clause requires the PO-date rate; invoice used the invoice-date rate, 3.2% higher.",
+        "step": 1
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "clause requires the PO-date rate; invoice used the invoice-date rate, 3.2% higher",
+        "factor_updates": {
+          "contract_coverage": 0.28
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: clause requires the PO-date rate; invoice used the invoice-date rate, 3.2% higher.",
+        "step": 1
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v3",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "the contract contains no FX clause",
+        "factor_updates": {
+          "contract_coverage": 0.5
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: the contract contains no FX clause.",
+        "step": 1
+      },
+      {
+        "branch": "fx_rate_table_path",
+        "evidence_found": "misleading evidence for fx_rate_table_path",
+        "factor_updates": {
+          "contract_coverage": 0.30000000000000004
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch fx_rate_table_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "the contract contains no FX clause",
+        "factor_updates": {
+          "contract_coverage": 0.5
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: the contract contains no FX clause.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "the contract contains no FX clause",
+        "factor_updates": {
+          "contract_coverage": 0.5
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: the contract contains no FX clause.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v4",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "mixed invoice: 6 of 9 lines at the PO-date rate, 3 at the invoice-date rate",
+        "factor_updates": {
+          "contract_coverage": 0.6
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: mixed invoice: 6 of 9 lines at the PO-date rate, 3 at the invoice-date rate.",
+        "step": 1
+      },
+      {
+        "branch": "fx_rate_table_path",
+        "evidence_found": "misleading evidence for fx_rate_table_path",
+        "factor_updates": {
+          "contract_coverage": 1.0
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch fx_rate_table_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "mixed invoice: 6 of 9 lines at the PO-date rate, 3 at the invoice-date rate",
+        "factor_updates": {
+          "contract_coverage": 0.6
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: mixed invoice: 6 of 9 lines at the PO-date rate, 3 at the invoice-date rate.",
+        "step": 1
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "mixed invoice: 6 of 9 lines at the PO-date rate, 3 at the invoice-date rate",
+        "factor_updates": {
+          "contract_coverage": 0.6
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: mixed invoice: 6 of 9 lines at the PO-date rate, 3 at the invoice-date rate.",
+        "step": 1
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v5",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "clause specifies a hedged fixed rate, but the hedge expired before the invoice date with no successor clause",
+        "factor_updates": {
+          "contract_coverage": 0.44
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: clause specifies a hedged fixed rate, but the hedge expired before the invoice date with no successor clause.",
+        "step": 1
+      },
+      {
+        "branch": "fx_rate_table_path",
+        "evidence_found": "misleading evidence for fx_rate_table_path",
+        "factor_updates": {
+          "contract_coverage": 0.25999999999999995
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch fx_rate_table_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "clause specifies a hedged fixed rate, but the hedge expired before the invoice date with no successor clause",
+        "factor_updates": {
+          "contract_coverage": 0.44
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: clause specifies a hedged fixed rate, but the hedge expired before the invoice date with no successor clause.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-004-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_fx_clause_path",
+        "evidence_found": "clause specifies a hedged fixed rate, but the hedge expired before the invoice date with no successor clause",
+        "factor_updates": {
+          "contract_coverage": 0.44
+        },
+        "kind": "correct",
+        "narration": "Checked the contract FX clause: clause specifies a hedged fixed rate, but the hedge expired before the invoice date with no successor clause.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v1",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "exemption_cert_path",
+        "evidence_found": "neutral evidence for exemption_cert_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch exemption_cert_path.",
+        "step": 1
+      },
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "all 8 line tax codes correct; exempt lines zero-rated; certificate valid to December",
+        "factor_updates": {
+          "policy_conformance": 0.92
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: all 8 line tax codes correct; exempt lines zero-rated; certificate valid to December.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "all 8 line tax codes correct; exempt lines zero-rated; certificate valid to December",
+        "factor_updates": {
+          "policy_conformance": 0.92
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: all 8 line tax codes correct; exempt lines zero-rated; certificate valid to December.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "all 8 line tax codes correct; exempt lines zero-rated; certificate valid to December",
+        "factor_updates": {
+          "policy_conformance": 0.92
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: all 8 line tax codes correct; exempt lines zero-rated; certificate valid to December.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v2",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "exemption_cert_path",
+        "evidence_found": "neutral evidence for exemption_cert_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch exemption_cert_path.",
+        "step": 1
+      },
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "3 exempt lines carry standard-rate codes despite a valid certificate",
+        "factor_updates": {
+          "policy_conformance": 0.3
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: 3 exempt lines carry standard-rate codes despite a valid certificate.",
+        "step": 1
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "3 exempt lines carry standard-rate codes despite a valid certificate",
+        "factor_updates": {
+          "policy_conformance": 0.3
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: 3 exempt lines carry standard-rate codes despite a valid certificate.",
+        "step": 1
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "3 exempt lines carry standard-rate codes despite a valid certificate",
+        "factor_updates": {
+          "policy_conformance": 0.3
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: 3 exempt lines carry standard-rate codes despite a valid certificate.",
+        "step": 1
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v3",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "exemption_cert_path",
+        "evidence_found": "neutral evidence for exemption_cert_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch exemption_cert_path.",
+        "step": 1
+      },
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "codes correct, but the exemption certificate lapsed on 30 June",
+        "factor_updates": {
+          "policy_conformance": 0.4
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: codes correct, but the exemption certificate lapsed on 30 June.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "codes correct, but the exemption certificate lapsed on 30 June",
+        "factor_updates": {
+          "policy_conformance": 0.4
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: codes correct, but the exemption certificate lapsed on 30 June.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "codes correct, but the exemption certificate lapsed on 30 June",
+        "factor_updates": {
+          "policy_conformance": 0.4
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: codes correct, but the exemption certificate lapsed on 30 June.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v4",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "exemption_cert_path",
+        "evidence_found": "neutral evidence for exemption_cert_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch exemption_cert_path.",
+        "step": 1
+      },
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "5 of 8 lines correctly coded, 3 mis-coded",
+        "factor_updates": {
+          "policy_conformance": 0.58
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: 5 of 8 lines correctly coded, 3 mis-coded.",
+        "step": 1
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "5 of 8 lines correctly coded, 3 mis-coded",
+        "factor_updates": {
+          "policy_conformance": 0.58
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: 5 of 8 lines correctly coded, 3 mis-coded.",
+        "step": 1
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "5 of 8 lines correctly coded, 3 mis-coded",
+        "factor_updates": {
+          "policy_conformance": 0.58
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: 5 of 8 lines correctly coded, 3 mis-coded.",
+        "step": 1
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v5",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "exemption_cert_path",
+        "evidence_found": "neutral evidence for exemption_cert_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch exemption_cert_path.",
+        "step": 1
+      },
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "codes and certificate both valid, but a jurisdiction change on 1 September superseded the exemption category",
+        "factor_updates": {
+          "policy_conformance": 0.46
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: codes and certificate both valid, but a jurisdiction change on 1 September superseded the exemption category.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "codes and certificate both valid, but a jurisdiction change on 1 September superseded the exemption category",
+        "factor_updates": {
+          "policy_conformance": 0.46
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: codes and certificate both valid, but a jurisdiction change on 1 September superseded the exemption category.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-005-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "line_tax_code_path",
+        "evidence_found": "codes and certificate both valid, but a jurisdiction change on 1 September superseded the exemption category",
+        "factor_updates": {
+          "policy_conformance": 0.46
+        },
+        "kind": "correct",
+        "narration": "Checked line tax codes: codes and certificate both valid, but a jurisdiction change on 1 September superseded the exemption category.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-009-v1",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-009-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "invoice_line_path",
+        "evidence_found": "misleading evidence for invoice_line_path",
+        "factor_updates": {
+          "contract_coverage": 0.92
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch invoice_line_path.",
+        "step": 1
+      },
+      {
+        "branch": "buyer_confirmation_path",
+        "evidence_found": "buyer confirmed 44.00 before delivery",
+        "factor_updates": {
+          "price_conformance": 0.86
+        },
+        "kind": "correct",
+        "narration": "Checked buyer confirmation: the price was approved before delivery.",
+        "step": 2
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-009-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "po_amendment_path",
+        "evidence_found": "PO carries an offline amendment to 44.00 never synced to ERP",
+        "factor_updates": {
+          "contract_coverage": 0.4
+        },
+        "kind": "correct",
+        "narration": "Checked the purchase order: it was amended offline to 44.00 and never synced.",
+        "step": 1
+      },
+      {
+        "branch": "buyer_confirmation_path",
+        "evidence_found": "buyer confirmed 44.00 before delivery",
+        "factor_updates": {
+          "price_conformance": 0.86
+        },
+        "kind": "correct",
+        "narration": "Checked buyer confirmation: the price was approved before delivery.",
+        "step": 2
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-009-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "po_amendment_path",
+        "evidence_found": "PO carries an offline amendment to 44.00 never synced to ERP",
+        "factor_updates": {
+          "contract_coverage": 0.4
+        },
+        "kind": "correct",
+        "narration": "Checked the purchase order: it was amended offline to 44.00 and never synced.",
+        "step": 1
+      },
+      {
+        "branch": "buyer_confirmation_path",
+        "evidence_found": "buyer confirmed 44.00 before delivery",
+        "factor_updates": {
+          "price_conformance": 0.86
+        },
+        "kind": "correct",
+        "narration": "Checked buyer confirmation: the price was approved before delivery.",
+        "step": 2
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-009-v2",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-009-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "invoice_line_path",
+        "evidence_found": "misleading evidence for invoice_line_path",
+        "factor_updates": {
+          "receipt_match": 0.42
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch invoice_line_path.",
+        "step": 1
+      },
+      {
+        "branch": "buyer_confirmation_path",
+        "evidence_found": "neutral evidence for buyer_confirmation_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch buyer_confirmation_path.",
+        "step": 2
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-009-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_posting_path",
+        "evidence_found": "PO and receipt both at 480; invoice bills 500",
+        "factor_updates": {
+          "receipt_match": 0.3
+        },
+        "kind": "correct",
+        "narration": "Checked the goods receipt: the order and receipt agree at 480 while the invoice bills 500.",
+        "step": 1
+      },
+      {
+        "branch": "warehouse_scan_path",
+        "evidence_found": "scan confirms 480 units",
+        "factor_updates": {
+          "receipt_match": 0.22
+        },
+        "kind": "correct",
+        "narration": "Checked the warehouse scan: 480 units were physically scanned.",
+        "step": 2
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 0.9,
+    "scenario_id": "S2P-MH-009-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_posting_path",
+        "evidence_found": "PO and receipt both at 480; invoice bills 500",
+        "factor_updates": {
+          "receipt_match": 0.3
+        },
+        "kind": "correct",
+        "narration": "Checked the goods receipt: the order and receipt agree at 480 while the invoice bills 500.",
+        "step": 1
+      },
+      {
+        "branch": "warehouse_scan_path",
+        "evidence_found": "scan confirms 480 units",
+        "factor_updates": {
+          "receipt_match": 0.22
+        },
+        "kind": "correct",
+        "narration": "Checked the warehouse scan: 480 units were physically scanned.",
+        "step": 2
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-009-v3",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-009-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "invoice_line_path",
+        "evidence_found": "misleading evidence for invoice_line_path",
+        "factor_updates": {
+          "price_conformance": 0.42
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch invoice_line_path.",
+        "step": 1
+      },
+      {
+        "branch": "buyer_confirmation_path",
+        "evidence_found": "no buyer confirmation for 44.00",
+        "factor_updates": {
+          "price_conformance": 0.26
+        },
+        "kind": "correct",
+        "narration": "Checked buyer confirmation: nothing authorises the higher price.",
+        "step": 2
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-009-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "po_amendment_path",
+        "evidence_found": "no amendment on file; quantity agrees, price does not",
+        "factor_updates": {
+          "price_conformance": 0.34
+        },
+        "kind": "correct",
+        "narration": "Checked the purchase order: no amendment exists, the quantity agrees and the price does not.",
+        "step": 1
+      },
+      {
+        "branch": "buyer_confirmation_path",
+        "evidence_found": "no buyer confirmation for 44.00",
+        "factor_updates": {
+          "price_conformance": 0.26
+        },
+        "kind": "correct",
+        "narration": "Checked buyer confirmation: nothing authorises the higher price.",
+        "step": 2
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.7,
+    "scenario_id": "S2P-MH-009-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "po_amendment_path",
+        "evidence_found": "no amendment on file; quantity agrees, price does not",
+        "factor_updates": {
+          "price_conformance": 0.34
+        },
+        "kind": "correct",
+        "narration": "Checked the purchase order: no amendment exists, the quantity agrees and the price does not.",
+        "step": 1
+      },
+      {
+        "branch": "buyer_confirmation_path",
+        "evidence_found": "no buyer confirmation for 44.00",
+        "factor_updates": {
+          "price_conformance": 0.26
+        },
+        "kind": "correct",
+        "narration": "Checked buyer confirmation: nothing authorises the higher price.",
+        "step": 2
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-009-v4",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-009-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "invoice_line_path",
+        "evidence_found": "misleading evidence for invoice_line_path",
+        "factor_updates": {
+          "receipt_match": 0.5800000000000001
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch invoice_line_path.",
+        "step": 1
+      },
+      {
+        "branch": "buyer_confirmation_path",
+        "evidence_found": "neutral evidence for buyer_confirmation_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch buyer_confirmation_path.",
+        "step": 2
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-009-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_posting_path",
+        "evidence_found": "receipt posting incomplete \u2014 a second dock delivery is still unposted",
+        "factor_updates": {
+          "receipt_match": 0.5
+        },
+        "kind": "correct",
+        "narration": "Checked the goods receipt: posting is incomplete, with a second dock delivery still unrecorded.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-009-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_posting_path",
+        "evidence_found": "receipt posting incomplete \u2014 a second dock delivery is still unposted",
+        "factor_updates": {
+          "receipt_match": 0.5
+        },
+        "kind": "correct",
+        "narration": "Checked the goods receipt: posting is incomplete, with a second dock delivery still unrecorded.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-009-v5",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-009-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "invoice_line_path",
+        "evidence_found": "misleading evidence for invoice_line_path",
+        "factor_updates": {
+          "contract_coverage": 0.5800000000000001
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch invoice_line_path.",
+        "step": 1
+      },
+      {
+        "branch": "buyer_confirmation_path",
+        "evidence_found": "4 of 6 amendments carry no approval record",
+        "factor_updates": {
+          "policy_conformance": 0.16
+        },
+        "kind": "correct",
+        "narration": "Checked buyer confirmations: four of the six amendments have no approval record.",
+        "step": 2
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-009-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "po_amendment_path",
+        "evidence_found": "PO amended offline again \u2014 the 6th such amendment this year",
+        "factor_updates": {
+          "contract_coverage": 0.3
+        },
+        "kind": "correct",
+        "narration": "Checked the purchase order: it was amended offline again, the sixth time this year.",
+        "step": 1
+      },
+      {
+        "branch": "buyer_confirmation_path",
+        "evidence_found": "4 of 6 amendments carry no approval record",
+        "factor_updates": {
+          "policy_conformance": 0.16
+        },
+        "kind": "correct",
+        "narration": "Checked buyer confirmations: four of the six amendments have no approval record.",
+        "step": 2
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.3,
+    "scenario_id": "S2P-MH-009-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "invoice_line_path",
+        "evidence_found": "misleading evidence for invoice_line_path",
+        "factor_updates": {
+          "contract_coverage": 0.5800000000000001
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch invoice_line_path.",
+        "step": 1
+      },
+      {
+        "branch": "warehouse_scan_path",
+        "evidence_found": "neutral evidence for warehouse_scan_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch warehouse_scan_path.",
+        "step": 2
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v1",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10%",
+        "factor_updates": {
+          "contract_coverage": 0.76
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 signed, -5%, net +5%",
+        "factor_updates": {
+          "price_conformance": 0.88
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: a signed 5% reduction, netting to plus five.",
+        "step": 3
+      },
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      },
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10%",
+        "factor_updates": {
+          "contract_coverage": 0.76
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 signed, -5%, net +5%",
+        "factor_updates": {
+          "price_conformance": 0.88
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: a signed 5% reduction, netting to plus five.",
+        "step": 3
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      },
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10%",
+        "factor_updates": {
+          "contract_coverage": 0.76
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 signed, -5%, net +5%",
+        "factor_updates": {
+          "price_conformance": 0.88
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: a signed 5% reduction, netting to plus five.",
+        "step": 3
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v2",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10%",
+        "factor_updates": {
+          "contract_coverage": 0.74
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 signed, -5%, net +5% against an invoiced +15%",
+        "factor_updates": {
+          "price_conformance": 0.26
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: the chain nets to plus five while the invoice bills plus fifteen.",
+        "step": 3
+      },
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      },
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10%",
+        "factor_updates": {
+          "contract_coverage": 0.74
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 signed, -5%, net +5% against an invoiced +15%",
+        "factor_updates": {
+          "price_conformance": 0.26
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: the chain nets to plus five while the invoice bills plus fifteen.",
+        "step": 3
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      },
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10%",
+        "factor_updates": {
+          "contract_coverage": 0.74
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 signed, -5%, net +5% against an invoiced +15%",
+        "factor_updates": {
+          "price_conformance": 0.26
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: the chain nets to plus five while the invoice bills plus fifteen.",
+        "step": 3
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v3",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10%",
+        "factor_updates": {
+          "contract_coverage": 0.75
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 drafted but unsigned",
+        "factor_updates": {
+          "contract_coverage": 0.48
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: it is drafted but has not been signed.",
+        "step": 3
+      },
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      },
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10%",
+        "factor_updates": {
+          "contract_coverage": 0.75
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 drafted but unsigned",
+        "factor_updates": {
+          "contract_coverage": 0.48
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: it is drafted but has not been signed.",
+        "step": 3
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      },
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10%",
+        "factor_updates": {
+          "contract_coverage": 0.75
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 drafted but unsigned",
+        "factor_updates": {
+          "contract_coverage": 0.48
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: it is drafted but has not been signed.",
+        "step": 3
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v4",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10% across all lines",
+        "factor_updates": {
+          "contract_coverage": 0.73
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase across all lines.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 -5% but only over 60% of lines",
+        "factor_updates": {
+          "price_conformance": 0.6
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: the reduction applies to only sixty percent of the lines.",
+        "step": 3
+      },
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      },
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10% across all lines",
+        "factor_updates": {
+          "contract_coverage": 0.73
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase across all lines.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 -5% but only over 60% of lines",
+        "factor_updates": {
+          "price_conformance": 0.6
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: the reduction applies to only sixty percent of the lines.",
+        "step": 3
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 at 50.00 per unit, live to March 2027",
+        "factor_updates": {
+          "contract_coverage": 0.7
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: a base price of 50.00 per unit, live until March 2027.",
+        "step": 1
+      },
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "AMD-S7-01 signed, +10% across all lines",
+        "factor_updates": {
+          "contract_coverage": 0.73
+        },
+        "kind": "correct",
+        "narration": "Checked the first amendment: a signed 10% increase across all lines.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "AMD-S7-02 -5% but only over 60% of lines",
+        "factor_updates": {
+          "price_conformance": 0.6
+        },
+        "kind": "correct",
+        "narration": "Checked the second amendment: the reduction applies to only sixty percent of the lines.",
+        "step": 3
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v5",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "amendment_1_path",
+        "evidence_found": "neutral evidence for amendment_1_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch amendment_1_path.",
+        "step": 2
+      },
+      {
+        "branch": "amendment_2_path",
+        "evidence_found": "neutral evidence for amendment_2_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch amendment_2_path.",
+        "step": 3
+      },
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 expired 31 August, before the invoice date",
+        "factor_updates": {
+          "contract_coverage": 0.12
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: it expired on 31 August, before this invoice was raised.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 expired 31 August, before the invoice date",
+        "factor_updates": {
+          "contract_coverage": 0.12
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: it expired on 31 August, before this invoice was raised.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "prerequisite",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-007-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_path",
+        "evidence_found": "CON-S7 expired 31 August, before the invoice date",
+        "factor_updates": {
+          "contract_coverage": 0.12
+        },
+        "kind": "correct",
+        "narration": "Checked the governing contract: it expired on 31 August, before this invoice was raised.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v1",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "sibling_vendor_path",
+        "evidence_found": "misleading evidence for sibling_vendor_path",
+        "factor_updates": {
+          "contract_coverage": 0.8200000000000001
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch sibling_vendor_path.",
+        "step": 2
+      },
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "tier2_invoice_path",
+        "evidence_found": "tier-2 invoice implies an 8.0% markup",
+        "factor_updates": {
+          "price_conformance": 0.88
+        },
+        "kind": "correct",
+        "narration": "Checked the tier-2 invoice: the implied markup is exactly eight percent.",
+        "step": 3
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "subcontract_agreement_path",
+        "evidence_found": "8% markup cap over the tier-2 cost",
+        "factor_updates": {
+          "contract_coverage": 0.78
+        },
+        "kind": "correct",
+        "narration": "Checked the subcontract agreement: an eight percent markup cap over tier-2 cost.",
+        "step": 2
+      },
+      {
+        "branch": "tier2_invoice_path",
+        "evidence_found": "tier-2 invoice implies an 8.0% markup",
+        "factor_updates": {
+          "price_conformance": 0.88
+        },
+        "kind": "correct",
+        "narration": "Checked the tier-2 invoice: the implied markup is exactly eight percent.",
+        "step": 3
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v1",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "subcontract_agreement_path",
+        "evidence_found": "8% markup cap over the tier-2 cost",
+        "factor_updates": {
+          "contract_coverage": 0.78
+        },
+        "kind": "correct",
+        "narration": "Checked the subcontract agreement: an eight percent markup cap over tier-2 cost.",
+        "step": 2
+      },
+      {
+        "branch": "tier2_invoice_path",
+        "evidence_found": "tier-2 invoice implies an 8.0% markup",
+        "factor_updates": {
+          "price_conformance": 0.88
+        },
+        "kind": "correct",
+        "narration": "Checked the tier-2 invoice: the implied markup is exactly eight percent.",
+        "step": 3
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v2",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "sibling_vendor_path",
+        "evidence_found": "misleading evidence for sibling_vendor_path",
+        "factor_updates": {
+          "contract_coverage": 0.8
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch sibling_vendor_path.",
+        "step": 2
+      },
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "tier2_invoice_path",
+        "evidence_found": "tier-2 invoice implies a 22% markup",
+        "factor_updates": {
+          "price_conformance": 0.24
+        },
+        "kind": "correct",
+        "narration": "Checked the tier-2 invoice: the implied markup is twenty-two percent.",
+        "step": 3
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "subcontract_agreement_path",
+        "evidence_found": "8% markup cap",
+        "factor_updates": {
+          "contract_coverage": 0.76
+        },
+        "kind": "correct",
+        "narration": "Checked the subcontract agreement: an eight percent markup cap.",
+        "step": 2
+      },
+      {
+        "branch": "tier2_invoice_path",
+        "evidence_found": "tier-2 invoice implies a 22% markup",
+        "factor_updates": {
+          "price_conformance": 0.24
+        },
+        "kind": "correct",
+        "narration": "Checked the tier-2 invoice: the implied markup is twenty-two percent.",
+        "step": 3
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v2",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "subcontract_agreement_path",
+        "evidence_found": "8% markup cap",
+        "factor_updates": {
+          "contract_coverage": 0.76
+        },
+        "kind": "correct",
+        "narration": "Checked the subcontract agreement: an eight percent markup cap.",
+        "step": 2
+      },
+      {
+        "branch": "tier2_invoice_path",
+        "evidence_found": "tier-2 invoice implies a 22% markup",
+        "factor_updates": {
+          "price_conformance": 0.24
+        },
+        "kind": "correct",
+        "narration": "Checked the tier-2 invoice: the implied markup is twenty-two percent.",
+        "step": 3
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v3",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "sibling_vendor_path",
+        "evidence_found": "misleading evidence for sibling_vendor_path",
+        "factor_updates": {
+          "receipt_match": 0.54
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch sibling_vendor_path.",
+        "step": 2
+      },
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "tier2_invoice_path",
+        "evidence_found": "neutral evidence for tier2_invoice_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch tier2_invoice_path.",
+        "step": 3
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "subcontract_agreement_path",
+        "evidence_found": "8% cap, but no tier-2 invoice has been filed",
+        "factor_updates": {
+          "receipt_match": 0.34
+        },
+        "kind": "correct",
+        "narration": "Checked the agreement and filings: the cap is clear but no tier-2 invoice exists to validate against.",
+        "step": 2
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v3",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "subcontract_agreement_path",
+        "evidence_found": "8% cap, but no tier-2 invoice has been filed",
+        "factor_updates": {
+          "receipt_match": 0.34
+        },
+        "kind": "correct",
+        "narration": "Checked the agreement and filings: the cap is clear but no tier-2 invoice exists to validate against.",
+        "step": 2
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v4",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "sibling_vendor_path",
+        "evidence_found": "misleading evidence for sibling_vendor_path",
+        "factor_updates": {
+          "contract_coverage": 0.58
+        },
+        "kind": "misleading",
+        "narration": "Read misleading branch sibling_vendor_path.",
+        "step": 2
+      },
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "tier2_invoice_path",
+        "evidence_found": "one line of 38,000 falls outside the agreement's scope",
+        "factor_updates": {
+          "contract_coverage": 0.52
+        },
+        "kind": "correct",
+        "narration": "Checked the tier-2 invoice and lines: one line falls outside the agreement's scope.",
+        "step": 3
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "subcontract_agreement_path",
+        "evidence_found": "8% cap, covering three of four work packages",
+        "factor_updates": {
+          "contract_coverage": 0.66
+        },
+        "kind": "correct",
+        "narration": "Checked the subcontract agreement: the cap covers three of the four work packages.",
+        "step": 2
+      },
+      {
+        "branch": "tier2_invoice_path",
+        "evidence_found": "one line of 38,000 falls outside the agreement's scope",
+        "factor_updates": {
+          "contract_coverage": 0.52
+        },
+        "kind": "correct",
+        "narration": "Checked the tier-2 invoice and lines: one line falls outside the agreement's scope.",
+        "step": 3
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "partial_approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v4",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 supplier billing a pass-through cost basis",
+        "factor_updates": {
+          "contract_coverage": 0.62
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier: a tier-1 vendor billing on a pass-through basis.",
+        "step": 1
+      },
+      {
+        "branch": "subcontract_agreement_path",
+        "evidence_found": "8% cap, covering three of four work packages",
+        "factor_updates": {
+          "contract_coverage": 0.66
+        },
+        "kind": "correct",
+        "narration": "Checked the subcontract agreement: the cap covers three of the four work packages.",
+        "step": 2
+      },
+      {
+        "branch": "tier2_invoice_path",
+        "evidence_found": "one line of 38,000 falls outside the agreement's scope",
+        "factor_updates": {
+          "contract_coverage": 0.52
+        },
+        "kind": "correct",
+        "narration": "Checked the tier-2 invoice and lines: one line falls outside the agreement's scope.",
+        "step": 3
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v5",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "sibling_vendor_path",
+        "evidence_found": "misleading evidence for sibling_vendor_path",
+        "factor_updates": {},
+        "kind": "misleading",
+        "narration": "Read misleading branch sibling_vendor_path.",
+        "step": 2
+      },
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 billing pass-through costs with no subcontract agreement on file",
+        "factor_updates": {
+          "contract_coverage": 0.1
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier and agreements: pass-through costs are being billed with no subcontract agreement on file.",
+        "step": 1
+      },
+      {
+        "branch": "tier2_invoice_path",
+        "evidence_found": "neutral evidence for tier2_invoice_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch tier2_invoice_path.",
+        "step": 3
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 billing pass-through costs with no subcontract agreement on file",
+        "factor_updates": {
+          "contract_coverage": 0.1
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier and agreements: pass-through costs are being billed with no subcontract agreement on file.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "prerequisite",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-MH-008-v5",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "tier1_invoice_path",
+        "evidence_found": "tier-1 billing pass-through costs with no subcontract agreement on file",
+        "factor_updates": {
+          "contract_coverage": 0.1
+        },
+        "kind": "correct",
+        "narration": "Checked the submitting supplier and agreements: pass-through costs are being billed with no subcontract agreement on file.",
+        "step": 1
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-001",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-001",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-001",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "approve",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-001",
+    "surface_only_resolvable": true,
+    "trace": [
+      {
+        "branch": "surface_only",
+        "kind": "flat",
+        "step": 0
+      }
+    ],
+    "truth_action": "approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-002",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-002",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-002",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-002",
+    "surface_only_resolvable": true,
+    "trace": [
+      {
+        "branch": "surface_only",
+        "kind": "flat",
+        "step": 0
+      }
+    ],
+    "truth_action": "dispute"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-003",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-003",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-003",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-003",
+    "surface_only_resolvable": true,
+    "trace": [
+      {
+        "branch": "surface_only",
+        "kind": "flat",
+        "step": 0
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-004",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-004",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-004",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-004",
+    "surface_only_resolvable": true,
+    "trace": [
+      {
+        "branch": "surface_only",
+        "kind": "flat",
+        "step": 0
+      }
+    ],
+    "truth_action": "partial_approve"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-005",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-005",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-005",
+    "surface_only_resolvable": true,
+    "trace": [],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "content_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 1.0,
+    "scenario_id": "S2P-CTRL-FLAT-005",
+    "surface_only_resolvable": true,
+    "trace": [
+      {
+        "branch": "surface_only",
+        "kind": "flat",
+        "step": 0
+      }
+    ],
+    "truth_action": "escalate_to_procurement"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-001",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-001",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_history_path",
+        "evidence_found": "neutral evidence for gr_history_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch gr_history_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": false,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-001",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "transit_tracking_path",
+        "evidence_found": "3% outstanding, no tracking record but no shortfall history either",
+        "factor_updates": {
+          "receipt_match": 0.52
+        },
+        "kind": "correct",
+        "narration": "Checked tracking and receipts: three percent is outstanding with neither a tracking record nor a shortfall history.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "quantity_mismatch",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-001",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "gr_history_path",
+        "evidence_found": "neutral evidence for gr_history_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch gr_history_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-002",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-002",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_price_path",
+        "evidence_found": "2.1% above contract, inside a vaguely worded escalation clause",
+        "factor_updates": {
+          "price_conformance": 0.51
+        },
+        "kind": "correct",
+        "narration": "Checked the contract: the invoice is 2.1% high, within a loosely worded escalation clause.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-002",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_price_path",
+        "evidence_found": "2.1% above contract, inside a vaguely worded escalation clause",
+        "factor_updates": {
+          "price_conformance": 0.51
+        },
+        "kind": "correct",
+        "narration": "Checked the contract: the invoice is 2.1% high, within a loosely worded escalation clause.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "price_mismatch",
+    "correct": false,
+    "predicted_action": "approve",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-002",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "pending_credits_path",
+        "evidence_found": "neutral evidence for pending_credits_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch pending_credits_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-003",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-003",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "entity_resolution_path",
+        "evidence_found": "neutral evidence for entity_resolution_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch entity_resolution_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-003",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "payment_history_path",
+        "evidence_found": "a similar amount paid 6 weeks ago against a different PO",
+        "factor_updates": {
+          "duplicate_risk": 0.49
+        },
+        "kind": "correct",
+        "narration": "Checked payment history: a similar amount was paid six weeks ago against a different purchase order.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "duplicate_suspect",
+    "correct": false,
+    "predicted_action": "dispute",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-003",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "entity_resolution_path",
+        "evidence_found": "neutral evidence for entity_resolution_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch entity_resolution_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-004",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-004",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "exception_history_path",
+        "evidence_found": "exception rate 6% against a 4% baseline",
+        "factor_updates": {
+          "supplier_trust": 0.53
+        },
+        "kind": "correct",
+        "narration": "Checked exception history: the rate has moved from four percent to six.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "supplier_pattern",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-004",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "exception_history_path",
+        "evidence_found": "exception rate 6% against a 4% baseline",
+        "factor_updates": {
+          "supplier_trust": 0.53
+        },
+        "kind": "correct",
+        "narration": "Checked exception history: the rate has moved from four percent to six.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "supplier_pattern",
+    "correct": false,
+    "predicted_action": "partial_approve",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-004",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "supplier_otif_path",
+        "evidence_found": "neutral evidence for supplier_otif_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch supplier_otif_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "single_pass",
+    "branching_kind": "score_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-005",
+    "surface_only_resolvable": false,
+    "trace": [],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "breadth",
+    "branching_kind": "score_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-005",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_scope_path",
+        "evidence_found": "category not listed but not excluded either",
+        "factor_updates": {
+          "contract_coverage": 0.5
+        },
+        "kind": "correct",
+        "narration": "Checked contract scope: the category is neither listed nor excluded.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "content_rule",
+    "branching_kind": "score_keyed",
+    "category": "compliance_risk",
+    "correct": true,
+    "predicted_action": "hold_for_review",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-005",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "contract_scope_path",
+        "evidence_found": "category not listed but not excluded either",
+        "factor_updates": {
+          "contract_coverage": 0.5
+        },
+        "kind": "correct",
+        "narration": "Checked contract scope: the category is neither listed nor excluded.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  },
+  {
+    "arm": "vld",
+    "branching_kind": "score_keyed",
+    "category": "compliance_risk",
+    "correct": false,
+    "predicted_action": "escalate_to_procurement",
+    "rho_planted": 0.5,
+    "scenario_id": "S2P-CTRL-RHO50-005",
+    "surface_only_resolvable": false,
+    "trace": [
+      {
+        "branch": "policy_path",
+        "evidence_found": "neutral evidence for policy_path",
+        "factor_updates": {},
+        "kind": "neutral",
+        "narration": "Read neutral branch policy_path.",
+        "step": 1
+      }
+    ],
+    "truth_action": "hold_for_review"
+  }
+]

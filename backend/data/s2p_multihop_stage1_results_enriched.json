@@ -1,0 +1,1802 @@
+[
+  {
+    "scenario_id": "S2P-MH-001-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-001-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-001-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-001-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-001-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-001-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-002-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-002-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-002-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-002-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-002-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-002-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-002-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-002-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-003-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-003-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-003-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-003-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-003-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-003-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v1",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v1",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v1",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v1",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v2",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v2",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v2",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v2",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "escalate_to_procurement",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-004-v3",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "escalate_to_procurement",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-004-v3",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "escalate_to_procurement",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-004-v3",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "escalate_to_procurement",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-004-v3",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-004-v4",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v4",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v4",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v4",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v5",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v5",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v5",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-004-v5",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v1",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v1",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v1",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v1",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v2",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v2",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v2",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v2",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v3",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-005-v3",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-005-v3",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-005-v3",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-005-v4",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v4",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v4",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v4",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-005-v5",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-005-v5",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-005-v5",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-005-v5",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v1",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v2",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.9,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "hold_for_review",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-009-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-009-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-009-v3",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.7,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-009-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v4",
+    "branching_kind": "score_keyed",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-009-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-009-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-009-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-009-v5",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.3,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-007-v1",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-007-v1",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-007-v1",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-007-v1",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-007-v2",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-007-v2",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-007-v2",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-007-v2",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-007-v3",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-007-v3",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-007-v3",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-007-v3",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-007-v4",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-007-v4",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-007-v4",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-007-v4",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-007-v5",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-007-v5",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-007-v5",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-007-v5",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v1",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-008-v1",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-008-v1",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-008-v1",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v2",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v2",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v2",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v2",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "dispute",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v3",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "dispute",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-008-v3",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "dispute",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-008-v3",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "dispute",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-MH-008-v3",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v4",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v4",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v4",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v4",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "partial_approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v5",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v5",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v5",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-MH-008-v5",
+    "branching_kind": "prerequisite",
+    "rho_planted": 1.0,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-001",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "single_pass",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-001",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "breadth",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-001",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "content_rule",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-001",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "vld",
+    "action": "approve",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-002",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "single_pass",
+    "action": "escalate_to_procurement",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-002",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "breadth",
+    "action": "escalate_to_procurement",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-002",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "content_rule",
+    "action": "escalate_to_procurement",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-002",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "vld",
+    "action": "escalate_to_procurement",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-003",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-003",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-003",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-003",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "vld",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-004",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "single_pass",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-004",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "breadth",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-004",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "content_rule",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-004",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "vld",
+    "action": "approve",
+    "correct": false
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-005",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "single_pass",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-005",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "breadth",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-005",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "content_rule",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-FLAT-005",
+    "branching_kind": "content_keyed",
+    "rho_planted": 1.0,
+    "surface_only": true,
+    "arm": "vld",
+    "action": "escalate_to_procurement",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-001",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-001",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-001",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-001",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-002",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-002",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-002",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-002",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-003",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-003",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-003",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-003",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-004",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-004",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-004",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-004",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-005",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "single_pass",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-005",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "breadth",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-005",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "content_rule",
+    "action": "hold_for_review",
+    "correct": true
+  },
+  {
+    "scenario_id": "S2P-CTRL-RHO50-005",
+    "branching_kind": "score_keyed",
+    "rho_planted": 0.5,
+    "surface_only": false,
+    "arm": "vld",
+    "action": "hold_for_review",
+    "correct": true
+  }
+]

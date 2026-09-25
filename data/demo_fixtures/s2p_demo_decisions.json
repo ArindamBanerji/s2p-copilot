@@ -1,0 +1,93 @@
+{
+  "seed_version": "s2p-demo-v1",
+  "special_decisions": [
+    {
+      "event_id": "S2P-INV-0001",
+      "category": "contract_gap",
+      "amount": 22426.73,
+      "supplier_id": "SUP-001",
+      "supplier_name": "Copper Metals Co.",
+      "contract_id": "CTR-COPPER-73",
+      "match_status": 0.98,
+      "amount_variance_ratio": 0.01,
+      "duplicate_score": 0.01,
+      "supplier_exception_history": 0.01,
+      "payment_terms_impact": 0.20,
+      "commodity_index_correlation": 0.90,
+      "tax_regulatory_compliance": 0.98,
+      "environmental_risk": 0.10,
+      "demo_claim": "Copper contract clause 7.3 acceptance review"
+    },
+    {
+      "event_id": "S2P-DEMO-CONTAINER-01",
+      "category": "contract_gap",
+      "amount": 1200.0,
+      "supplier_id": "SUP-CONTAINER-001",
+      "supplier_name": "Port Logistics",
+      "contract_id": "CTR-CONTAINER-01",
+      "match_status": 0.45,
+      "amount_variance_ratio": 0.18,
+      "duplicate_score": 0.12,
+      "supplier_exception_history": 0.20,
+      "payment_terms_impact": 0.80,
+      "commodity_index_correlation": 0.40,
+      "tax_regulatory_compliance": 0.80,
+      "environmental_risk": 0.20,
+      "context": {
+        "working_capital": 14200.0,
+        "demurrage": 1200.0,
+        "days_at_port": 3
+      },
+      "demo_claim": "Hold: three days demurrage versus working capital"
+    }
+  ],
+  "warmup": {
+    "count": 30,
+    "categories": [
+      "price_variance",
+      "quantity_mismatch",
+      "duplicate_risk",
+      "contract_gap",
+      "format_compliance"
+    ]
+  },
+  "post_freeze": {
+    "count": 20,
+    "categories": [
+      "price_variance",
+      "quantity_mismatch",
+      "duplicate_risk",
+      "contract_gap",
+      "format_compliance"
+    ]
+  },
+  "extinction_timeline": [
+    {
+      "class_name": "price_variance_lt3pct_commodity",
+      "start_count": 200,
+      "end_count": 0,
+      "extinction_date": "2026-09-19",
+      "earning_decision_id": "S2P-EXT-PRICE-150",
+      "verified_count": 150,
+      "conservation_status": "GREEN"
+    },
+    {
+      "class_name": "duplicate_utility_under_500",
+      "start_count": 85,
+      "end_count": 0,
+      "extinction_date": "2026-09-19",
+      "earning_decision_id": "S2P-EXT-DUP-090",
+      "verified_count": 90,
+      "conservation_status": "GREEN"
+    },
+    {
+      "class_name": "still_manual_capex_over_50k",
+      "start_count": 120,
+      "end_count": 120,
+      "extinction_date": null,
+      "earning_decision_id": null,
+      "verified_count": 0,
+      "conservation_status": "GREEN"
+    }
+  ]
+}

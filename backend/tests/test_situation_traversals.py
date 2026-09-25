@@ -113,44 +113,28 @@ def _client_without_store() -> TestClient:
     return TestClient(app)
 
 
-class GraphRichStore(InMemoryGraphStore):
-    def query_context(
-        self, entity_id: str, max_depth: int, domain: str | None = None
-    ):
-        return [
-            {
-                "node": "commodity_index",
-                "id": "commodity:Copper",
-                "depth": 1,
-                "properties": {"commodity": "Copper", "provenance": "graph_store"},
-            }
-        ]
-
-
-class GraphCompleteStore(InMemoryGraphStore):
-    def query_context(
-        self, entity_id: str, max_depth: int, domain: str | None = None
-    ):
-        return [
-            {
-                "node": "commodity_index",
-                "id": "commodity:Copper",
-                "depth": 1,
-                "properties": {"commodity": "Copper", "provenance": "graph_store"},
-            },
-            {
-                "node": "contract_clause",
-                "id": "contract_clause:CTR-1",
-                "depth": 2,
-                "properties": {"ref": "CTR-1", "provenance": "graph_store"},
-            },
-            {
-                "node": "threshold",
-                "id": "threshold:10.0",
-                "depth": 3,
-                "properties": {"threshold_pct": 10.0, "provenance": "graph_store"},
-            },
-        ]
+def _graph_context_store(*, complete: bool = False) -> tuple[InMemoryGraphStore, str]:
+    store, decision_id = _store("price_variance")
+    store.link_decision_to_entity(
+        decision_id,
+        "CommodityIndex:Copper",
+        edge_type="HAS_COMMODITY_INDEX",
+        domain="s2p",
+    )
+    if complete:
+        store.link_decision_to_entity(
+            decision_id,
+            "ContractClause:CTR-1",
+            edge_type="GOVERNED_BY",
+            domain="s2p",
+        )
+        store.link_decision_to_entity(
+            decision_id,
+            "Threshold:10.0",
+            edge_type="THRESHOLD",
+            domain="s2p",
+        )
+    return store, decision_id
 
 
 def test_price_variance_traversal_with_fixture_data() -> None:
@@ -341,10 +325,7 @@ def test_endpoint_is_read_only() -> None:
 
 
 def test_traversal_uses_graph_context_before_fixture_node() -> None:
-    store = GraphRichStore(domain="s2p")
-    base_store, decision_id = _store("price_variance")
-    store._decisions = base_store._decisions
-    store._edges = base_store._edges
+    store, decision_id = _graph_context_store()
 
     context = _context(PriceVarianceTraversal(), store, decision_id)
 
@@ -383,14 +364,11 @@ def test_context_chain_nodes_include_provenance_field() -> None:
 
 
 def test_all_graph_sourced_nodes_report_context_overall() -> None:
-    store = GraphCompleteStore(domain="s2p")
-    base_store, decision_id = _store("price_variance")
-    decision = base_store.get_decision(decision_id, domain="s2p")
+    store, decision_id = _graph_context_store(complete=True)
+    decision = store.get_decision(decision_id, domain="s2p")
     assert decision is not None
     decision["metadata"]["provenance"] = "graph_store"
-    base_store._decisions[decision_id] = decision
-    store._decisions = base_store._decisions
-    store._edges = base_store._edges
+    store._decisions[decision_id] = decision
 
     payload = _client(store).get(f"/api/s2p/situation/{decision_id}").json()
 

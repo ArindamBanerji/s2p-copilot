@@ -213,14 +213,22 @@ def _factor_analysis(scorer: Any, decisions: list[dict[str, Any]]) -> dict[str, 
     }
 
 
-def _audit_verification() -> dict[str, Any]:
+def _audit_verification(request: Request) -> dict[str, Any]:
     try:
-        return {"available": True, "verification": audit.verify_chain()}
+        store = _graph_store(request)
+        if store is None:
+            raise RuntimeError("Audit store not configured")
+        verification = audit.verify_chain(store)
+        return {"available": verification.get("reason") != "verification_unavailable",
+                "verification": verification}
     except Exception as exc:
         return {
             "available": False,
             "verification": {
                 "verified": False,
+                "reason": "verification_unavailable",
+                "entries_checked": 0,
+                "tamper_evidence": [],
                 "error": type(exc).__name__,
             },
         }
@@ -250,14 +258,10 @@ def _sox_compliance(chain: dict[str, Any], conservation: dict[str, Any], decisio
     }
 
 
-def _decision_chain() -> dict[str, Any]:
-    chain = _audit_verification()
-    try:
-        entries = audit.get_audit_entries()
-    except Exception:
-        entries = []
+def _decision_chain(request: Request) -> dict[str, Any]:
+    chain = _audit_verification(request)
     return {
-        "entries_count": len(entries),
+        "entries_count": chain["verification"].get("chain_length", 0),
         **chain,
     }
 
@@ -266,14 +270,13 @@ def _export_payload(request: Request) -> dict[str, Any]:
     scorer = _sdk_scorer(request)
     reader = _graph_reader(request)
     graph_decisions = _all_graph_decisions(reader)
-    audit_decisions = audit.get_decisions()
-    decisions = graph_decisions if graph_decisions else audit_decisions
+    decisions = graph_decisions
     verified_decisions = reader.count_verified()
     correct_decisions = reader.count_correct()
     conservation = _get_conservation_status(reader, scorer)
     override_rate = _compute_override_rate(decisions)
     conservation["override_rate"] = override_rate
-    chain = _decision_chain()
+    chain = _decision_chain(request)
     total = len(decisions)
     correct = int(correct_decisions or 0)
 
@@ -312,6 +315,12 @@ def _csv_row(decision: dict[str, Any]) -> list[Any]:
     ]
 
 
+@router.post("/verify", response_model=GenericResponse)
+def verify_audit_chain(request: Request) -> dict[str, Any]:
+    """Verify this application's configured store, never a global fallback."""
+    return dict(_audit_verification(request)["verification"])
+
+
 @router.get("/export", response_model=GenericResponse)
 def export_audit_package(request: Request) -> dict[str, Any]:
     try:
@@ -326,8 +335,6 @@ def export_audit_csv(request: Request) -> dict[str, Any]:
         decisions = _all_graph_decisions(_graph_reader(request))
     except GraphUnavailableError as exc:
         raise HTTPException(status_code=503, detail="S2P graph unavailable for audit export") from exc
-    if not decisions:
-        decisions = audit.get_decisions()
     capped = decisions[:CSV_ROW_LIMIT]
     headers = [
         "decision_id",

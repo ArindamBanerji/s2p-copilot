@@ -103,9 +103,10 @@ def test_product_like_store_construction_uses_factory_without_live_product_conne
             "domain": "s2p",
             "dsn": PRODUCT_LIKE_ENV["S2P_ACTIVE_AGE_DSN"],
             "graph_name": "soc_graph",
-            "env": {},
-            "test_mode": False,
-            "shared_graph_authorization": "s2p:soc_graph",
+                "env": {},
+                "test_mode": False,
+                "profile": "test",
+                "shared_graph_authorization": "s2p:soc_graph",
         }
     ]
 

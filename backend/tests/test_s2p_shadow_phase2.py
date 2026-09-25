@@ -17,6 +17,7 @@ from app.s2p_shadow import (  # noqa: E402
     S2PShadowState,
     initialize_s2p_shadow_state,
 )
+from copilot_sdk.graph.memory_store import InMemoryGraphStore  # noqa: E402
 
 
 SCORE_BODY = {
@@ -34,7 +35,7 @@ SCORE_BODY = {
 }
 
 
-class FakeShadowStore:
+class LegacyShadowStore:
     def __init__(self, *, fail_governed: bool = False, fail_outcome: bool = False) -> None:
         self.fail_governed = fail_governed
         self.fail_outcome = fail_outcome
@@ -116,6 +117,61 @@ class FakeShadowStore:
         return []
 
 
+class TrackingShadowStore(InMemoryGraphStore):
+    def __init__(self, *, fail_governed: bool = False, fail_outcome: bool = False) -> None:
+        super().__init__(domain="s2p")
+        self.fail_governed = fail_governed
+        self.fail_outcome = fail_outcome
+
+    @property
+    def governed_decisions(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for decision in self._decisions.values():
+            metadata = decision.get("metadata")
+            row = dict(metadata) if isinstance(metadata, dict) else {}
+            row.update(decision)
+            rows.append(row)
+        return rows
+
+    @property
+    def outcomes(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "decision_id": outcome["decision_id"],
+                "actual_action": outcome["actual_action"],
+                "is_correct": outcome["is_correct"],
+                "metadata": outcome["metadata"],
+                "domain": outcome["domain"],
+            }
+            for outcome in self._outcomes.values()
+        ]
+
+    def write_governed_decision(self, *args: Any, **kwargs: Any) -> None:
+        if self.fail_governed:
+            raise RuntimeError("postgresql://postgres:secret@127.0.0.1/db?password=abc")
+        super().write_governed_decision(*args, **kwargs)
+
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict[str, Any] | None = None,
+        domain: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        if self.fail_outcome:
+            raise RuntimeError("postgresql://postgres:secret@127.0.0.1/db?password=abc")
+        super().write_outcome(
+            decision_id,
+            actual_action,
+            is_correct,
+            metadata,
+            domain=domain or "s2p",
+            **kwargs,
+        )
+
+
 def _enabled_config(*, strict: bool = False) -> S2PShadowConfig:
     return S2PShadowConfig.from_env(
         {
@@ -129,14 +185,14 @@ def _enabled_config(*, strict: bool = False) -> S2PShadowConfig:
 
 
 def _shadow_state(
-    store: FakeShadowStore | None = None,
+    store: TrackingShadowStore | None = None,
     *,
     strict: bool = False,
 ) -> S2PShadowState:
     return S2PShadowState(
         config=_enabled_config(strict=strict),
         diagnostics=S2PShadowDiagnostics(max_events=20, shadow_run_id="phase2-test"),
-        store=store or FakeShadowStore(),
+        store=store or TrackingShadowStore(),
     )
 
 
@@ -190,16 +246,16 @@ def test_enabled_shadow_state_uses_injected_shared_store():
 
 
 def test_score_shadow_success_uses_authoritative_decision_id_and_keeps_response_shape():
-    fake = FakeShadowStore()
-    shadow = _shadow_state(fake)
+    store = TrackingShadowStore()
+    shadow = _shadow_state(store)
     _reset_app_state(shadow)
 
     response = _score(TestClient(app), "S2P-SHADOW-SCORE-SUCCESS")
 
     assert response.status_code == 200
     body = response.json()
-    assert len(fake.governed_decisions) == 1
-    shadow_write = fake.governed_decisions[0]
+    assert len(store.governed_decisions) == 1
+    shadow_write = store.governed_decisions[0]
     assert shadow_write["decision_id"] == f"{body['decision_id']}::shadow"
     assert shadow_write["domain"] == "s2p"
     assert shadow_write["factor_names"] == s2p_router.S2PDomainConfig.factors
@@ -216,8 +272,8 @@ def test_score_shadow_success_uses_authoritative_decision_id_and_keeps_response_
 
 
 def test_outcome_shadow_success_runs_after_authoritative_outcome():
-    fake = FakeShadowStore()
-    shadow = _shadow_state(fake)
+    store = TrackingShadowStore()
+    shadow = _shadow_state(store)
     _reset_app_state(shadow)
     client = TestClient(app)
     score_response = _score(client, "S2P-SHADOW-OUTCOME-SUCCESS")
@@ -237,13 +293,13 @@ def test_outcome_shadow_success_runs_after_authoritative_outcome():
     )
 
     assert response.status_code == 200
-    assert len(fake.outcomes) == 1
-    assert fake.outcomes[0]["decision_id"] == f"{score['decision_id']}::shadow"
-    assert fake.outcomes[0]["actual_action"] == score["action"]
-    assert fake.outcomes[0]["metadata"]["shadow_run_id"] == "phase2-test"
-    assert fake.outcomes[0]["metadata"]["lifecycle"] == "shadow"
-    assert fake.outcomes[0]["metadata"]["shadow_operation"] == "outcome_shadow"
-    assert fake.outcomes[0]["metadata"]["operation_id"] == score["decision_id"]
+    assert len(store.outcomes) == 1
+    assert store.outcomes[0]["decision_id"] == f"{score['decision_id']}::shadow"
+    assert store.outcomes[0]["actual_action"] == score["action"]
+    assert store.outcomes[0]["metadata"]["shadow_run_id"] == "phase2-test"
+    assert store.outcomes[0]["metadata"]["lifecycle"] == "shadow"
+    assert store.outcomes[0]["metadata"]["shadow_operation"] == "outcome_shadow"
+    assert store.outcomes[0]["metadata"]["operation_id"] == score["decision_id"]
     event = shadow.diagnostics.events()[-1]
     assert event.operation == "outcome_shadow"
     assert event.status == "succeeded"
@@ -252,8 +308,8 @@ def test_outcome_shadow_success_runs_after_authoritative_outcome():
 
 
 def test_learn_shadow_success_uses_distinct_operation_name():
-    fake = FakeShadowStore()
-    shadow = _shadow_state(fake)
+    store = TrackingShadowStore()
+    shadow = _shadow_state(store)
     _reset_app_state(shadow)
     client = TestClient(app)
     score_response = _score(client, "S2P-SHADOW-LEARN-SUCCESS")
@@ -269,9 +325,9 @@ def test_learn_shadow_success_uses_distinct_operation_name():
     )
 
     assert response.status_code == 200
-    assert len(fake.outcomes) == 1
-    assert fake.outcomes[0]["metadata"]["shadow_operation"] == "learn_shadow"
-    assert fake.outcomes[0]["metadata"]["operation_id"] == score["decision_id"]
+    assert len(store.outcomes) == 1
+    assert store.outcomes[0]["metadata"]["shadow_operation"] == "learn_shadow"
+    assert store.outcomes[0]["metadata"]["operation_id"] == score["decision_id"]
     event = shadow.diagnostics.events()[-1]
     assert event.operation == "learn_shadow"
     assert event.status == "succeeded"
@@ -280,8 +336,8 @@ def test_learn_shadow_success_uses_distinct_operation_name():
 
 
 def test_non_strict_score_shadow_failure_keeps_sqlite_response_and_redacts_error():
-    fake = FakeShadowStore(fail_governed=True)
-    shadow = _shadow_state(fake, strict=False)
+    store = TrackingShadowStore(fail_governed=True)
+    shadow = _shadow_state(store, strict=False)
     _reset_app_state(shadow)
 
     response = _score(TestClient(app), "S2P-SHADOW-SCORE-FAIL")
@@ -295,8 +351,8 @@ def test_non_strict_score_shadow_failure_keeps_sqlite_response_and_redacts_error
 
 
 def test_strict_score_shadow_failure_logs_after_authoritative_write(caplog, monkeypatch):
-    fake = FakeShadowStore(fail_governed=True)
-    shadow = _shadow_state(fake, strict=True)
+    store = TrackingShadowStore(fail_governed=True)
+    shadow = _shadow_state(store, strict=True)
     _reset_app_state(shadow)
 
     with caplog.at_level("WARNING"):
@@ -320,8 +376,8 @@ def test_strict_score_shadow_failure_logs_after_authoritative_write(caplog, monk
 
 
 def test_non_strict_outcome_shadow_failure_keeps_sqlite_response():
-    fake = FakeShadowStore(fail_outcome=True)
-    shadow = _shadow_state(fake, strict=False)
+    store = TrackingShadowStore(fail_outcome=True)
+    shadow = _shadow_state(store, strict=False)
     _reset_app_state(shadow)
     client = TestClient(app)
     score_response = _score(client, "S2P-SHADOW-OUTCOME-FAIL")
@@ -346,8 +402,8 @@ def test_non_strict_outcome_shadow_failure_keeps_sqlite_response():
 
 
 def test_strict_outcome_shadow_failure_fails_clearly_after_authoritative_write():
-    fake = FakeShadowStore(fail_outcome=True)
-    shadow = _shadow_state(fake, strict=True)
+    store = TrackingShadowStore(fail_outcome=True)
+    shadow = _shadow_state(store, strict=True)
     _reset_app_state(shadow)
     client = TestClient(app)
     score_response = _score(client, "S2P-SHADOW-OUTCOME-STRICT")
@@ -373,22 +429,22 @@ def test_strict_outcome_shadow_failure_fails_clearly_after_authoritative_write()
 
 
 def test_preview_routes_do_not_write_age_decisions():
-    fake = FakeShadowStore()
-    shadow = _shadow_state(fake)
+    store = TrackingShadowStore()
+    shadow = _shadow_state(store)
     _reset_app_state(shadow)
 
     response = TestClient(app).get("/api/s2p/preview/queue")
 
     assert response.status_code == 200
-    assert fake.governed_decisions == []
+    assert store.governed_decisions == []
     assert not [
         event for event in shadow.diagnostics.events() if event.operation == "score_shadow"
     ]
 
 
 def test_duplicate_outcome_invariant_still_blocks_second_authoritative_write():
-    fake = FakeShadowStore()
-    shadow = _shadow_state(fake)
+    store = TrackingShadowStore()
+    shadow = _shadow_state(store)
     _reset_app_state(shadow)
     client = TestClient(app, raise_server_exceptions=False)
     score_response = _score(client, "S2P-SHADOW-DUPLICATE-OUTCOME")
@@ -406,4 +462,4 @@ def test_duplicate_outcome_invariant_still_blocks_second_authoritative_write():
     # Repeating the identical outcome is idempotent; conflicting outcomes
     # remain the path that must be rejected by the store contract.
     assert second.status_code == 200
-    assert len(fake.outcomes) == 2
+    assert len(store.outcomes) == 1

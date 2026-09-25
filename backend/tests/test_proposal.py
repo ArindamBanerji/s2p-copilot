@@ -13,7 +13,8 @@ from fastapi.testclient import TestClient
 from app.domains.s2p.proposals import DecisionChangeProposal
 from app.main import app as s2p_app
 from app.routers.s2p_proposals import create_proposal_router
-from app.services.proposal_service import ProposalService, ProposalStore
+from app.services.proposal_service import GraphProposalStore, ProposalService, ProposalStore
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
 def _score(decision_id: str = "decision-1", action: str = "hold_for_review") -> dict:
@@ -258,3 +259,18 @@ def test_pr_19_framework_category_is_preserved(tmp_path):
     proposal = service.create_from_score(_score(), "invoice-category", [0.1, 0.2], {"category": "price_variance"})
     assert proposal.category == "price_variance"
     assert service.store.get_by_invoice("invoice-category")[0].category == "price_variance"
+
+
+def test_pr_20_graph_store_decision_lookup_uses_persisted_index(monkeypatch):
+    graph_store = InMemoryGraphStore(domain="s2p")
+    proposal_store = GraphProposalStore(graph_store)
+    service = ProposalService(proposal_store)
+    proposal = service.create_from_score(
+        _score("decision-indexed"), "invoice-indexed", [0.1], _evidence()
+    )
+
+    def fail_full_scan(_domain: str):
+        raise AssertionError("decision lookup scanned the complete evolution history")
+
+    monkeypatch.setattr(graph_store, "list_evolutions", fail_full_scan)
+    assert proposal_store.get_by_decision_id("decision-indexed") == proposal

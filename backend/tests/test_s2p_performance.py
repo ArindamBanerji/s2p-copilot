@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
 from gae.calibration import compute_theta_min
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 from app.domains.s2p.config import S2P_CATEGORIES
 from app.graph.s2p_graph_reader import S2PGraphReader
@@ -19,91 +20,50 @@ client = TestClient(app)
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
-class FakeGraphStore:
-    def __init__(self):
-        self.domain = "s2p"
-        self.decisions = [
-            {"decision_id": "D-1", "recommended_action": "auto_approve"},
-            {"decision_id": "D-2", "recommended_action": "hold_for_review"},
-            {"decision_id": "D-3", "action": "auto_approve"},
-        ]
-        self.verified = [
-            {"decision_id": "D-1", "category": S2P_CATEGORIES[0], "is_correct": True},
-            {"decision_id": "D-2", "category": S2P_CATEGORIES[1], "is_correct": False},
-        ]
-
-    def get_centroid_checkpoints(
-        self,
-        domain: str,
-        *,
-        limit: int = 100,
-        checkpoint_time_start: str | None = None,
-        checkpoint_time_end: str | None = None,
-        decision_time_start: str | None = None,
-        decision_time_end: str | None = None,
-        category: str | None = None,
-    ):
-        assert domain == self.domain
-        return [
-            {"decision_id": "D-1", "category": "contract_gap", "centroids": {"auto_approve": [0.1]}},
-            {"decision_id": "D-2", "category": "duplicate_risk", "centroids": {"hold_for_review": [0.2]}},
-        ][:limit]
-
-    def count_verified(self, domain):
-        assert domain == self.domain
-        return len(self.verified)
-
-    def count_correct(self, domain):
-        assert domain == self.domain
-        return sum(1 for decision in self.verified if decision["is_correct"])
-
-    def count_verified_decisions(self, domain):
-        assert domain == self.domain
-        return len(self.verified)
-
-    def count_decisions(self, domain):
-        assert domain == self.domain
-        return len(self.decisions)
-
-    def count_recommended_action(self, domain, action):
-        assert domain == self.domain
-        return sum(
-            1
-            for decision in self.decisions
-            if (decision.get("recommended_action") or decision.get("action")) == action
+def _seed_performance_store(store: InMemoryGraphStore) -> InMemoryGraphStore:
+    decisions = [
+        ("D-1", S2P_CATEGORIES[0], "auto_approve", True),
+        ("D-2", S2P_CATEGORIES[1], "hold_for_review", False),
+        ("D-3", S2P_CATEGORIES[0], "auto_approve", None),
+    ]
+    for decision_id, category, action, is_correct in decisions:
+        store.write_decision(
+            "s2p",
+            category,
+            action,
+            0.8,
+            {"amount": 1.0},
+            metadata={
+                "decision_id": decision_id,
+                "category_index": 0,
+                "recommended_index": 0,
+                "created_at": 1700000000.0,
+            },
         )
-
-    def get_all_decisions(self, domain: str | None = None):
-        if domain is not None:
-            assert domain == self.domain
-        return list(self.decisions)
-
-    def get_verified_decisions(self, domain: str | None = None):
-        if domain is not None:
-            assert domain == self.domain
-        return list(self.verified)
-
-    def get_decision(self, decision_id: str, domain: str | None = None):
-        if domain is not None:
-            assert domain == self.domain
-        return next((row for row in self.decisions if row.get("decision_id") == decision_id), None)
-
-    def write_outcome(
-        self,
-        decision_id: str,
-        actual_action: str,
-        is_correct: bool,
-        metadata: dict | None = None,
-        domain: str | None = None,
-    ) -> None:
-        raise AssertionError("performance route must not write outcomes")
-
-    def get_archived_decisions(self, domain: str):
-        assert domain == self.domain
-        return []
+        if is_correct is not None:
+            store.write_outcome(decision_id, action, is_correct, domain="s2p")
+    store.save_centroids(
+        "s2p",
+        "contract_gap",
+        {"auto_approve": [0.1]},
+        metadata={"decision_id": "D-1"},
+    )
+    store.save_centroids(
+        "s2p",
+        "duplicate_risk",
+        {"hold_for_review": [0.2]},
+        metadata={"decision_id": "D-2"},
+    )
+    return store
 
 
-class SlowSummaryGraphStore(FakeGraphStore):
+class SummaryGraphStore(InMemoryGraphStore):
+    def __init__(self):
+        super().__init__(domain="s2p")
+        _seed_performance_store(self)
+
+
+class SlowSummaryGraphStore(SummaryGraphStore):
     def __init__(self):
         super().__init__()
         self.summary_reads = 0
@@ -120,7 +80,7 @@ class SlowSummaryGraphStore(FakeGraphStore):
         return super().get_all_decisions(domain)
 
 
-class AggregateSummaryGraphStore(FakeGraphStore):
+class AggregateSummaryGraphStore(SummaryGraphStore):
     def get_all_decisions(self, domain: str | None = None):
         return super().get_all_decisions(domain)
 
@@ -130,7 +90,7 @@ class AggregateSummaryGraphStore(FakeGraphStore):
 
 def with_fake_store():
     original = app.state.graph_store
-    fake = FakeGraphStore()
+    fake = SummaryGraphStore()
     app.state.graph_store = fake
     app.state.s2p_graph_reader = S2PGraphReader(store=fake)
     s2p_performance.clear_summary_cache()

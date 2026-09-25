@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 import os
 import sys
-from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
@@ -20,6 +19,7 @@ from app.services.centroid_explorer import (
     explain_decision,
     get_all_centroid_cells,
 )
+from copilot_sdk.graph.enrichment import EnrichmentSourceSet, ProvenancedValue
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
@@ -58,62 +58,19 @@ class FakeScorer:
         raise AssertionError("learn must not be called")
 
 
-@dataclass
-class FakeProvenanced:
-    value: Any
-    source: str = "fixture"
-    provenance_tier: str = "context"
-    source_count: int = 0
-    factor_eligible: bool = False
-    provenance_label: str = "fixture context"
-    measured: bool = False
-    verified: bool = False
-    computed_at: str = ""
-    warnings: list[str] = field(default_factory=list)
-
-
-class FakeGraphStore(InMemoryGraphStore):
-    def __init__(self, decision: dict[str, Any] | None = None, checkpoints: list[dict[str, Any]] | None = None) -> None:
+class ReadOnlyTrackingGraphStore(InMemoryGraphStore):
+    def __init__(self) -> None:
         super().__init__(domain="s2p")
-        self.decision = decision
-        self.checkpoints = checkpoints
+        self._sealed = False
         self.write_decision_calls = 0
         self.write_outcome_calls = 0
         self.write_entity_enrichment_calls = 0
 
-    def get_decision(self, decision_id: str, domain: str | None = None):
-        if domain is not None:
-            assert domain == "s2p"
-        if self.decision and self.decision.get("decision_id") == decision_id:
-            return dict(self.decision)
-        return None
-
-    def get_centroid_checkpoints(
-        self,
-        domain: str,
-        include_v2: bool = False,
-        *,
-        limit: int = 100,
-        checkpoint_time_start: str | None = None,
-        checkpoint_time_end: str | None = None,
-        decision_time_start: str | None = None,
-        decision_time_end: str | None = None,
-        category: str | None = None,
-        **kwargs: Any,
-    ):
-        assert domain == "s2p"
-        return list(self.checkpoints or [])
-
-    def read_entity_enrichment(
-        self,
-        *,
-        domain: str,
-        entity_type: str,
-        entity_id: str,
-        namespace: str | None = None,
-    ):
-        assert domain == "s2p"
-        return {"otif_score": FakeProvenanced(0.91, provenance_label="fixture OTIF context · integration pending")}
+    def seal(self) -> None:
+        self._sealed = True
+        self.write_decision_calls = 0
+        self.write_outcome_calls = 0
+        self.write_entity_enrichment_calls = 0
 
     def write_decision(
         self,
@@ -124,8 +81,10 @@ class FakeGraphStore(InMemoryGraphStore):
         factors: dict[str, Any],
         metadata: dict[str, Any] | None = None,
     ) -> str:
-        self.write_decision_calls += 1
-        raise AssertionError("write_decision must not be called")
+        if self._sealed:
+            self.write_decision_calls += 1
+            raise AssertionError("write_decision must not be called")
+        return super().write_decision(domain, category, action, confidence, factors, metadata)
 
     def write_outcome(
         self,
@@ -135,12 +94,10 @@ class FakeGraphStore(InMemoryGraphStore):
         metadata: dict[str, Any] | None = None,
         domain: str | None = None,
     ) -> None:
-        self.write_outcome_calls += 1
-        raise AssertionError("write_outcome must not be called")
-
-    def get_archived_decisions(self, domain: str) -> list[dict[str, Any]]:
-        assert domain == "s2p"
-        return []
+        if self._sealed:
+            self.write_outcome_calls += 1
+            raise AssertionError("write_outcome must not be called")
+        super().write_outcome(decision_id, actual_action, is_correct, metadata, domain=domain)
 
     def write_entity_enrichment(
         self,
@@ -154,8 +111,19 @@ class FakeGraphStore(InMemoryGraphStore):
         dry_run: bool = False,
         idempotency_key: str | None = None,
     ):
-        self.write_entity_enrichment_calls += 1
-        raise AssertionError("write_entity_enrichment must not be called")
+        if self._sealed:
+            self.write_entity_enrichment_calls += 1
+            raise AssertionError("write_entity_enrichment must not be called")
+        return super().write_entity_enrichment(
+            domain=domain,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            namespace=namespace,
+            metrics=metrics,
+            computed_from=computed_from,
+            dry_run=dry_run,
+            idempotency_key=idempotency_key,
+        )
 
 
 def _decision(**overrides) -> dict[str, Any]:
@@ -170,6 +138,67 @@ def _decision(**overrides) -> dict[str, Any]:
     }
     payload.update(overrides)
     return payload
+
+
+def _seed_store(
+    decision: dict[str, Any] | None = None,
+    *,
+    checkpoints: list[dict[str, Any]] | None = None,
+    track_writes: bool = False,
+) -> InMemoryGraphStore:
+    store: InMemoryGraphStore
+    if track_writes:
+        tracking_store = ReadOnlyTrackingGraphStore()
+        store = tracking_store
+    else:
+        tracking_store = None
+        store = InMemoryGraphStore(domain="s2p")
+    if decision is not None:
+        metadata = dict(decision.get("metadata") or {})
+        metadata.update({
+            "decision_id": decision["decision_id"],
+            "factor_vector": decision.get("factor_vector", BASE_VECTOR),
+            "probabilities": decision.get("probabilities", [0.91]),
+        })
+        store.write_decision(
+            "s2p",
+            str(decision.get("category") or "price_variance"),
+            str(decision.get("recommended_action") or "auto_approve"),
+            float(decision.get("confidence") or 0.91),
+            {
+                name: value
+                for name, value in zip(
+                    S2PDomainConfig.factors,
+                    list(decision.get("factor_vector") or BASE_VECTOR),
+                    strict=False,
+                )
+            },
+            metadata=metadata,
+        )
+        supplier_id = str(metadata.get("supplier_id") or "SUP-001")
+        store.write_entity_enrichment(
+            domain="s2p",
+            entity_type="Supplier",
+            entity_id=supplier_id,
+            namespace="s2p_supplier_metrics",
+            metrics={
+                "otif_score": ProvenancedValue.from_fixture(
+                    0.91,
+                    label="fixture OTIF context · integration pending",
+                )
+            },
+            computed_from=EnrichmentSourceSet(fixture_sources=["test"]),
+        )
+    for checkpoint in checkpoints or []:
+        store.save_centroids(
+            "s2p",
+            str(checkpoint.get("category") or "price_variance"),
+            checkpoint["centroids"],
+            metadata={"iks": checkpoint.get("iks", 0.0)},
+        )
+    if tracking_store is not None:
+        tracking_store.seal()
+    return store
 
 
 def test_explain_basic_returns_closest_action():
@@ -404,7 +433,7 @@ def test_category_action_name_mapping():
 
 def test_endpoints_are_read_only_no_decision_or_outcome_write():
     decision = _decision()
-    store = FakeGraphStore(decision)
+    store = _seed_store(decision, track_writes=True)
     app.state.scorer = FakeScorer()
     app.state.graph_store = store
 
@@ -431,7 +460,9 @@ def test_drift_uses_real_centroid_checkpoints_when_present():
     ]
     service = S2PCentroidExplorerService(
         scorer=FakeScorer(),
-        graph_store=FakeGraphStore(checkpoints=[{"id": 1, "category": "price_variance", "centroids": full_tensor}]),
+        graph_store=_seed_store(
+            checkpoints=[{"id": 1, "category": "price_variance", "centroids": full_tensor}]
+        ),
     )
 
     response = service.get_centroid_drift("price_variance", "auto_approve")
@@ -442,7 +473,7 @@ def test_drift_uses_real_centroid_checkpoints_when_present():
 
 
 def test_centroid_explorer_uses_domain_bound_reader():
-    store = FakeGraphStore(_decision())
+    store = _seed_store(_decision())
     calls: list[str] = []
 
     class Reader(S2PGraphReader):
@@ -465,7 +496,7 @@ def test_centroid_explorer_uses_domain_bound_reader():
 
 
 def test_centroid_explorer_propagates_graph_unavailable_error():
-    store = FakeGraphStore(_decision())
+    store = _seed_store(_decision())
 
     class FailingReader(S2PGraphReader):
         def get_decision(self, _decision_id: str):

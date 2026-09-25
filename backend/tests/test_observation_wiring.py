@@ -58,13 +58,14 @@ def _score_payload(event_id: str) -> dict:
     }
 
 
-def test_preview_queue_writes_observations_not_decisions_or_conservation():
+def test_preview_queue_writes_observations_not_decisions_or_conservation(seed_preview_graph):
     original_scorer = app.state.scorer
     original_graph_store = app.state.graph_store
     try:
         scorer = build_s2p_scorer(graph_store=InMemoryGraphStore(domain="s2p"))
         app.state.scorer = scorer
         app.state.graph_store = scorer.graph_store
+        seed_preview_graph(scorer.graph_store)
         s2p_preview.reset_preview_state()
         s2p_router._clear_score_conservation_status_cache()
         client = TestClient(app)

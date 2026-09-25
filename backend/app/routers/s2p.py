@@ -29,7 +29,7 @@ from copilot_sdk.backend.conservation_utils import (
     compute_conservation_status_payload,
 )
 from copilot_sdk.backend.diagnostics_models import build_diagnostics
-from copilot_sdk.graph.protocol import ProtocolV2GraphStore
+from copilot_sdk.graph.protocol import GraphStore, ProtocolV2GraphStore
 from copilot_sdk.scoring.mutation_lock import get_mutation_lock, serialize_mutation
 from copilot_sdk.scoring.dk_persistence import DKWelfordTracker, persist_dk_after_reestimate
 from copilot_sdk.state.invalidation import apply_cache_invalidation_event, get_tab_state_cache
@@ -45,13 +45,16 @@ from app.domains.s2p.auto_approve import (
 from app.domains.s2p.config import PENALTY_RATIO, S2PDomainConfig
 from app.domains.s2p.factors import S2PEvent, compute_all_factors
 from app.domains.s2p.reward import S2PRewardFunction
+from app.framework import audit
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse, LearningGateResponse, S2PScoreResponse
 from app.routers.s2p_data_helpers import find_invoice, load_invoices
-from app.routers.s2p_preview import _load_celonis_cache, invalidate_preview_observation
+from app.routers.s2p_preview import invalidate_preview_observation
+from app.services.s2p_preview_data import clear_decision_cache, invoice_process_context
 from app.models.outcome_receipt import OutcomeReceipt
 from app.services.receipt_store import get_receipt_store
 from app.routers.s2p_evidence import clear_evidence_context_cache
+from app.services.extinction_evidence import active_decision_ids, record_extinction
 from app.services.cross_copilot_signals import (
     CrossCopilotSignalConsumer,
     latest_supplier_signal,
@@ -65,8 +68,98 @@ from app.s2p_shadow import S2PShadowState
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 learn_router = APIRouter(prefix="/api", tags=["S2P"])
+
+ACTION_CATEGORY_MAP = {
+    "auto_approve": "APPROVE",
+    "hold_for_review": "HOLD",
+    "escalate_to_buyer": "HOLD",
+    "refer_to_specialist": "HOLD",
+    "escalate_compliance": "ESCALATE",
+    "flag_leakage": "ESCALATE",
+}
 log = logging.getLogger(__name__)
 SCORE_TIMEOUT = float(os.environ.get("S2P_SCORE_TIMEOUT", "2.0"))
+
+
+class S2PScoreAuditWriter:
+    """Seal SDK-persisted records without creating another Decision or Outcome.
+
+    Block 1's public writer owns persistence; the SDK already owns it here.
+    Reuse Block 1's locked chain append primitive and canonical entry models,
+    rather than duplicating its verifier or changing its configured singleton.
+    The request's scorer supplies the store explicitly, so app/store replacements
+    cannot accidentally send audit entries to a previous application's store.
+    """
+
+    def begin_outcome(self, store: GraphStore, decision_id: str) -> str:
+        key = audit._PENDING_PREFIX + uuid4().hex
+        try:
+            store.save_governance("s2p", key, {"operation": "outcome", "decision_id": decision_id})
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Audit persistence unavailable") from exc
+        return key
+
+    def finish_outcome(self, store: GraphStore, key: str) -> None:
+        try:
+            store.delete_governance("s2p", key)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Audit persistence unavailable") from exc
+
+    def record_decision(
+        self, store: GraphStore, *, decision_id: str, event_id: str,
+        action: str, confidence: float, factors: dict[str, float], conservation_status: str,
+    ) -> None:
+        try:
+            with audit._ledger_lock:
+                entry = audit.LedgerEntry(
+                    decision_id=decision_id, timestamp=datetime.now(timezone.utc).isoformat(),
+                    alert_id=event_id, factor_breakdown=dict(factors), action=action,
+                    confidence=float(confidence), outcome="pending", analyst_override=False,
+                    centroid_state_hash="", prev_hash=audit._GENESIS,
+                    conservation_status=conservation_status,
+                )
+                # A score persisted before a failed append is detected as unsealed
+                # by verify_chain; an interrupted append is detected by its head.
+                audit._append_entry(store, entry)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Decision audit sealing failed") from exc
+
+    def record_outcome(
+        self, store: GraphStore, *, decision_id: str, actual_action: str, outcome: str,
+    ) -> None:
+        try:
+            with audit._ledger_lock:
+                decision = next((entry for entry in audit._read_entries(store)
+                                 if isinstance(entry, audit.LedgerEntry)
+                                 and entry.decision_id == decision_id), None)
+                if decision is None:
+                    # Legacy/unsealed decisions remain unverifiable. Do not
+                    # manufacture a historical decision hash during feedback.
+                    return
+                # OutcomeEntry has one hashed string for the outcome. Encode a
+                # versioned payload there so actual action AND correctness are
+                # protected, not merely extra un-hashed display fields.
+                sealed_outcome = json.dumps({
+                    "version": 1, "outcome": outcome, "actual_action": actual_action,
+                    "is_correct": actual_action == decision.action,
+                }, sort_keys=True, separators=(",", ":"))
+                audit._append_entry(store, audit.OutcomeEntry(
+                    chain_index=0, decision_id=decision_id,
+                    decision_entry_hash=decision.entry_hash, outcome=sealed_outcome,
+                    analyst_override=actual_action != decision.action,
+                    timestamp=datetime.now(timezone.utc).isoformat(), prev_hash=audit._GENESIS,
+                ))
+        except Exception as exc:
+            # The caller retains its pending marker on failure. Verification
+            # must not certify an outcome committed without its sealed entry.
+            raise HTTPException(status_code=503, detail="Outcome audit sealing failed") from exc
+
+
+def _score_audit_writer(http_request: Request) -> S2PScoreAuditWriter:
+    writer = getattr(http_request.app.state, "audit_writer", None)
+    if not isinstance(writer, S2PScoreAuditWriter):
+        raise HTTPException(status_code=503, detail="Audit writer not configured")
+    return writer
 
 
 class _InvoiceLockEntry:
@@ -172,7 +265,6 @@ def set_l5_dk_welford_tracker(tracker: DKWelfordTracker | None) -> None:
         _S2P_DK_WELFORD_TRACKER = tracker
 _SCORE_CONSERVATION_STATUS_CACHE: dict[str, tuple[float, str]] = {}
 _CONSERVATION_COUNTS_CACHE: dict[str, tuple[float, dict[str, float | int]]] = {}
-_SCORE_PROCESS_CONTEXT_CACHE: tuple[int, dict] | None = None
 _SCORE_CONSERVATION_CACHE_GENERATION = 0
 _SCORE_CONSERVATION_STATUS_IN_FLIGHT: set[str] = set()
 _CONSERVATION_COUNTS_IN_FLIGHT: set[str] = set()
@@ -258,56 +350,10 @@ def _graph_context_row_is_domain_specific(row: dict[str, Any]) -> bool:
     return bool(node)
 
 
-def _compute_score_process_context() -> dict | None:
-    celonis_data = _load_celonis_cache()
-    activities = celonis_data.get("activities")
-    if not isinstance(activities, list):
-        return None
-
-    bottleneck = next(
-        (
-            activity
-            for activity in activities
-            if isinstance(activity, dict) and activity.get("bottleneck") is True
-        ),
-        None,
-    )
-    if not bottleneck:
-        return None
-
-    duration_hours = float(
-        bottleneck.get("duration_median_hours", bottleneck.get("avg_duration_hours", 0.0)) or 0.0
-    )
-    process_context = {
-        "bottleneck_activity": bottleneck.get("name") or bottleneck.get("id"),
-        "duration_median_min": round(duration_hours * 60.0, 2),
-        "source": "celonis_cache",
-    }
-    cause = bottleneck.get("bottleneck_cause") or bottleneck.get("cause") or bottleneck.get("root_cause")
-    if cause:
-        process_context["cause"] = cause
-    return process_context
-
-
-def _score_process_context() -> dict | None:
-    global _SCORE_PROCESS_CONTEXT_CACHE
-    loader_id = id(_load_celonis_cache)
-    cached = _SCORE_PROCESS_CONTEXT_CACHE
-    if cached is not None and cached[0] == loader_id:
-        process_context = cached[1]
-        return dict(process_context) if process_context else None
-
-    # The loader is read-only. Compute outside the publication path so an
-    # external score reader never waits behind file/cache I/O.
-    process_context = _compute_score_process_context() or {}
-    current = _SCORE_PROCESS_CONTEXT_CACHE
-    if current is None or current[0] != loader_id:
-        _SCORE_PROCESS_CONTEXT_CACHE = (loader_id, dict(process_context))
-    return dict(process_context) if process_context else None
-
-
-def _score_process_context_with_signal(signal: dict[str, Any] | None) -> dict | None:
-    process_context = _score_process_context()
+def _score_process_context_with_signal(
+    signal: dict[str, Any] | None, http_request: Request, invoice_id: str,
+) -> dict | None:
+    process_context = invoice_process_context(_graph_store_from_request(http_request), invoice_id)
     if signal is None:
         return process_context
     output = dict(process_context or {})
@@ -725,31 +771,31 @@ def _centroid_learning_store_from_request(http_request: Request) -> Any | None:
     return None
 
 
-def _persist_l5_conservation_state(http_request: Request, decision_id: str | None) -> None:
+def _persist_l5_conservation_state(http_request: Request, decision_id: str | None) -> bool:
     store = _learning_store_from_request(http_request)
     if store is None:
-        return None
+        return False
     state = getattr(http_request.app, "state", None)
     scorer = getattr(state, "scorer", None)
     if scorer is None:
-        return None
+        return False
     domain = _graph_domain(_graph_store_from_request(http_request))
     try:
         metrics = compute_conservation_metrics(scorer, domain=domain)
     except Exception as exc:
         log.warning("S2P L5 conservation state skipped: %s", exc)
-        return None
+        return False
     # Do not persist a falsely complete conservation snapshot when the graph
     # adapter cannot report category coverage.  Verified volume alone is not
     # enough to establish alpha for the L5 state.
     if int(metrics.get("categories_with_data", 0)) <= 0:
         log.warning("S2P L5 conservation state skipped: category coverage unavailable")
-        return None
+        return False
     try:
         old_state = store.get_conservation_state(domain)
     except Exception as exc:
         log.warning("S2P L5 conservation state read failed: %s", exc)
-        return None
+        return False
     old_status = None
     if isinstance(old_state, dict):
         stored_status = old_state.get("status")
@@ -773,7 +819,8 @@ def _persist_l5_conservation_state(http_request: Request, decision_id: str | Non
         )
     except Exception as exc:
         log.warning("S2P L5 conservation state write failed: %s", exc)
-    return None
+        return False
+    return True
 
 
 def _persist_l5_centroid_state(
@@ -839,23 +886,23 @@ def _persist_l5_dk_state(
     decision_id: str | None = None,
     actual_action: str,
     payload: dict[str, Any],
-) -> None:
+) -> bool:
     if payload.get("status") == "paused" or payload.get("learning_applied") is False:
-        return None
+        return True
     state = getattr(http_request.app, "state", None)
     scorer = getattr(state, "scorer", None)
     if scorer is None:
-        return None
+        return False
     factor_vector = _decision_factor_vector_for_dk(decision)
     recommended_action = _decision_recommended_action(decision)
     if factor_vector is None or recommended_action is None:
         log.warning("S2P L5 DK persistence skipped: missing decision factor/action data")
-        return None
+        return False
     reestimate = getattr(scorer, "reestimate_dk_if_due", None)
     get_dk_weights = getattr(scorer, "get_dk_weights", None)
     if not callable(reestimate) or not callable(get_dk_weights):
         log.warning("S2P L5 DK persistence skipped: scorer lacks DK runtime helpers")
-        return None
+        return False
     domain = _graph_domain(_graph_store_from_request(http_request))
     is_correct = str(actual_action) == str(recommended_action)
     try:
@@ -864,9 +911,9 @@ def _persist_l5_dk_state(
             reestimate()
             store = _dk_learning_store_from_request(http_request)
             if store is None:
-                return None
+                return False
             if get_dk_weights() is None:
-                return None
+                return False
             persist_dk_after_reestimate(
                 domain=domain,
                 scorer=scorer,
@@ -875,9 +922,10 @@ def _persist_l5_dk_state(
                 entity_group=None,
                 logger=log,
             )
+            return True
     except Exception as exc:
         log.warning("S2P L5 DK persistence skipped: %s", exc)
-    return None
+    return False
 
 
 def _decision_factor_vector_for_dk(decision: dict[str, Any] | None) -> list[float] | None:
@@ -1893,6 +1941,33 @@ def _learn_with_scorer(
     return cast(dict[str, Any], payload)
 
 
+def _learn_with_audit(
+    http_request: Request, scorer: Any, decision: dict[str, Any] | None,
+    decision_id: str, actual_action: str, outcome: str, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep outcome persistence and sealing within the domain mutation lock."""
+    if decision is None:
+        raise HTTPException(status_code=404, detail=f"Unknown decision: {decision_id}")
+    writer = _score_audit_writer(http_request)
+    category = _decision_category(decision)
+    active_before = active_decision_ids(scorer.graph_store, category) if category else set()
+    pending_key = writer.begin_outcome(scorer.graph_store, decision_id)
+    payload = _learn_with_scorer(scorer, decision_id, actual_action, outcome, context)
+    if _learn_result_applied(payload):
+        writer.record_outcome(scorer.graph_store, decision_id=decision_id,
+                              actual_action=actual_action, outcome=outcome)
+        if category:
+            try:
+                record_extinction(scorer.graph_store, category, decision_id, active_before)
+            except Exception as exc:
+                # Outcome may be committed, but do not claim evidence was
+                # recorded. Preserve the pending audit marker for reconciliation.
+                raise HTTPException(status_code=503, detail="S2P extinction evidence persistence failed") from exc
+    # Intentionally not a finally block: a failed/partial write stays marked.
+    writer.finish_outcome(scorer.graph_store, pending_key)
+    return payload
+
+
 def _ensure_outcome_decision(
     scorer: Any,
     request: "OutcomeRequest",
@@ -2127,6 +2202,7 @@ class ScoreRequest(BaseModel):
     commodity_index_correlation: Optional[float] = None
     tax_regulatory_compliance: Optional[float] = None
     environmental_risk: Optional[float] = None
+    context: Optional[dict[str, Any]] = None
 
 
 class ScoreResponse(BaseModel):
@@ -2150,11 +2226,17 @@ class ScoreResponse(BaseModel):
     evidence_tier: Optional[str] = None
     learning_applied: Optional[bool] = None
     reason: Optional[str] = None
+    action_name: Optional[str] = None
+    action_category: Optional[str] = None
+    reasoning: Optional[str] = None
+    rule_override: bool = False
+    prior_verified_count: int = 0
+    cold_start: bool = True
+    context: Optional[dict[str, Any]] = None
 
 
 @router.post("/score", response_model=S2PScoreResponse)
 def score_procurement_event(request: ScoreRequest, http_request: Request) -> dict[str, Any]:
-    clear_evidence_context_cache()
     """
     Score a procurement event and return recommended action.
     POST /api/s2p/score
@@ -2188,15 +2270,28 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         tax_regulatory_compliance=request.tax_regulatory_compliance,
     )
 
-    fixture_invoice = find_invoice(request.event_id)
+    from app.routers.s2p_demo_control import DAY_ZERO_EVENT, demo_enabled, fresh_score, special_invoice
+
+    if request.event_id == DAY_ZERO_EVENT:
+        return fresh_score(request.event_id, request.category, compute_all_factors(_invoice_from_request(request, None)))
+    demo_invoice = special_invoice(request.event_id, request.category, request.supplier_id)
+    fixture_invoice = demo_invoice or find_invoice(request.event_id)
     invoice = _invoice_from_request(request, fixture_invoice)
+    clear_evidence_context_cache()
+    clear_decision_cache()
+    provenance = (demo_invoice or {}).get("demo_provenance")
+    if demo_enabled() and (request.context or {}).get("origin") == "s2p_demo_preseed":
+        provenance = {"origin": "s2p_demo_preseed", "planted": True, "evidence_tier": "T_S"}
     try:
         active_variant = get_active_variant(category=request.category)
     except Exception:
         log.exception("S2P active variant enrichment failed")
         active_variant = None
     lookup_id = invoice.get("invoice_id") or request.event_id
-    context = _resolve_graph_context(
+    # The explicitly selected synthetic fixture may reuse a catalog ID (the
+    # copper invoice does). Do not mix it with a different legacy invoice's
+    # PO/receipt evidence. The live scorer and conservation gate still apply.
+    context = {} if demo_invoice else _resolve_graph_context(
         lookup_id,
         http_request,
         supplier_id=str(invoice.get("supplier_id") or request.supplier_id),
@@ -2206,6 +2301,13 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
     computed_factors = compute_all_factors(invoice, context=context)
     factor_vector = [computed_factors[name] for name in S2PDomainConfig.factors]
     scorer = _sdk_scorer(http_request)
+    try:
+        prior_verified_count = int(getattr(scorer, "get_verified_count")())
+    except (AttributeError, TypeError, ValueError):
+        try:
+            prior_verified_count, _ = _graph_verified_counts(http_request)
+        except Exception:
+            prior_verified_count = 0
     governance = _score_write_governance(http_request)
     _reject_red_write(governance)
     if governance["conservation_status"] == "AMBER":
@@ -2223,14 +2325,23 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
     # because another invoice is committing its decision.
     domain_lock.acquire()
     try:
+        audit_writer = _score_audit_writer(http_request)
         try:
             score_result = scorer.score(
                 computed_factors,
                 request.category,
-                metadata=_invoice_decision_metadata(invoice),
+                metadata={**_invoice_decision_metadata(invoice), **(
+                    {"planted": True, "evidence_tier": "T_S", "demo_provenance": provenance}
+                    if provenance else {}
+                )},
             )
         except AssertionError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        audit_writer.record_decision(
+            scorer.graph_store, decision_id=score_result.decision_id, event_id=request.event_id,
+            action=score_result.action, confidence=score_result.confidence,
+            factors=computed_factors, conservation_status=governance["conservation_status"],
+        )
         t2 = time.perf_counter()
         core = {
             "event_id": request.event_id,
@@ -2247,6 +2358,64 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
             "evidence_tier": governance["evidence_tier"],
             "learning_applied": False,
         }
+        action_name = str(score_result.action)
+        top_factor = max(
+            computed_factors,
+            key=lambda name: float(computed_factors.get(name, 0.0)),
+            default="procurement_context",
+        )
+        copper_clause = bool(demo_invoice and invoice.get("contract_id") == "CTR-COPPER-73")
+        if copper_clause:
+            reasoning = (
+                "Synthetic copper contract CTR-COPPER-73 clause 7.3 permits indexed pricing; "
+                f"the category-only business rule rejects the contract gap, whereas "
+                f"commodity-index correlation={computed_factors['commodity_index_correlation']:.3f} "
+                f"and the full factor vector support {action_name}."
+            )
+        elif request.contract_id:
+            reasoning = f"Contract {request.contract_id}: {top_factor} supports {action_name}."
+        elif request.category == "price_variance":
+            reasoning = (
+                f"Price variance review weighs demurrage risk and working capital impact; "
+                f"{top_factor} drives {action_name}."
+            )
+        else:
+            reasoning = f"Category {request.category}: {top_factor} drives {action_name}."
+        approved_categories = request.approved_categories or []
+        rule_override = bool(approved_categories and request.category not in approved_categories)
+        request_context = {**dict((demo_invoice or {}).get("context") or {}), **dict(request.context or {})}
+        context_payload = {
+            "invoice_amount": float(request.amount),
+            "supplier": request.supplier_name or request.supplier_id,
+            "supplier_id": request.supplier_id,
+            "category": request.category,
+            "domain_factors": [
+                "demurrage_risk",
+                "working_capital_impact",
+            ] if request.category == "price_variance" else list(S2PDomainConfig.factors),
+        }
+        context_payload.update(request_context)
+        context_terms = ""
+        if request_context:
+            context_terms = " " + ", ".join(
+                f"{key}={value}" for key, value in request_context.items()
+            )
+        if request.category == "contract_gap" and {"demurrage", "working_capital"} <= request_context.keys() and not copper_clause:
+            reasoning = (
+                f"Container review weighs demurrage cost versus working-capital release timing; "
+                f"{top_factor} drives {action_name}.{context_terms}"
+            )
+        core.update(
+            {
+                "action_name": action_name,
+                "action_category": ACTION_CATEGORY_MAP.get(action_name, "REVIEW"),
+                "reasoning": reasoning,
+                "rule_override": rule_override,
+                "prior_verified_count": prior_verified_count,
+                "cold_start": prior_verified_count < 30,
+                "context": context_payload,
+            }
+        )
         conservation_snapshot = _cached_score_conservation_status_only(http_request)
         t3 = time.perf_counter()
         centroid_snapshot = {}
@@ -2291,7 +2460,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
     except (AttributeError, TypeError, ValueError):
         logger.exception("S2P frozen-twin enrichment failed")
     try:
-        process_context = _score_process_context_with_signal(cross_copilot_signal)
+        process_context = _score_process_context_with_signal(cross_copilot_signal, http_request, str(lookup_id))
     except Exception:
         log.exception("S2P process context enrichment failed")
         process_context = None
@@ -2376,6 +2545,16 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         threshold_decision=threshold_decision,
     )
     payload = cast(dict[str, Any], _json_safe(response.model_dump()))
+    if provenance:
+        payload["provenance"] = provenance
+    if demo_invoice:
+        payload["canonical_action"] = score_result.action
+        if copper_clause and score_result.action == "auto_approve":
+            # Demo presentation vocabulary only; audit, proposals and learn
+            # continue to use the canonical auto_approve action.
+            payload["action"] = "accept"
+            payload["rule_override"] = True
+            payload["business_rule"] = {"action": "reject", "basis": "category-only contract-gap rule", "planted": True}
     if frozen_twin is not None:
         payload["frozen_twin"] = frozen_twin
     S2PScoreResponse.model_validate(payload)
@@ -2443,6 +2622,7 @@ class LearnRequest(BaseModel):
 @learn_router.post("/learn", response_model=GenericResponse)
 def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, Any]:
     clear_evidence_context_cache()
+    clear_decision_cache()
     """SDK-shaped learn endpoint backed by the S2P CompoundingScorer."""
     if request.actual_action not in S2PDomainConfig.actions:
         raise HTTPException(
@@ -2500,8 +2680,8 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             conservation_before=conservation_before,
             context=context,
         )
-        payload = _learn_with_scorer(
-            scorer,
+        payload = _learn_with_audit(
+            http_request, scorer, decision,
             request.decision_id,
             request.actual_action,
             request.outcome,
@@ -2526,7 +2706,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
                 },
             )
         _clear_score_conservation_status_cache()
-        _persist_l5_centroid_state(
+        centroid_l5 = _persist_l5_centroid_state(
             http_request,
             scorer=scorer,
             category=category,
@@ -2534,8 +2714,8 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             decision_id=request.decision_id,
             pre_centroid=pre_centroid,
         )
-        _persist_l5_conservation_state(http_request, request.decision_id)
-        _persist_l5_dk_state(
+        conservation_l5 = _persist_l5_conservation_state(http_request, request.decision_id)
+        dk_l5 = _persist_l5_dk_state(
             http_request,
             decision=decision,
             decision_id=request.decision_id,
@@ -2554,6 +2734,12 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
         payload_snapshot["gate"] = "PASS" if learning_applied else "BLOCKED"
         payload_snapshot["conservation_status"] = payload_snapshot.get("conservation_status", governance["conservation_status"])
         payload_snapshot["evidence_tier"] = governance["evidence_tier"]
+        payload_snapshot["persistence"] = {
+            "conservation_l5": conservation_l5,
+            "centroid_l5": centroid_l5,
+            "dk_l5": dk_l5,
+        }
+        payload_snapshot["status"] = "complete" if all(payload_snapshot["persistence"].values()) else "partial"
         decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None
 
     if _outcome_recorded_for_receipt(
@@ -2594,6 +2780,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
 @router.post("/outcome", response_model=GenericResponse)
 def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, Any]:
     clear_evidence_context_cache()
+    clear_decision_cache()
     """
     Record analyst outcome and optionally update centroids.
     POST /api/s2p/outcome
@@ -2658,8 +2845,8 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             conservation_before=conservation_before,
             context=outcome_context,
         )
-        payload = _learn_with_scorer(
-            scorer,
+        payload = _learn_with_audit(
+            http_request, scorer, decision,
             request.decision_id,
             request.analyst_action,
             request.outcome,
@@ -2696,7 +2883,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             payload["reward"] = compatibility_raw * PENALTY_RATIO
         payload["outcome"] = request.outcome
         _clear_score_conservation_status_cache()
-        _persist_l5_centroid_state(
+        centroid_l5 = _persist_l5_centroid_state(
             http_request,
             scorer=scorer,
             category=category,
@@ -2704,8 +2891,8 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             decision_id=request.decision_id,
             pre_centroid=pre_centroid,
         )
-        _persist_l5_conservation_state(http_request, request.decision_id)
-        _persist_l5_dk_state(
+        conservation_l5 = _persist_l5_conservation_state(http_request, request.decision_id)
+        dk_l5 = _persist_l5_dk_state(
             http_request,
             decision=decision,
             decision_id=request.decision_id,
@@ -2723,6 +2910,12 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
         payload_snapshot["gate"] = "PASS" if learning_applied else "BLOCKED"
         payload_snapshot["conservation_status"] = payload_snapshot.get("conservation_status", governance["conservation_status"])
         payload_snapshot["evidence_tier"] = governance["evidence_tier"]
+        payload_snapshot["persistence"] = {
+            "conservation_l5": conservation_l5,
+            "centroid_l5": centroid_l5,
+            "dk_l5": dk_l5,
+        }
+        payload_snapshot["status"] = "complete" if all(payload_snapshot["persistence"].values()) else "partial"
         decision_snapshot = copy.deepcopy(decision) if isinstance(decision, dict) else None
 
     if _outcome_recorded_for_receipt(

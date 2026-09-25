@@ -1,0 +1,20 @@
+{
+  "s2p_01_rule_said_no": {
+    "event_id": "S2P-INV-0001",
+    "category": "price_variance",
+    "amount": 22426.73,
+    "supplier_id": "SUP-001"
+  },
+  "s2p_02_day_zero": {
+    "event_id": "S2P-INV-0002",
+    "category": "quantity_mismatch",
+    "amount": 5000.0,
+    "supplier_id": "SUP-002"
+  },
+  "s2p_03_paying_more": {
+    "event_id": "S2P-INV-0009",
+    "category": "duplicate_risk",
+    "amount": 42303.0,
+    "supplier_id": "SUP-009"
+  }
+}

@@ -22,8 +22,10 @@ from app.main import app, build_s2p_scorer
 from app.domains.s2p.config import S2PDomainConfig
 from app.graph.s2p_graph_reader import S2PGraphReader
 from app.routers import s2p as s2p_router
+from app.framework import audit
 from app.services.s2p_evolver import get_evolution_summary, reset_s2p_evolver
 from app.services.supplier_profile_accumulator import accumulator as supplier_profile_accumulator
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 client = TestClient(app)
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
@@ -69,13 +71,11 @@ def reset_sdk_scorer():
     return app.state.scorer
 
 
-class GraphContextStore:
+class GraphContextStore(InMemoryGraphStore):
     """Complete graph-store overlay used by context-specific endpoint tests."""
 
-    domain = "s2p"
-
-    def __init__(self, delegate, result=None, failure: Exception | None = None):
-        self._delegate = delegate
+    def __init__(self, _delegate=None, result=None, failure: Exception | None = None):
+        super().__init__(domain="s2p")
         self._result = result
         self._failure = failure
 
@@ -105,10 +105,6 @@ class GraphContextStore:
             return self.query_context(invoice_id, 2, domain=self.domain)
         return []
 
-    def __getattr__(self, name):
-        return getattr(self._delegate, name)
-
-
 def score_for_learn(action_payload=None):
     reset_sdk_scorer()
     response = client.post("/api/s2p/score", json={**VALID_REQUEST, **(action_payload or {})})
@@ -132,7 +128,7 @@ def test_score_response_has_required_fields():
 class SlowScoreScorer:
     def __init__(self, score_sleep: float = 0.05):
         self.score_sleep = score_sleep
-        self.graph_store = SimpleNamespace()
+        self.graph_store = InMemoryGraphStore(domain="s2p")
         self.centroids = [
             [
                 [0.5 for _factor in S2PDomainConfig.factors]
@@ -143,12 +139,16 @@ class SlowScoreScorer:
 
     def score(self, factors, category, metadata=None):
         time.sleep(self.score_sleep)
+        decision_id = self.graph_store.write_decision(
+            domain="s2p", category=category, action="auto_approve",
+            confidence=0.91, factors=factors, metadata=metadata,
+        )
         return SimpleNamespace(
             action="auto_approve",
             action_index=0,
             confidence=0.91,
             probabilities=[0.91, 0.03, 0.02, 0.02, 0.02],
-            decision_id=f"S2P-TEST-{uuid4().hex[:8]}",
+            decision_id=decision_id,
         )
 
 
@@ -168,9 +168,9 @@ def _install_fast_score_dependencies(monkeypatch, scorer=None, submit_side_effec
 
 
 def test_score_concurrent_not_serialized_on_enrichment(monkeypatch):
-    _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.05))
+    scorer = _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.05))
 
-    def slow_process_context(_signal):
+    def slow_process_context(_signal, *_args):
         time.sleep(0.5)
         return None
 
@@ -187,6 +187,9 @@ def test_score_concurrent_not_serialized_on_enrichment(monkeypatch):
     elapsed = time.perf_counter() - started
     assert all(response.status_code == 200 for response in responses)
     assert elapsed < 1.0
+    verification = audit.verify_chain(store=scorer.graph_store)
+    assert verification["verified"] is True
+    assert verification["entries_checked"] == 2
 
 
 def test_fire_and_forget_failure_logged(monkeypatch, caplog):
@@ -233,7 +236,7 @@ def test_response_shape_unchanged():
 def test_enrichment_failure_doesnt_break_score(monkeypatch):
     _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.01))
 
-    def broken_process_context(_signal):
+    def broken_process_context(_signal, *_args):
         raise RuntimeError("process context unavailable")
 
     monkeypatch.setattr(s2p_router, "_score_process_context_with_signal", broken_process_context)
@@ -728,13 +731,13 @@ def test_score_endpoint_uses_graph_context_when_available(monkeypatch):
     original_scorer = app.state.scorer
     original_store = original_scorer.graph_store
     original_graph_store = getattr(app.state, "graph_store", None)
-    fake_store = GraphContextStore(
+    context_store = GraphContextStore(
         original_store,
         result=[{"node": {"_label": "PurchaseOrder", "po_id": "PO-1"}}],
     )
-    app.state.scorer = build_s2p_scorer(graph_store=fake_store)
-    app.state.graph_store = fake_store
-    app.state.s2p_graph_reader = S2PGraphReader(store=fake_store)
+    app.state.scorer = build_s2p_scorer(graph_store=context_store)
+    app.state.graph_store = context_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=context_store)
     monkeypatch.setattr(s2p_router, "compute_all_factors", fake_compute_all_factors)
     try:
         response = client.post("/api/s2p/score", json=VALID_REQUEST)
@@ -760,10 +763,10 @@ def test_score_endpoint_graph_context_failure_degrades_gracefully(monkeypatch):
     original_scorer = app.state.scorer
     original_store = original_scorer.graph_store
     original_graph_store = getattr(app.state, "graph_store", None)
-    fake_store = GraphContextStore(original_store, failure=RuntimeError("graph unavailable"))
-    app.state.scorer = build_s2p_scorer(graph_store=fake_store)
-    app.state.graph_store = fake_store
-    app.state.s2p_graph_reader = S2PGraphReader(store=fake_store)
+    context_store = GraphContextStore(original_store, failure=RuntimeError("graph unavailable"))
+    app.state.scorer = build_s2p_scorer(graph_store=context_store)
+    app.state.graph_store = context_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=context_store)
     monkeypatch.setattr(s2p_router, "compute_all_factors", fake_compute_all_factors)
     try:
         response = client.post("/api/s2p/score", json=VALID_REQUEST)
@@ -789,16 +792,16 @@ def test_score_endpoint_graph_context_timeout_degrades_gracefully(monkeypatch):
     original_scorer = app.state.scorer
     original_store = original_scorer.graph_store
     original_graph_store = getattr(app.state, "graph_store", None)
-    fake_store = GraphContextStore(original_store)
+    context_store = GraphContextStore(original_store)
 
     def slow_query_context(entity_id, hops, domain=None):
         time.sleep(0.01)
         raise RuntimeError("graph timeout")
 
-    fake_store.query_context = slow_query_context
-    app.state.scorer = build_s2p_scorer(graph_store=fake_store)
-    app.state.graph_store = fake_store
-    app.state.s2p_graph_reader = S2PGraphReader(store=fake_store)
+    context_store.query_context = slow_query_context
+    app.state.scorer = build_s2p_scorer(graph_store=context_store)
+    app.state.graph_store = context_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=context_store)
     monkeypatch.setattr(s2p_router, "compute_all_factors", fake_compute_all_factors)
     try:
         response = client.post("/api/s2p/score", json=VALID_REQUEST)
@@ -839,17 +842,17 @@ def test_score_endpoint_graph_lookup_uses_fixture_invoice_id(monkeypatch):
     original_scorer = app.state.scorer
     original_store = original_scorer.graph_store
     original_graph_store = getattr(app.state, "graph_store", None)
-    fake_store = GraphContextStore(original_store, result=[])
-    original_query_context = fake_store.query_context
+    context_store = GraphContextStore(original_store, result=[])
+    original_query_context = context_store.query_context
 
     def recording_query_context(invoice_id, hops, domain=None):
         seen.append((invoice_id, hops))
         return original_query_context(invoice_id, hops, domain)
 
-    fake_store.query_context = recording_query_context
-    app.state.scorer = build_s2p_scorer(graph_store=fake_store)
-    app.state.graph_store = fake_store
-    app.state.s2p_graph_reader = S2PGraphReader(store=fake_store)
+    context_store.query_context = recording_query_context
+    app.state.scorer = build_s2p_scorer(graph_store=context_store)
+    app.state.graph_store = context_store
+    app.state.s2p_graph_reader = S2PGraphReader(store=context_store)
     try:
         response = client.post(
             "/api/s2p/score",
@@ -1101,42 +1104,50 @@ def test_conservation_status_endpoint_exists():
     assert response.json()["domain"] == "s2p"
 
 
-def test_score_includes_process_context_when_available(monkeypatch):
-    monkeypatch.setattr(s2p_router, "_SCORE_PROCESS_CONTEXT_CACHE", None)
-    monkeypatch.setattr(
-        s2p_router,
-        "_load_celonis_cache",
-        lambda: {
-            "activities": [
-                {
-                    "id": "match_invoice_to_gr",
-                    "name": "Match Invoice to GR",
-                    "avg_duration_hours": 42.0,
-                    "bottleneck": True,
-                    "bottleneck_cause": "MATKL_V2",
-                }
-            ]
-        },
-    )
+def test_score_process_context_reads_current_invoice_graph_history():
+    store = app.state.graph_store
+    context = {
+        "bottleneck_activity": "Match Invoice to GR",
+        "duration_median_min": 2520.0,
+        "cause": "MATKL_V2",
+    }
 
+    def write_context(invoice_id, evidence, timestamp):
+        store.write_decision(
+            "s2p", "price_variance", "hold_for_review", 0.6,
+            {name: 0.5 for name in S2PDomainConfig.factors},
+            metadata={"invoice_id": invoice_id, "process_context": evidence, "created_at": timestamp},
+        )
+
+    write_context("E001", context, 1000)
+    write_context("unrelated-invoice", {"cause": "wrong invoice"}, 5000)
     response = client.post("/api/s2p/score", json=VALID_REQUEST)
-
     assert response.status_code == 200
-    process_context = response.json()["process_context"]
-    assert process_context["bottleneck_activity"] == "Match Invoice to GR"
-    assert process_context["duration_median_min"] == 2520.0
-    assert process_context["cause"] == "MATKL_V2"
-    assert process_context["source"] == "celonis_cache"
+    assert response.json()["process_context"] == {**context, "source": "graph"}
 
-
-def test_score_omits_process_context_when_unavailable(monkeypatch):
-    monkeypatch.setattr(s2p_router, "_SCORE_PROCESS_CONTEXT_CACHE", None)
-    monkeypatch.setattr(s2p_router, "_load_celonis_cache", lambda: {})
-
+    updated = {**context, "duration_median_min": 120.0}
+    write_context("E001", updated, 2000)
     response = client.post("/api/s2p/score", json=VALID_REQUEST)
+    assert response.status_code == 200
+    assert response.json()["process_context"] == {**updated, "source": "graph"}
 
+
+def test_score_omits_process_context_without_invoice_evidence():
+    response = client.post("/api/s2p/score", json=VALID_REQUEST)
     assert response.status_code == 200
     assert response.json()["process_context"] is None
+
+
+def test_process_context_signal_merge_queries_graph_in_production(monkeypatch):
+    monkeypatch.setenv("S2P_PROFILE", "production")
+    app.state.graph_store.write_decision(
+        "s2p", "price_variance", "hold_for_review", 0.6,
+        {name: 0.5 for name in S2PDomainConfig.factors},
+        metadata={"invoice_id": "E001", "process_context": {"cause": "graph evidence"}},
+    )
+    signal = {"pattern": "exception cluster"}
+    result = s2p_router._score_process_context_with_signal(signal, SimpleNamespace(app=app), "E001")
+    assert result == {"cause": "graph evidence", "source": "graph", "cross_copilot_signal": signal}
 
 
 def test_outcome_returns_reward_fields():
@@ -1328,42 +1339,21 @@ def test_learn_context_isolated_between_requests():
 
 
 def test_learn_with_scorer_uses_context_without_mutating_reward_function():
-    class GraphStore:
-        def get_decision(self, decision_id: str, domain: str | None = None):
-            if domain is not None:
-                assert domain == "s2p"
-            return {
-                "decision_id": decision_id,
-                "recommended_action": "auto_approve",
-                "metadata": {"invoice_id": "S2P-INV-TEST"},
-            }
-
-        def get_decision_links(
-            self,
-            decision_id: str | None = None,
-            domain: str | None = None,
-            limit: int | None = None,
-        ) -> list[dict]:
-            assert domain == "s2p"
-            return []
-
-        def write_outcome(
-            self,
-            decision_id: str,
-            actual_action: str,
-            is_correct: bool,
-            metadata: dict | None = None,
-            domain: str | None = None,
-        ) -> None:
-            raise AssertionError("outcome writes are not part of this double")
-
-        def get_archived_decisions(self, domain: str):
-            assert domain == "s2p"
-            return []
+    def graph_store() -> InMemoryGraphStore:
+        store = InMemoryGraphStore(domain="s2p")
+        store.write_decision(
+            "s2p",
+            "price_variance",
+            "auto_approve",
+            0.91,
+            {"match_status": 0.9},
+            metadata={"decision_id": "S2P-LOCK", "invoice_id": "S2P-INV-TEST"},
+        )
+        return store
 
     class RecordingScorer:
         def __init__(self):
-            object.__setattr__(self, "graph_store", GraphStore())
+            object.__setattr__(self, "graph_store", graph_store())
             object.__setattr__(self, "_reward_fn", object())
             object.__setattr__(self, "reward_assignments", 0)
             object.__setattr__(self, "learn_contexts", [])
@@ -1397,6 +1387,7 @@ def test_learn_with_scorer_uses_context_without_mutating_reward_function():
     assert scorer.learn_contexts == [
         {
             "invoice_id": "S2P-INV-TEST",
+            "match_status": 0.9,
             "recovery_pct": 40,
         }
     ]

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 import pytest
 from types import SimpleNamespace
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 from app.graph.s2p_graph_reader import S2PGraphReader
 from app.main import app, build_s2p_scorer
@@ -30,21 +31,30 @@ def _verified_rows(category: str = "price_variance", count: int = 100, correct: 
     return rows
 
 
-class FakeGraphStore:
-    domain = "s2p"
-
+class TrackingGraphStore(InMemoryGraphStore):
     def __init__(self, rows=None):
-        self.rows = list(rows or [])
+        super().__init__(domain="s2p")
         self.write_outcome_calls = 0
-
-    def get_verified_decisions(self, domain: str | None = None):
-        if domain is not None:
-            assert domain == "s2p"
-        return list(self.rows)
-
-    def count_verified(self, domain):
-        assert domain == "s2p"
-        return len(self.rows)
+        for row in list(rows or []):
+            action = str(row.get("recommended_action") or "auto_approve")
+            decision_id = self.write_decision(
+                "s2p",
+                str(row.get("category") or "price_variance"),
+                action,
+                0.99,
+                {"match_status": 0.9},
+                metadata={
+                    "decision_id": str(row.get("decision_id")),
+                    "created_at": 1767225600.0,
+                },
+            )
+            self.write_outcome(
+                decision_id,
+                action,
+                bool(row.get("is_correct", True)),
+                domain="s2p",
+                metadata={"verified_at": 1767225600.0},
+            )
 
     def write_outcome(
         self,
@@ -55,13 +65,19 @@ class FakeGraphStore:
         domain: str | None = None,
     ) -> None:
         self.write_outcome_calls += 1
-        raise AssertionError("shadow gate must not write outcomes")
+        return super().write_outcome(
+            decision_id,
+            actual_action,
+            is_correct,
+            metadata,
+            domain=domain or "s2p",
+        )
 
-    def get_decision(self, decision_id: str, domain: str | None = None):
-        return None
 
-    def get_archived_decisions(self, domain: str):
-        return []
+def _graph_store(rows=None) -> TrackingGraphStore:
+    store = TrackingGraphStore(rows)
+    store.write_outcome_calls = 0
+    return store
 
 
 class SpyScorer:
@@ -129,7 +145,7 @@ def test_enable_rejects_assistive_mode():
 
 def test_configure_updates_existing_category_thresholds():
     gate = AutoApproveGate(AutoApproveConfig(initial_threshold=0.95))
-    store = FakeGraphStore(_verified_rows())
+    store = _graph_store(_verified_rows())
     before = gate.status_by_category(
         graph_store=store,
         conservation_status="GREEN",
@@ -161,7 +177,7 @@ def test_configure_future_categories_use_new_initial_threshold():
         category="duplicate_risk",
         confidence=0.96,
         recommended_action="auto_approve",
-        graph_store=FakeGraphStore(_verified_rows("duplicate_risk", count=10)),
+        graph_store=_graph_store(_verified_rows("duplicate_risk", count=10)),
         conservation_status="GREEN",
     )
 
@@ -170,7 +186,7 @@ def test_configure_future_categories_use_new_initial_threshold():
 
 
 def test_enable_endpoint_threshold_update_reflected_in_evaluate():
-    _set_graph_store(FakeGraphStore(_verified_rows()))
+    _set_graph_store(_graph_store(_verified_rows()))
     response = client.post(
         "/api/s2p/auto-approve/enable",
         json={
@@ -214,7 +230,7 @@ def test_disabled_does_not_change_score_pipeline():
 
 
 def test_shadow_evaluate_does_not_call_learn():
-    store = FakeGraphStore(_verified_rows())
+    store = _graph_store(_verified_rows())
     scorer = SpyScorer(store)
     _set_graph_store(store)
     app.state.scorer = scorer
@@ -234,7 +250,7 @@ def test_shadow_evaluate_does_not_call_learn():
 
 
 def test_shadow_evaluate_does_not_call_write_outcome():
-    store = FakeGraphStore(_verified_rows())
+    store = _graph_store(_verified_rows())
     _set_graph_store(store)
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 1})
 
@@ -253,7 +269,7 @@ def test_shadow_evaluate_does_not_call_write_outcome():
 
 
 def test_shadow_evaluate_does_not_increment_verified_count():
-    store = FakeGraphStore(_verified_rows(count=5))
+    store = _graph_store(_verified_rows(count=5))
     _set_graph_store(store)
     before = store.count_verified("s2p")
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 1})
@@ -273,7 +289,7 @@ def test_shadow_evaluate_does_not_increment_verified_count():
 @pytest.mark.parametrize("status", ["RED", "AMBER"])
 def test_conservation_red_blocks(monkeypatch, status):
     monkeypatch.setattr(p40_router, "_current_conservation_status", lambda _request: status)
-    _set_graph_store(FakeGraphStore(_verified_rows()))
+    _set_graph_store(_graph_store(_verified_rows()))
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 1})
 
     response = client.post(
@@ -291,7 +307,7 @@ def test_conservation_red_blocks(monkeypatch, status):
 
 def test_conservation_amber_blocks(monkeypatch):
     monkeypatch.setattr(p40_router, "_current_conservation_status", lambda _request: "AMBER")
-    _set_graph_store(FakeGraphStore(_verified_rows()))
+    _set_graph_store(_graph_store(_verified_rows()))
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 1})
 
     response = client.post(
@@ -308,7 +324,7 @@ def test_conservation_amber_blocks(monkeypatch):
 
 def test_conservation_green_required(monkeypatch):
     monkeypatch.setattr(p40_router, "_current_conservation_status", lambda _request: "GREEN")
-    _set_graph_store(FakeGraphStore(_verified_rows()))
+    _set_graph_store(_graph_store(_verified_rows()))
     client.post(
         "/api/s2p/auto-approve/enable",
         json={
@@ -332,7 +348,7 @@ def test_conservation_green_required(monkeypatch):
 
 
 def test_insufficient_category_verified_count_blocks():
-    _set_graph_store(FakeGraphStore(_verified_rows(count=2)))
+    _set_graph_store(_graph_store(_verified_rows(count=2)))
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 3})
 
     response = client.post(
@@ -349,7 +365,7 @@ def test_insufficient_category_verified_count_blocks():
 
 def test_category_readiness_derived_from_filtered_verified_outcomes():
     rows = _verified_rows("price_variance", count=3) + _verified_rows("duplicate_risk", count=25)
-    _set_graph_store(FakeGraphStore(rows))
+    _set_graph_store(_graph_store(rows))
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 10})
 
     status = client.get("/api/s2p/auto-approve/status").json()
@@ -362,7 +378,7 @@ def test_category_readiness_derived_from_filtered_verified_outcomes():
 
 def test_global_expansion_counts_not_used_as_category_readiness():
     rows = _verified_rows("duplicate_risk", count=200)
-    _set_graph_store(FakeGraphStore(rows))
+    _set_graph_store(_graph_store(rows))
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 10})
 
     response = client.post(
@@ -379,7 +395,7 @@ def test_global_expansion_counts_not_used_as_category_readiness():
 
 
 def test_confidence_below_threshold_blocks():
-    _set_graph_store(FakeGraphStore(_verified_rows()))
+    _set_graph_store(_graph_store(_verified_rows()))
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 1})
 
     response = client.post(
@@ -395,7 +411,7 @@ def test_confidence_below_threshold_blocks():
 
 
 def test_wrong_action_blocks():
-    _set_graph_store(FakeGraphStore(_verified_rows()))
+    _set_graph_store(_graph_store(_verified_rows()))
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 1})
 
     response = client.post(
@@ -416,7 +432,7 @@ def test_spot_check_blocks_execution_and_requires_human_review():
         category="price_variance",
         confidence=0.99,
         recommended_action="auto_approve",
-        graph_store=FakeGraphStore(_verified_rows()),
+        graph_store=_graph_store(_verified_rows()),
         conservation_status="GREEN",
     )
 
@@ -474,7 +490,7 @@ def test_threshold_contracts_after_verified_incorrect_auto_approval():
 
 
 def test_audit_event_status_shadow_only_not_verified():
-    _set_graph_store(FakeGraphStore(_verified_rows()))
+    _set_graph_store(_graph_store(_verified_rows()))
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 1})
     client.post(
         "/api/s2p/auto-approve/evaluate",
@@ -494,7 +510,7 @@ def test_audit_event_status_shadow_only_not_verified():
 
 
 def test_audit_event_marks_learning_applied_false():
-    _set_graph_store(FakeGraphStore(_verified_rows()))
+    _set_graph_store(_graph_store(_verified_rows()))
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 1})
     client.post(
         "/api/s2p/auto-approve/evaluate",
@@ -511,7 +527,7 @@ def test_audit_event_marks_learning_applied_false():
 
 
 def test_shadow_approval_does_not_create_pending_verification_count():
-    _set_graph_store(FakeGraphStore(_verified_rows()))
+    _set_graph_store(_graph_store(_verified_rows()))
     client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 1})
 
     response = client.post(
@@ -536,7 +552,7 @@ def test_p39_context_metrics_do_not_gate_automation():
         category="price_variance",
         confidence=0.99,
         recommended_action="auto_approve",
-        graph_store=FakeGraphStore([]),
+        graph_store=_graph_store([]),
         conservation_status="GREEN",
         p39_evidence={"exception_rate": {"source": "fixture", "provenance_tier": "context"}},
     )
@@ -554,7 +570,7 @@ def test_p39_verified_metrics_reported_as_evidence_only():
         category="price_variance",
         confidence=0.99,
         recommended_action="auto_approve",
-        graph_store=FakeGraphStore(_verified_rows(count=1)),
+        graph_store=_graph_store(_verified_rows(count=1)),
         conservation_status="GREEN",
         p39_evidence=evidence,
     )
@@ -573,7 +589,7 @@ def test_auto_approve_blocked_when_novelty_active():
         category="price_variance",
         confidence=0.99,
         recommended_action="auto_approve",
-        graph_store=FakeGraphStore(_verified_rows(count=10)),
+        graph_store=_graph_store(_verified_rows(count=10)),
         conservation_status="GREEN",
     )
 

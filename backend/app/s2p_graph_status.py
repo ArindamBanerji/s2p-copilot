@@ -14,6 +14,8 @@ import re
 from fastapi import APIRouter, Request
 
 from copilot_sdk.config import GraphConfig, GraphConfigError, require_shared_graph
+from copilot_sdk.config.graph_config import resolve_profile
+from copilot_sdk.graph.production import GraphStoreWrapper, validate_production_store
 
 router = APIRouter(prefix="/api/s2p/graph", tags=["s2p-graph"])
 
@@ -79,40 +81,21 @@ _GRAPH_CONFIG_ENV_KEYS = (
 
 
 def _load_s2p_graph_config(env: Mapping[str, str] | None) -> GraphConfig:
-    """Load production config fail-closed, or an isolated compatibility mapping for tests."""
+    """Resolve explicit profiles without temporarily editing process settings."""
+    profile = resolve_profile(domain="s2p")
     if env is None:
-        return GraphConfig.load("s2p")
-
-    previous = {key: os.environ.get(key) for key in _GRAPH_CONFIG_ENV_KEYS}
-    try:
-        for key in _GRAPH_CONFIG_ENV_KEYS:
-            os.environ.pop(key, None)
-        os.environ.update(env)
-        profile = "production"
-        if "S2P_ACTIVE_GRAPH_BACKEND" not in env:
-            os.environ["S2P_ACTIVE_GRAPH_BACKEND"] = "sqlite"
-            os.environ["CI_ALLOW_SQLITE_FALLBACK"] = "1"
-            profile = "development"
-        if os.environ.get("S2P_ACTIVE_GRAPH_BACKEND", "").strip().lower() == "age":
-            if "S2P_ACTIVE_AGE_DOMAIN" in env and not env.get("S2P_ACTIVE_AGE_DOMAIN", "").strip():
-                raise GraphConfigError("S2P_ACTIVE_AGE_DOMAIN must not be blank")
-            if "S2P_ACTIVE_AGE_DOMAIN" in env and env.get("S2P_ACTIVE_AGE_DOMAIN", "").strip() != "s2p":
-                raise GraphConfigError("S2P_ACTIVE_AGE_DOMAIN must be 's2p' for S2P active graph")
-            if not os.environ.get("S2P_ACTIVE_AGE_DSN", "").strip():
-                raise GraphConfigError(
-                    "S2P_ACTIVE_AGE_DSN is required when S2P_ACTIVE_GRAPH_BACKEND=age"
-                )
-            if not os.environ.get("S2P_ACTIVE_AGE_GRAPH", "").strip():
-                raise GraphConfigError(
-                    "S2P_ACTIVE_AGE_GRAPH is required when S2P_ACTIVE_GRAPH_BACKEND=age"
-                )
         return GraphConfig.load("s2p", profile=profile)
-    finally:
-        for key in _GRAPH_CONFIG_ENV_KEYS:
-            os.environ.pop(key, None)
-        for key, value in previous.items():
-            if value is not None:
-                os.environ[key] = value
+    overrides: dict[str, Any] = {}
+    if profile != "production" and "S2P_ACTIVE_GRAPH_BACKEND" not in env:
+        overrides["backend"] = "sqlite"
+    if env.get("S2P_ACTIVE_GRAPH_BACKEND", "").strip().lower() == "age":
+        if "S2P_ACTIVE_AGE_DOMAIN" in env and env["S2P_ACTIVE_AGE_DOMAIN"].strip() != "s2p":
+            raise GraphConfigError("S2P_ACTIVE_AGE_DOMAIN must be 's2p' for S2P active graph")
+        for field in ("DSN", "GRAPH"):
+            key = f"S2P_ACTIVE_AGE_{field}"
+            if not str(env.get(key, "")).strip():
+                raise GraphConfigError(f"{key} is required when S2P_ACTIVE_GRAPH_BACKEND=age")
+    return GraphConfig.load("s2p", profile=profile, env=env, overrides=overrides)
 
 
 def is_live_age_configured(domain: str = "s2p") -> bool:
@@ -245,7 +228,7 @@ def initialize_s2p_active_graph_config(
     return S2PActiveGraphConfig.from_env(env)
 
 
-class S2PActiveAGEGraphStore:
+class S2PActiveAGEGraphStore(GraphStoreWrapper):
     """S2P active AGE test-mode adapter preserving Protocol v2 score writes."""
 
     domain = "s2p"
@@ -341,7 +324,7 @@ def create_s2p_active_graph_store(
             backend=config.requested_backend,
             graph=config.graph,
             domain=config.domain,
-            profile="test" if config.test_mode else "production",
+            profile=resolve_profile(domain="s2p"),
             test_mode=config.test_mode,
         )
     except GraphConfigError as exc:
@@ -359,12 +342,18 @@ def create_s2p_active_graph_store(
         "graph_name": config.graph,
         "env": {},
         "test_mode": config.test_mode,
+        "profile": resolve_profile(domain="s2p"),
     }
     if config.shared_graph_authorization:
         factory_args["shared_graph_authorization"] = config.shared_graph_authorization
+    if factory_args["profile"] == "production":
+        factory_args["config"] = GraphConfig.load("s2p", profile="production")
     store = factory(**factory_args)
     active_phase = "product_decision_outcome_cutover" if graph_kind == "product" else "phase_b_test_mode"
-    return S2PActiveAGEGraphStore(store, active_phase=active_phase)
+    wrapped = S2PActiveAGEGraphStore(store, active_phase=active_phase)
+    if factory_args["profile"] == "production":
+        validate_production_store(wrapped, factory_args["config"])
+    return wrapped
 
 
 def _shadow_summary(shadow: Any) -> dict[str, Any]:

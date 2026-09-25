@@ -1,97 +1,34 @@
-"""S2P preview endpoints backed by committed Phase 0 fixtures."""
+"""S2P queue and supplier previews from live graph decisions and scorer state."""
 
 from __future__ import annotations
 
 import json
-import math
-import os
+import threading
+import time
 from uuid import uuid4
-from pathlib import Path
 from typing import Any
 
-import numpy as np
 from fastapi import APIRouter, HTTPException, Request
 
 from copilot_sdk.state.cached_static import cached_static
-from copilot_sdk.graph.protocol import ProtocolV2GraphStore
 
 from app.domains.s2p.config import S2PDomainConfig
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.models.responses import GenericResponse
+from app.services.s2p_preview_data import _mapping, _timestamp, _verified, read_decisions, supplier_profiles
+from app.services.s2p_preview_simulation import _build_compounding_trajectory
 
 router = APIRouter(prefix="/api/s2p/preview", tags=["s2p-preview"])
 
 ENGINE_VERSION = "v0.7.23"
-TAU = 0.1
 
-_scored_invoices: list[dict[str, Any]] | None = None
-_centroids: dict[str, dict[str, list[float]]] | None = None
-_invoices: list[dict[str, Any]] | None = None
 _PREVIEW_OBSERVATIONS_WRITTEN: set[str] = set()
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _data_path(filename: str) -> Path:
-    return _repo_root() / "data" / filename
-
-
-def _load_fixture_json(filename: str) -> Any:
-    path = _data_path(filename)
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _load_celonis_cache() -> dict[str, Any]:
-    candidates: list[Path] = []
-    sdk_root = os.environ.get("CLAUDE_SDK", "")
-    if sdk_root:
-        candidates.append(Path(sdk_root) / "apps" / "dataops" / "backend" / "data" / "celonis_process_data.json")
-    candidates.append(_data_path("celonis_process_data.json"))
-
-    for path in candidates:
-        try:
-            if path.is_file():
-                data = json.loads(path.read_text(encoding="utf-8"))
-                return data if isinstance(data, dict) else {}
-        except (OSError, json.JSONDecodeError):
-            continue
-    return {}
-
-
-def _build_process_context(celonis_data: dict[str, Any]) -> dict[str, Any] | None:
-    activities = celonis_data.get("activities")
-    if not isinstance(activities, list):
-        return None
-
-    bottleneck = next(
-        (activity for activity in activities if isinstance(activity, dict) and activity.get("bottleneck") is True),
-        None,
-    )
-    if not bottleneck:
-        return None
-
-    duration_hours = float(bottleneck.get("duration_median_hours", bottleneck.get("avg_duration_hours", 0.0)) or 0.0)
-    return {
-        "process_model": celonis_data.get("process_model"),
-        "variant": celonis_data.get("variant"),
-        "bottleneck_activity": bottleneck.get("name") or bottleneck.get("id"),
-        "duration_median_min": round(duration_hours * 60.0, 2),
-        "source": "celonis_cache",
-    }
-
-
-def _with_process_context(invoice: dict[str, Any], process_context: dict[str, Any] | None) -> dict[str, Any]:
-    if not process_context:
-        return dict(invoice)
-    return {
-        **invoice,
-        "process_context": dict(process_context),
-    }
-
-
-def _get_gae_version() -> str:
-    return ENGINE_VERSION
+_SCORED_INVOICE_CACHE_TTL_SECONDS = 30.0
+_SCORED_INVOICE_CACHE_LOCK = threading.RLock()
+_SCORED_INVOICE_CACHE: dict[str, tuple[float, int, list[dict[str, Any]], int]] = {}
+_SUPPLIER_PROFILE_CACHE_TTL_SECONDS = 30.0
+_SUPPLIER_PROFILE_CACHE_LOCK = threading.RLock()
+_SUPPLIER_PROFILE_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 
 def _get_config_list(attr_name: str, method_name: str) -> list[str]:
@@ -129,25 +66,8 @@ def _get_canonical_factor_list() -> list[str]:
     return list(S2PDomainConfig.canonical_factors)
 
 
-def _get_centroids() -> dict[str, dict[str, list[float]]]:
-    global _centroids
-    if _centroids is None:
-        _centroids = _load_fixture_json("s2p_initial_centroids.json")
-    return _centroids
-
-
 def _to_float_list(values) -> list[float]:
     return [float(value) for value in values]
-
-
-def _softmax(values: list[float], tau: float = TAU) -> list[float]:
-    if not values:
-        return []
-    scaled = [value / tau for value in values]
-    max_value = max(scaled)
-    exps = [math.exp(value - max_value) for value in scaled]
-    total = sum(exps)
-    return [value / total for value in exps] if total else [1.0 / len(values)] * len(values)
 
 
 def _get_scorer(request: Request):
@@ -185,12 +105,13 @@ def _score_invoice(invoice: dict[str, Any], scorer) -> dict[str, Any]:
     variance_pct = float(factors.get("amount_variance_ratio", 0.0)) * 100.0
 
     return {
+        "decision_id": invoice["decision_id"],
         "invoice_id": invoice["invoice_id"],
         "supplier_id": invoice["supplier_id"],
         "supplier": invoice["supplier_name"],
         "supplier_name": invoice["supplier_name"],
         "category": category,
-        "amount": float(invoice["amount"]),
+        "amount": invoice["amount"],
         "po_reference": invoice["po_number"],
         "variance_pct": float(variance_pct),
         "scored_action": action_name,
@@ -201,17 +122,15 @@ def _score_invoice(invoice: dict[str, Any], scorer) -> dict[str, Any]:
         "factors": {name: float(factors.get(name, 0.5)) for name in factor_names},
         "factor_vector": _to_float_list(factor_vector),
         "ground_truth_action": invoice["ground_truth_action"],
-        "ground_truth_action_index": actions.index(invoice["ground_truth_action"]),
+        "ground_truth_action_index": actions.index(invoice["ground_truth_action"]) if invoice["ground_truth_action"] in actions else None,
         "metadata": metadata,
+        **({"process_context": invoice["process_context"]} if invoice.get("process_context") else {}),
       }
 
 
 def _write_preview_observation(request: Request, invoice: dict[str, Any]) -> None:
     scorer = _get_scorer(request)
     graph_store = _get_graph_store(request, scorer)
-    if not isinstance(graph_store, ProtocolV2GraphStore):
-        return
-
     factor_names = _get_factor_list()
     metadata = dict(invoice.get("metadata") or {})
     metadata.update(
@@ -260,20 +179,106 @@ def invalidate_preview_observation(invoice_id: str | None) -> None:
         _PREVIEW_OBSERVATIONS_WRITTEN.discard(str(invoice_id))
 
 
-def _get_fixture_invoices(n: int = 50) -> list[dict[str, Any]]:
-    global _invoices
-    if _invoices is None:
-        _invoices = _load_fixture_json("synthetic_invoices.json")[:n]
-    return _invoices
+def _decision_invoice(row: dict[str, Any]) -> dict[str, Any]:
+    names = row.get("factor_names") or _get_factor_list()
+    vector = row.get("factor_vector") or []
+    if isinstance(names, str):
+        names = json.loads(names)
+    if isinstance(vector, str):
+        vector = json.loads(vector)
+    factors = {**dict(zip(names, vector)), **_mapping(row.get("factors"))}
+    return {
+        "decision_id": row["decision_id"],
+        "invoice_id": row.get("invoice_id") or row.get("source_invoice_id") or row.get("entity_id") or row["decision_id"],
+        "supplier_id": row.get("supplier_id") or "",
+        "supplier_name": row.get("supplier_name") or row.get("supplier") or row.get("supplier_id") or "",
+        "category": row["category"],
+        "amount": float(row["amount"]) if row.get("amount") is not None else None,
+        "po_number": row.get("po_number") or row.get("po_reference"),
+        "factors": factors,
+        "ground_truth_action": row.get("actual_action"),
+        "metadata": _mapping(row.get("metadata")),
+        "process_context": row.get("process_context"),
+    }
 
 
-def _score_invoices(request: Request, invoices: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _pending_decisions(request: Request) -> list[dict[str, Any]]:
+    return sorted((row for row in read_decisions(_get_graph_store(request, _get_scorer(request))) if not _verified(row)),
+                  key=lambda row: (_timestamp(row), str(row["decision_id"])), reverse=True)
+
+
+def _score_rows(request: Request, invoices: list[dict[str, Any]]) -> list[dict[str, Any]]:
     scorer = _get_scorer(request)
     return [_score_invoice(invoice, scorer) for invoice in invoices]
 
 
-def _get_scored_invoices(request: Request, n: int = 50, seed: int = 42) -> list[dict[str, Any]]:
-    return _score_invoices(request, _get_fixture_invoices(n))
+def _verified_cache_token(graph_store: Any) -> int:
+    try:
+        return int(S2PGraphReader(graph_store).count_verified())
+    except Exception:
+        return 0
+
+
+def _decision_cache_token(graph_store: Any) -> int:
+    try:
+        return int(S2PGraphReader(graph_store).count_decisions())
+    except Exception:
+        return 0
+
+
+def _scorer_state_token(scorer: Any) -> str:
+    if hasattr(scorer, "version"):
+        return str(getattr(scorer, "version", ENGINE_VERSION) or ENGINE_VERSION)
+    state = getattr(scorer, "__dict__", None)
+    if not isinstance(state, dict):
+        return ENGINE_VERSION
+    simple = {
+        str(key): value
+        for key, value in state.items()
+        if isinstance(value, (str, int, float, bool, type(None)))
+    }
+    return json.dumps(simple, sort_keys=True, default=str)
+
+
+def _scored_invoice_cache_key(scorer: Any, graph_store: Any) -> str:
+    scorer_type = type(scorer).__qualname__
+    scorer_version = _scorer_state_token(scorer)
+    verified_token = _verified_cache_token(graph_store)
+    return f"s2p:preview:scored-invoices:v1:{scorer_type}:{scorer_version}:v{verified_token}"
+
+
+def _cached_recent_scores(request: Request, n: int = 50) -> tuple[list[dict[str, Any]], int]:
+    now = time.monotonic()
+    scorer = _get_scorer(request)
+    graph_store = _get_graph_store(request, scorer)
+    key = _scored_invoice_cache_key(scorer, graph_store)
+    with _SCORED_INVOICE_CACHE_LOCK:
+        cached = _SCORED_INVOICE_CACHE.get(key)
+        if cached is not None:
+            created, cached_n, invoices, total = cached
+            if cached_n >= n and now - created <= _SCORED_INVOICE_CACHE_TTL_SECONDS:
+                return [dict(invoice) for invoice in invoices[:n]], total
+
+    pending = _pending_decisions(request)
+    recent = [_decision_invoice(row) for row in pending[:n]]
+    invoices = sorted(
+        [_score_invoice(invoice, scorer) for invoice in recent],
+        key=lambda invoice: invoice["confidence"],
+        reverse=True,
+    )
+    with _SCORED_INVOICE_CACHE_LOCK:
+        _SCORED_INVOICE_CACHE[key] = (
+            time.monotonic(),
+            n,
+            [dict(invoice) for invoice in invoices],
+            len(pending),
+        )
+    return [dict(invoice) for invoice in invoices], len(pending)
+
+
+def _recent_scores(request: Request, n: int = 50) -> list[dict[str, Any]]:
+    invoices, _total = _cached_recent_scores(request, n)
+    return invoices
 
 
 def _get_preview_simulation_scorer():
@@ -289,196 +294,58 @@ def _get_preview_simulation_scorer():
     )
 
 
-def _invoice_factor_dict(invoice: Any) -> dict[str, float]:
-    factor_vector = np.array(invoice.factor_vector, dtype=float)
-    return {
-        name: float(factor_vector[index])
-        for index, name in enumerate(_get_factor_list())
-    }
-
-
-def _simulation_order_key(invoice: Any, scorer: Any) -> tuple[int, float]:
-    result = scorer.score(
-        _invoice_factor_dict(invoice),
-        invoice.category,
-        metadata={"source": "s2p_preview_ordering"},
-    )
-    correct = str(result.action) == str(invoice.ground_truth_action)
-    return (1 if correct else 0, float(result.confidence))
-
-
-def _build_compounding_trajectory(
-    n: int = 1000,
-    steps: int = 20,
-    seed: int = 42,
-) -> dict[str, Any]:
-    from app.services.synthetic_invoices import SyntheticInvoiceGenerator
-
-    generator = SyntheticInvoiceGenerator(seed=seed, noise_level=0.12)
-    ordering_scorer = _get_preview_simulation_scorer()
-    invoices = sorted(generator.generate(n), key=lambda invoice: _simulation_order_key(invoice, ordering_scorer))
-    scorer = _get_preview_simulation_scorer()
-    checkpoints = {
-        max(1, round((index + 1) * len(invoices) / steps))
-        for index in range(steps)
-    }
-
-    points: list[dict[str, Any]] = []
-    correct_count = 0
-    confidence_total = 0.0
-
-    for decision_number, invoice in enumerate(invoices, start=1):
-        factor_vector = np.array(invoice.factor_vector, dtype=float)
-        factors = _invoice_factor_dict(invoice)
-        result = scorer.score(
-            factors,
-            invoice.category,
-            metadata={
-                "invoice_id": invoice.invoice_id,
-                "source": "s2p_preview_simulation",
-            },
-        )
-        action = str(getattr(result, "action"))
-        confidence = float(getattr(result, "confidence"))
-        correct = action == str(invoice.ground_truth_action)
-
-        correct_count += int(correct)
-        confidence_total += confidence
-        scorer.learn(
-            result.decision_id,
-            str(invoice.ground_truth_action),
-            "confirmed" if correct else "overridden",
-            context={
-                "source": "s2p_preview_simulation",
-                "confidence": confidence,
-            },
-        )
-
-        if decision_number in checkpoints:
-            points.append(
-                {
-                    "decisions": decision_number,
-                    "decision_number": decision_number,
-                    "accuracy": float(round(correct_count / decision_number, 4)),
-                    "confidence": float(round(confidence_total / decision_number, 4)),
-                    "batch": len(points) + 1,
-                }
-            )
-
-    return {
-        "points": points,
-        "total_decisions": len(invoices),
-    }
-
-
-def _get_supplier_fixture() -> list[dict[str, Any]]:
-    data = _load_fixture_json("s2p_demo_suppliers.json")
-    return data if isinstance(data, list) else []
-
-
-def _preview_supplier(row: dict[str, Any]) -> dict[str, Any]:
-    supplier_id = str(row.get("supplier_id") or "")
-    canonical_name = str(row.get("name") or row.get("supplier_name") or supplier_id)
-    legacy_supplier_names = {"SUP-001": "Chen-Lin Mfg"}
-    supplier_name = legacy_supplier_names.get(supplier_id, canonical_name)
-    exception_rate = float(row.get("exception_rate", 0.0))
-    return {
-        "supplier_id": supplier_id,
-        "name": canonical_name,
-        "supplier_name": supplier_name,
-        "category": row.get("category"),
-        "exception_rate": exception_rate,
-        "avg_invoice_amount": float(row.get("avg_invoice_amount", 0.0)),
-        "payment_terms": row.get("payment_terms"),
-        "otif_score": float(row.get("otif_score", 0.0)),
-        "total_invoices": int(row.get("total_invoices", 0)),
-        "total_exceptions": int(row.get("total_exceptions", 0)),
-        "recent_trend": row.get("recent_trend"),
-        # Legacy SOC preview tab aliases. They are derived from the new profile
-        # fields so old callers keep rendering while the flat fixture contract
-        # remains available to new callers.
-        "region": "global",
-        "otif": {
-            "q1_q2": float(row.get("otif_score", 0.0)),
-            "q3": float(row.get("otif_score", 0.0)),
-        },
-        "lead_time": {
-            "contractual": 30,
-            "actual_q4": 30,
-        },
-        "financial_health_trend": row.get("recent_trend"),
-    }
-
-
 def _clamp_limit(limit: int, minimum: int, maximum: int) -> int:
     if maximum <= 0:
         return 0
     return max(minimum, min(int(limit), maximum))
 
 
-def _preview_slice_with_action_diversity(invoices: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
-    preview = list(invoices[:limit])
-    if len(preview) < 2:
-        return preview
-
-    actions = {str(invoice.get("scored_action", "")) for invoice in preview}
-    actions.discard("")
-    if len(actions) >= 2:
-        return preview
-
-    first_action = str(preview[0].get("scored_action", "")) if preview else ""
-    diverse_invoice = next(
-        (
-            invoice
-            for invoice in invoices[limit:]
-            if str(invoice.get("scored_action", "")) and str(invoice.get("scored_action", "")) != first_action
-        ),
-        None,
-    )
-    if diverse_invoice is not None:
-        preview[-1] = diverse_invoice
-    return preview
-
-
 def reset_preview_state() -> None:
-    global _invoices, _scored_invoices, _centroids
-    _invoices = None
-    _scored_invoices = None
-    _centroids = None
     _PREVIEW_OBSERVATIONS_WRITTEN.clear()
+    with _SCORED_INVOICE_CACHE_LOCK:
+        _SCORED_INVOICE_CACHE.clear()
+    with _SUPPLIER_PROFILE_CACHE_LOCK:
+        _SUPPLIER_PROFILE_CACHE.clear()
+
+
+def _supplier_profile_cache_key(graph_store: Any) -> str:
+    verified_token = _verified_cache_token(graph_store)
+    decision_token = _decision_cache_token(graph_store)
+    return f"s2p:preview:supplier-profiles:v1:d{decision_token}:v{verified_token}"
+
+
+def _cached_supplier_profiles(request: Request) -> list[dict[str, Any]]:
+    scorer = _get_scorer(request)
+    graph_store = _get_graph_store(request, scorer)
+    key = _supplier_profile_cache_key(graph_store)
+    now = time.monotonic()
+    with _SUPPLIER_PROFILE_CACHE_LOCK:
+        cached = _SUPPLIER_PROFILE_CACHE.get(key)
+        if cached is not None:
+            created, profiles = cached
+            if now - created <= _SUPPLIER_PROFILE_CACHE_TTL_SECONDS:
+                return [dict(profile) for profile in profiles]
+    profiles = supplier_profiles(read_decisions(graph_store, with_outcomes=True))
+    with _SUPPLIER_PROFILE_CACHE_LOCK:
+        _SUPPLIER_PROFILE_CACHE[key] = (time.monotonic(), [dict(profile) for profile in profiles])
+    return [dict(profile) for profile in profiles]
 
 
 def _preview_queue_payload(request: Request, limit: int = 5) -> dict[str, Any]:
     clamped_limit = _clamp_limit(limit, 1, 50)
-    fixture_invoices = _get_fixture_invoices()
-    preview_size = min(max(clamped_limit, 10), len(fixture_invoices))
-    invoices = sorted(
-        _score_invoices(request, fixture_invoices[:preview_size]),
-        key=lambda invoice: invoice["confidence"],
-        reverse=True,
-    )
-    while len({invoice["scored_action"] for invoice in invoices}) < 2 and preview_size < len(fixture_invoices):
-        next_size = min(preview_size + 10, len(fixture_invoices))
-        invoices = sorted(
-            _score_invoices(request, fixture_invoices[:next_size]),
-            key=lambda invoice: invoice["confidence"],
-            reverse=True,
-        )
-        preview_size = next_size
-    shown = _preview_slice_with_action_diversity(invoices, clamped_limit)
+    invoices, total_pending = _cached_recent_scores(request, 50)
+    shown = invoices[:clamped_limit]
     for invoice in shown:
         _write_preview_observation_once(request, invoice)
-    process_context = _build_process_context(_load_celonis_cache())
-    exceptions = [
-        _with_process_context(invoice, process_context)
-        for invoice in shown
-    ]
+    exceptions = shown
     auto_approve_count = sum(1 for invoice in invoices if invoice["scored_action"] == "auto_approve")
     confidence_avg = sum(invoice["confidence"] for invoice in invoices) / len(invoices) if invoices else 0.0
     return {
         "status": "ok",
         "engine_version": ENGINE_VERSION,
-        "total": len(fixture_invoices),
+        "source": "graph",
+        "total": total_pending,
+        "scored_count": len(invoices),
         "showing": len(shown),
         "exceptions": exceptions,
         "invoices": shown,
@@ -507,17 +374,11 @@ def _preview_queue_limit(request: Request, default: int = 5) -> int:
 
 
 @router.get("/queue", response_model=GenericResponse)
-@cached_static("preview-queue", copilot="s2p", url="/api/s2p/preview/queue")
 def preview_queue(request: Request) -> dict[str, Any]:
     try:
         return _preview_queue_payload(request, _preview_queue_limit(request))
     except HTTPException:
         raise
-    except (OSError, json.JSONDecodeError) as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={"status": "error", "message": "S2P preview queue data unavailable", "exceptions": []},
-        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -527,7 +388,7 @@ def preview_queue(request: Request) -> dict[str, Any]:
 
 @router.get("/conservation", response_model=GenericResponse)
 def preview_conservation(request: Request) -> dict[str, Any]:
-    invoices = _get_scored_invoices(request)
+    invoices = _recent_scores(request)
     auto_approve_count = sum(
         1
         for invoice in invoices
@@ -565,7 +426,7 @@ def preview_conservation(request: Request) -> dict[str, Any]:
 @router.get("/compounding", response_model=GenericResponse)
 @cached_static("preview-compounding", copilot="s2p")
 def preview_compounding() -> dict[str, Any]:
-    simulation = _build_compounding_trajectory()
+    simulation = _build_compounding_trajectory(scorer_factory=_get_preview_simulation_scorer)
     points = simulation["points"]
     initial_accuracy = float(points[0]["accuracy"]) if points else 0.0
     current_accuracy = float(points[-1]["accuracy"]) if points else 0.0
@@ -582,8 +443,8 @@ def preview_compounding() -> dict[str, Any]:
 
 
 @router.get("/suppliers", response_model=GenericResponse)
-def preview_suppliers(limit: int | None = None) -> dict[str, Any]:
-    suppliers = [_preview_supplier(supplier) for supplier in _get_supplier_fixture()]
+def preview_suppliers(request: Request, limit: int | None = None) -> dict[str, Any]:
+    suppliers = _cached_supplier_profiles(request)
     if limit is None:
         shown = suppliers
     else:
@@ -594,7 +455,8 @@ def preview_suppliers(limit: int | None = None) -> dict[str, Any]:
         "total": len(suppliers),
         "showing": len(shown),
         "suppliers": shown,
-        "source": "s2p_demo_suppliers.json",
+        "source": "graph",
+        "cache": "scored_preview_cache",
     }
 
 

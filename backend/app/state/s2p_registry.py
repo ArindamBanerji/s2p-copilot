@@ -37,7 +37,7 @@ S2P_MUTATION_PATHS: dict[tuple[str, str], str] = {
 
 
 def create_s2p_tab_state_cache(app_state: Any) -> TabStateCache:
-    cache = TabStateCache("s2p")
+    cache = TabStateCache("s2p", ttl_seconds=5.0)
     request = _request_for(app_state)
     graph_store = getattr(app_state, "graph_store", None)
 
@@ -99,8 +99,8 @@ def create_s2p_tab_state_cache(app_state: Any) -> TabStateCache:
         lambda: _call(s2p_preview.preview_queue, request),
         s2p_preview.preview_queue,
         tier="STANDARD",
-        invalidated_by=("reset",),
-        reads_scorer=False,
+        invalidated_by=("score", "learn", "reset"),
+        reads_scorer=True,
     )
     _register(
         cache,
@@ -198,12 +198,14 @@ def create_s2p_tab_state_cache(app_state: Any) -> TabStateCache:
         s2p_evidence.rules,
         s2p_evidence.rules,
     )
-    _register_cold(
+    _register(
         cache,
         "evidence-compliance",
         "/api/s2p/evidence/compliance",
+        lambda: _call(s2p_evidence.compliance, request),
         s2p_evidence.compliance,
-        s2p_evidence.compliance,
+        tier="STANDARD",
+        reads_scorer=True,
     )
     _register_cold(
         cache,

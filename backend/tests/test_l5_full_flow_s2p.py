@@ -85,6 +85,7 @@ def test_s2p_full_learn_flow_writes_all_three_l5_state_types(monkeypatch) -> Non
     monkeypatch.setattr(s2p_router, "_record_supplier_profile", lambda *args, **kwargs: None)
     monkeypatch.setattr(s2p_router, "_record_evolver_outcome_if_allowed", lambda *args, **kwargs: None)
     monkeypatch.setattr(s2p_router, "_record_outcome_shadow", lambda *args, **kwargs: None)
+    monkeypatch.setattr(s2p_router, "_resolve_decision_proposal", lambda *args, **kwargs: None)
 
     client = TestClient(app)
 

@@ -7,6 +7,7 @@ import pathlib
 import sys
 from types import SimpleNamespace
 from typing import Any
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -18,6 +19,7 @@ from app.s2p_shadow import S2PShadowConfig, S2PShadowDiagnostics, S2PShadowState
 
 client = TestClient(app)
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
+pytestmark = pytest.mark.usefixtures("preview_graph")
 
 
 def _queue(limit: int | None = None):
@@ -33,6 +35,116 @@ def test_queue_returns_200():
     assert response.json()["status"] == "ok"
 
 
+def test_production_previews_read_graph_without_fixture_access(monkeypatch):
+    original_read = pathlib.Path.read_text
+
+    def no_fixture_read(path, *args, **kwargs):
+        if path.name in {"synthetic_invoices.json", "s2p_initial_centroids.json", "celonis_process_data.json"}:
+            raise AssertionError("preview must not read fixture files")
+        return original_read(path, *args, **kwargs)
+
+    monkeypatch.setenv("S2P_PROFILE", "production")
+    monkeypatch.setattr(pathlib.Path, "read_text", no_fixture_read)
+    for endpoint, total in (("queue", 50), ("suppliers", 10)):
+        response = client.get(f"/api/s2p/preview/{endpoint}")
+        assert response.status_code == 200
+        assert response.json()["total"] == total
+        assert response.json()["source"] == "graph"
+
+
+def test_preview_follows_current_app_scorer(monkeypatch):
+    monkeypatch.setenv("S2P_PROFILE", "production")
+    assert _queue().status_code == 200
+    actions = S2PDomainConfig.actions
+    replacement = SimpleNamespace(
+        score_read_only=lambda factors, category: SimpleNamespace(
+            action=actions[0], action_index=0, confidence=0.123,
+            probabilities=[1.0 / len(actions)] * len(actions),
+        ),
+    )
+    monkeypatch.setattr(app.state, "scorer", replacement)
+    response = _queue()
+    assert response.status_code == 200
+    assert all(row["confidence"] == 0.123 for row in response.json()["invoices"])
+
+
+def test_queue_excludes_verified_and_refreshes_after_outcome(preview_graph):
+    first = _queue(50).json()
+    assert first["total"] == 50
+    assert not any(row["decision_id"].startswith("preview-history") for row in first["invoices"])
+    decision = first["invoices"][0]
+    preview_graph.write_outcome(decision["decision_id"], "hold_for_review", False, domain="s2p")
+    second = _queue(50).json()
+    assert second["total"] == 49
+    assert decision["decision_id"] not in {row["decision_id"] for row in second["invoices"]}
+    assert all(row["ground_truth_action"] is None for row in second["invoices"])
+
+
+def test_queue_only_scores_latest_50_pending_decisions(preview_graph):
+    old = preview_graph.write_decision("s2p", "price_variance", "auto_approve", 1.0,
+                                      {name: 0.5 for name in S2PDomainConfig.factors},
+                                      metadata={"created_at": 1, "invoice_id": "old"})
+    data = _queue(50).json()
+    assert data["total"] == 51
+    assert data["scored_count"] == 50
+    assert old not in {row["decision_id"] for row in data["invoices"]}
+
+
+def test_suppliers_compute_outcomes_and_fulfilment_from_graph():
+    profile = client.get("/api/s2p/preview/suppliers").json()["suppliers"][0]
+    assert profile["total_invoices"] == 7
+    assert profile["verified_invoices"] == 2
+    assert profile["total_exceptions"] == 1
+    assert profile["exception_rate"] == 0.5  # Both predictions were marked correct.
+    assert profile["otif_score"] == 0.5
+    assert profile["otif"] == {"q1_q2": 1.0, "q3": 0.0}
+    assert profile["recent_trend"] == "declining"
+
+
+def test_suppliers_do_not_infer_otif_from_prediction_correctness(preview_graph):
+    for outcome in preview_graph._outcomes.values():
+        outcome["metadata"].pop("on_time")
+        outcome["metadata"].pop("in_full")
+    profiles = client.get("/api/s2p/preview/suppliers").json()["suppliers"]
+    assert all(row["otif_score"] is None and row["otif_observations"] == 0 for row in profiles)
+
+
+def test_supplier_rescore_preserves_verified_history(preview_graph):
+    preview_graph.write_decision("s2p", "price_variance", "auto_approve", 0.8,
+                                 {name: 0.5 for name in S2PDomainConfig.factors},
+                                 metadata={"supplier_id": "SUP-001", "invoice_id": "history-0-1",
+                                           "amount": 100.0, "created_at": 1800000000})
+    profile = client.get("/api/s2p/preview/suppliers").json()["suppliers"][0]
+    assert profile["total_invoices"] == 7
+    assert profile["verified_invoices"] == 2
+    assert profile["exception_rate"] == 0.5
+    assert profile["otif_score"] == 0.5
+
+
+def test_queue_decodes_named_vectors_and_metadata_json(monkeypatch):
+    import json
+
+    class ReadStore:
+        def get_all_decisions(self, domain):
+            assert domain == "s2p"
+            return [{"decision_id": "json-record", "domain": "s2p", "category": "price_variance",
+                     "status": "pending", "factor_names": list(reversed(S2PDomainConfig.factors)),
+                     "factor_vector": json.dumps(list(range(S2PDomainConfig.n_factors))),
+                     "metadata": json.dumps({"supplier_id": "supplier-graph", "invoice_id": "invoice-graph",
+                                              "amount": 321.0, "po_number": "po-graph"})}]
+
+        def write_observation(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(app.state, "graph_store", ReadStore())
+    row = _queue().json()["invoices"][0]
+    assert row["invoice_id"] == "invoice-graph"
+    assert row["supplier_id"] == "supplier-graph"
+    assert row["amount"] == 321.0
+    assert row["po_reference"] == "po-graph"
+    assert row["factor_vector"] == list(reversed(range(S2PDomainConfig.n_factors)))
+
+
 def test_queue_default_limit_5():
     data = _queue().json()
     assert data["total"] == 50
@@ -40,7 +152,7 @@ def test_queue_default_limit_5():
     assert len(data["invoices"]) == 5
 
 
-def test_queue_default_preview_has_action_diversity():
+def test_queue_default_preview_preserves_confidence_ranking():
     data = _queue().json()
     preview_rows = data.get("exceptions") or data.get("invoices") or []
     actions = {
@@ -50,7 +162,9 @@ def test_queue_default_preview_has_action_diversity():
     actions.discard(None)
     actions.discard("")
 
-    assert len(actions) >= 2
+    assert actions.issubset(set(S2PDomainConfig.actions))
+    assert [row["confidence"] for row in preview_rows] == sorted(
+        [row["confidence"] for row in preview_rows], reverse=True)
 
 
 def test_queue_custom_limit():
@@ -196,9 +310,9 @@ def test_suppliers_have_required_fields():
         assert key in supplier
 
 
-def test_suppliers_chen_lin_present():
+def test_suppliers_preserve_graph_names():
     suppliers = client.get("/api/s2p/preview/suppliers?limit=10").json()["suppliers"]
-    assert any(supplier["supplier_name"] == "Chen-Lin Mfg" for supplier in suppliers)
+    assert any(supplier["supplier_name"] == "Aster Industrial Chemicals" for supplier in suppliers)
 
 
 def test_config_returns_200():
@@ -262,16 +376,13 @@ def test_score_endpoint_is_canonical_too():
     assert len(preview.json()["invoices"][0]["factor_vector"]) == S2PDomainConfig.n_factors
 
 
-def test_reset_clears_cache():
+def test_reset_preserves_graph_backed_queue():
     import app.routers.s2p_preview as preview_module
 
     assert client.get("/api/s2p/preview/queue").status_code == 200
-    assert preview_module._invoices is not None
-    assert preview_module._scored_invoices is None
 
     preview_module.reset_preview_state()
-    assert preview_module._invoices is None
-    assert preview_module._scored_invoices is None
+    assert preview_module._PREVIEW_OBSERVATIONS_WRITTEN == set()
 
     response = client.get("/api/s2p/preview/queue")
     assert response.status_code == 200
@@ -349,7 +460,7 @@ def test_preview_queue_recomputes_after_live_scorer_state_changes(monkeypatch):
     assert scorer.calls > first_calls
 
 
-def test_preview_queue_limit_does_not_score_full_fixture(monkeypatch):
+def test_preview_queue_ranks_the_recent_graph_window(monkeypatch):
     import app.routers.s2p_preview as preview_module
 
     class CountingScorer:
@@ -380,7 +491,7 @@ def test_preview_queue_limit_does_not_score_full_fixture(monkeypatch):
     assert response.status_code == 200
     assert response.json()["total"] == 50
     assert response.json()["showing"] == 1
-    assert scorer.calls == 10
+    assert scorer.calls == 50
 
 
 def test_preview_queue_does_not_write_sqlite_decisions():

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from fastapi.testclient import TestClient
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -13,78 +14,19 @@ from app.main import app, build_s2p_scorer  # noqa: E402
 from app.routers import s2p as s2p_router  # noqa: E402
 
 
-class FakeGraphStore:
-    domain = "s2p"
-
-    def __init__(self) -> None:
-        self.verified = 2
-        self.correct = 1
-        self.categories = 1
-
-    def count_verified(self, domain: str) -> int:
-        assert domain == "s2p"
-        return self.verified
-
-    def count_correct(self, domain: str) -> int:
-        assert domain == "s2p"
-        return self.correct
-
-    def count_verified_decisions(self, domain: str) -> int:
-        assert domain == "s2p"
-        return self.verified
-
-    def get_decision(self, decision_id: str, domain: str | None = None):
-        if domain is not None:
-            assert domain == self.domain
-        return None
-
-    def write_outcome(
-        self,
-        decision_id: str,
-        actual_action: str,
-        is_correct: bool,
-        metadata: dict | None = None,
-        domain: str | None = None,
-    ) -> None:
-        raise AssertionError("conservation hook must not write outcomes")
-
-    def get_archived_decisions(self, domain: str):
-        assert domain == self.domain
-        return []
-
-    def count_categories_with_n(self, domain: str, n: int) -> int:
-        assert domain == "s2p"
-        assert n == 1
-        return self.categories
-
-
-class MissingCoverageGraphStore:
-    domain = "s2p"
-
-    def count_verified(self, domain: str) -> int:
-        return 2
-
-    def count_correct(self, domain: str) -> int:
-        return 1
-
-    def count_verified_decisions(self, domain: str) -> int:
-        return 2
-
-    def get_decision(self, decision_id: str, domain: str | None = None):
-        return None
-
-    def write_outcome(
-        self,
-        decision_id: str,
-        actual_action: str,
-        is_correct: bool,
-        metadata: dict | None = None,
-        domain: str | None = None,
-    ) -> None:
-        raise AssertionError("conservation hook must not write outcomes")
-
-    def get_archived_decisions(self, domain: str):
-        return []
+def _graph_store_with_coverage() -> InMemoryGraphStore:
+    store = InMemoryGraphStore(domain="s2p", decision_id_prefix="S2P-")
+    for index, is_correct in enumerate((True, False)):
+        decision_id = store.write_decision(
+            "s2p",
+            "price_variance",
+            "auto_approve",
+            0.8,
+            {"match_status": 0.9},
+            metadata={"decision_id": f"S2P-CONS-{index}"},
+        )
+        store.write_outcome(decision_id, "auto_approve", is_correct, domain="s2p")
+    return store
 
 
 class RecordingLearningStore:
@@ -145,7 +87,7 @@ def _fake_request(
     learning_store: Any | None = None,
     graph_store: Any | None = None,
 ) -> SimpleNamespace:
-    graph_store = graph_store or FakeGraphStore()
+    graph_store = graph_store or _graph_store_with_coverage()
     scorer = SimpleNamespace(
         graph_store=graph_store,
         _preset=SimpleNamespace(shape=SimpleNamespace(n_categories=5), penalty_ratio=1.0),
@@ -248,7 +190,7 @@ def test_s2p_persistence_update_failure_is_non_fatal() -> None:
 
 def test_s2p_persistence_requires_real_category_coverage() -> None:
     store = RecordingLearningStore()
-    request = _fake_request(learning_store=store, graph_store=MissingCoverageGraphStore())
+    request = _fake_request(learning_store=store, graph_store=InMemoryGraphStore(domain="s2p"))
 
     s2p_router._persist_l5_conservation_state(request, "S2P-NO-COVERAGE")
 

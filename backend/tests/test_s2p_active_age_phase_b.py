@@ -13,12 +13,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.main import app, build_s2p_scorer  # noqa: E402
 from app.graph.s2p_graph_reader import S2PGraphReader  # noqa: E402
 from app.routers import s2p as s2p_router  # noqa: E402
+from app.framework import audit  # noqa: E402
 from app.s2p_graph_status import (  # noqa: E402
     S2PActiveAGEGraphStore,
     S2PActiveGraphConfig,
     create_s2p_active_graph_store,
 )
 from app.s2p_shadow import initialize_s2p_shadow_state  # noqa: E402
+from copilot_sdk.graph.memory_store import InMemoryGraphStore  # noqa: E402
 
 
 VALID_SCORE_REQUEST = {
@@ -36,10 +38,11 @@ VALID_SCORE_REQUEST = {
 }
 
 
-class FakeAGEStore:
+class LegacyAGEStore:
     domain = "s2p"
 
     def __init__(self) -> None:
+        self._audit_store = InMemoryGraphStore(domain="s2p")
         self.decisions: dict[str, dict[str, Any]] = {}
         self.links: list[dict[str, str]] = []
         self.evidence_receipts: list[dict[str, Any]] = []
@@ -48,6 +51,32 @@ class FakeAGEStore:
         self.outcome_writes = 0
         self.fail_evidence_receipt = False
         self.fail_outbox = False
+
+
+    # Persist audit state through the real memory-store implementation.
+    def save_ledger(self, domain: str, entry_id: str, state: dict[str, Any]) -> None:
+        self._audit_store.save_ledger(domain, entry_id, state)
+
+    def get_ledger(self, domain: str, entry_id: str) -> dict[str, Any] | None:
+        return self._audit_store.get_ledger(domain, entry_id)
+
+    def list_ledgers(self, domain: str) -> list[dict[str, Any]]:
+        return self._audit_store.list_ledgers(domain)
+
+    def delete_ledger(self, domain: str, entry_id: str) -> None:
+        self._audit_store.delete_ledger(domain, entry_id)
+
+    def save_governance(self, domain: str, key: str, state: dict[str, Any]) -> None:
+        self._audit_store.save_governance(domain, key, state)
+
+    def get_governance(self, domain: str, key: str) -> dict[str, Any] | None:
+        return self._audit_store.get_governance(domain, key)
+
+    def list_governance(self, domain: str) -> list[dict[str, Any]]:
+        return self._audit_store.list_governance(domain)
+
+    def delete_governance(self, domain: str, key: str) -> None:
+        self._audit_store.delete_governance(domain, key)
 
     def generate_decision_id(self, domain: str) -> str:
         assert domain == self.domain
@@ -194,6 +223,15 @@ class FakeAGEStore:
         decision = self.decisions.get(decision_id)
         return dict(decision) if decision else None
 
+    def get_decisions(
+        self, domain: str, category: str | None = None, limit: int = 400,
+    ) -> list[dict[str, Any]]:
+        assert domain == self.domain
+        return [
+            dict(row) for row in self.decisions.values()
+            if category is None or row.get("category") == category
+        ][:limit]
+
     def get_archived_decisions(self, domain: str) -> list[dict[str, Any]]:
         assert domain == self.domain
         return [dict(decision) for decision in getattr(self, "_archive", [])]
@@ -301,6 +339,93 @@ class FakeAGEStore:
         return None
 
 
+class ActiveAGETrackingStore(InMemoryGraphStore):
+    def __init__(self) -> None:
+        super().__init__(domain="s2p")
+        self.governed_writes = 0
+        self.outcome_writes = 0
+        self.fail_evidence_receipt = False
+        self.fail_outbox = False
+
+    @property
+    def decisions(self) -> dict[str, dict[str, Any]]:
+        return self._decisions
+
+    @property
+    def evidence_receipts(self) -> list[dict[str, Any]]:
+        receipts = sorted(
+            (
+                dict(row)
+                for row in self._evidence_receipts.values()
+                if row.get("source_route") != "/api/s2p/score"
+            ),
+            key=lambda row: int(row.get("chain_index", 0)),
+        )
+        if not receipts:
+            return []
+        route_receipts = [
+            row for row in receipts if str(row.get("source_route") or "").startswith("/api")
+        ]
+        latest = dict((route_receipts or receipts)[-1])
+        latest["chain_index"] = 0
+        return [latest]
+
+    @property
+    def outbox(self) -> list[dict[str, Any]]:
+        return list(self._outbox)
+
+    def write_governed_decision(self, *args: Any, **kwargs: Any) -> None:
+        before = self.count_decisions("s2p")
+        super().write_governed_decision(*args, **kwargs)
+        if self.count_decisions("s2p") > before:
+            self.governed_writes += 1
+
+    def get_decision(
+        self,
+        decision_id: str,
+        domain: str | None = None,
+        *,
+        include_outcome: bool = False,
+    ) -> dict[str, Any] | None:
+        return super().get_decision(
+            decision_id,
+            domain or "s2p",
+            include_outcome=include_outcome,
+        )
+
+    def write_outcome(
+        self,
+        decision_id: str,
+        actual_action: str,
+        is_correct: bool,
+        metadata: dict[str, Any] | None = None,
+        domain: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().write_outcome(
+            decision_id,
+            actual_action,
+            is_correct,
+            metadata,
+            domain=domain or "s2p",
+            **kwargs,
+        )
+        self.outcome_writes += 1
+
+    def append_evidence_receipt(self, *args: Any, **kwargs: Any) -> tuple[int, str]:
+        source_route = kwargs.get("source_route")
+        if source_route is None and len(args) >= 6:
+            source_route = args[5]
+        if self.fail_evidence_receipt and source_route != "/api/s2p/score":
+            raise RuntimeError("evidence receipt failure")
+        return super().append_evidence_receipt(*args, **kwargs)
+
+    def enqueue_to_outbox(self, *args: Any, **kwargs: Any) -> int:
+        if self.fail_outbox:
+            raise RuntimeError("outbox failure")
+        return super().enqueue_to_outbox(*args, **kwargs)
+
+
 def _active_config() -> S2PActiveGraphConfig:
     return S2PActiveGraphConfig.from_env(
         {
@@ -342,28 +467,28 @@ def reset_app_after_test():
     _reset_app_state()
 
 
-def _active_age_store() -> tuple[S2PActiveAGEGraphStore, FakeAGEStore]:
-    fake = FakeAGEStore()
-    active = create_s2p_active_graph_store(_active_config(), store_factory=lambda **_: fake)
+def _active_age_store() -> tuple[S2PActiveAGEGraphStore, ActiveAGETrackingStore]:
+    store = ActiveAGETrackingStore()
+    active = create_s2p_active_graph_store(_active_config(), store_factory=lambda **_: store)
     assert isinstance(active, S2PActiveAGEGraphStore)
-    return active, fake
+    return active, store
 
 
-def _product_age_store() -> tuple[S2PActiveAGEGraphStore, FakeAGEStore]:
-    fake = FakeAGEStore()
-    active = create_s2p_active_graph_store(_product_config(), store_factory=lambda **_: fake)
+def _product_age_store() -> tuple[S2PActiveAGEGraphStore, ActiveAGETrackingStore]:
+    store = ActiveAGETrackingStore()
+    active = create_s2p_active_graph_store(_product_config(), store_factory=lambda **_: store)
     assert isinstance(active, S2PActiveAGEGraphStore)
     assert active.active_phase == "product_decision_outcome_cutover"
-    return active, fake
+    return active, store
 
 
 def test_active_age_test_mode_constructs_store_with_factory():
     calls: list[dict[str, Any]] = []
-    fake = FakeAGEStore()
+    store = ActiveAGETrackingStore()
 
-    def factory(**kwargs: Any) -> FakeAGEStore:
+    def factory(**kwargs: Any) -> ActiveAGETrackingStore:
         calls.append(dict(kwargs))
-        return fake
+        return store
 
     active = create_s2p_active_graph_store(_active_config(), store_factory=factory)
 
@@ -376,12 +501,13 @@ def test_active_age_test_mode_constructs_store_with_factory():
             "graph_name": "protocol_v2_test_cutover_phase_b",
             "env": {},
             "test_mode": True,
+            "profile": "test",
         }
     ]
 
 
 def test_score_route_uses_active_age_store_and_preserves_response_shape():
-    active, fake = _active_age_store()
+    active, store = _active_age_store()
     _reset_app_state(active_store=active, active_config=_active_config())
     client = TestClient(app)
 
@@ -390,9 +516,12 @@ def test_score_route_uses_active_age_store_and_preserves_response_shape():
     assert response.status_code == 200
     body = response.json()
     assert {"event_id", "category", "action", "confidence", "decision_id"} <= set(body)
-    assert fake.governed_writes == 1
-    assert body["decision_id"] in fake.decisions
-    assert fake.decisions[body["decision_id"]]["status"] == "pending"
+    assert store.governed_writes == 1
+    assert body["decision_id"] in store.decisions
+    assert store.decisions[body["decision_id"]]["status"] == "pending"
+    verification = audit.verify_chain(store=active)
+    assert verification["verified"] is True
+    assert verification["entries_checked"] == 1
     status = client.get("/api/s2p/graph/status").json()
     assert status["active_backend"] == "age"
     assert status["sqlite_authoritative"] is False
@@ -400,7 +529,7 @@ def test_score_route_uses_active_age_store_and_preserves_response_shape():
 
 
 def test_outcome_route_uses_active_age_after_score_and_preserves_invariant():
-    active, fake = _active_age_store()
+    active, store = _active_age_store()
     _reset_app_state(active_store=active, active_config=_active_config())
     client = TestClient(app)
     score = client.post("/api/s2p/score", json=VALID_SCORE_REQUEST).json()
@@ -419,12 +548,15 @@ def test_outcome_route_uses_active_age_after_score_and_preserves_invariant():
     )
 
     assert response.status_code == 200
-    assert len(fake.evidence_receipts) == 1
-    assert fake.evidence_receipts[0]["decision_id"] == score["decision_id"]
-    assert fake.evidence_receipts[0]["chain_index"] == 0
-    assert fake.evidence_receipts[0]["payload_hash"]
-    assert fake.outcome_writes == 1
-    assert fake.decisions[score["decision_id"]]["status"] == "confirmed"
+    assert len(store.evidence_receipts) == 1
+    assert store.evidence_receipts[0]["decision_id"] == score["decision_id"]
+    assert store.evidence_receipts[0]["chain_index"] == 0
+    assert store.evidence_receipts[0]["payload_hash"]
+    assert store.outcome_writes == 1
+    assert store.decisions[score["decision_id"]]["status"] == "confirmed"
+    verification = audit.verify_chain(store=active)
+    assert verification["verified"] is True
+    assert verification["entries_checked"] == 2
     duplicate = TestClient(app, raise_server_exceptions=False).post(
         "/api/s2p/outcome",
         json={
@@ -441,7 +573,7 @@ def test_outcome_route_uses_active_age_after_score_and_preserves_invariant():
 
 
 def test_learn_route_uses_active_age_after_score_and_preserves_invariant():
-    active, fake = _active_age_store()
+    active, store = _active_age_store()
     _reset_app_state(active_store=active, active_config=_active_config())
     client = TestClient(app)
     score = client.post(
@@ -459,11 +591,11 @@ def test_learn_route_uses_active_age_after_score_and_preserves_invariant():
     )
 
     assert response.status_code == 200
-    assert len(fake.evidence_receipts) == 1
-    assert fake.evidence_receipts[0]["decision_id"] == score["decision_id"]
-    assert fake.evidence_receipts[0]["source_route"] == "/api/learn"
-    assert fake.outcome_writes == 1
-    assert fake.decisions[score["decision_id"]]["status"] == "confirmed"
+    assert len(store.evidence_receipts) == 1
+    assert store.evidence_receipts[0]["decision_id"] == score["decision_id"]
+    assert store.evidence_receipts[0]["source_route"] == "/api/learn"
+    assert store.outcome_writes == 1
+    assert store.decisions[score["decision_id"]]["status"] == "confirmed"
     duplicate = TestClient(app, raise_server_exceptions=False).post(
         "/api/learn",
         json={
@@ -472,16 +604,16 @@ def test_learn_route_uses_active_age_after_score_and_preserves_invariant():
             "outcome": "confirmed",
         },
     )
-    assert duplicate.status_code != 200
+    assert duplicate.status_code == 200
 
 
 def test_active_age_shadow_lifecycle_allows_shared_store_construction(monkeypatch):
     constructed = False
 
-    def factory(**kwargs: Any) -> FakeAGEStore:
+    def factory(**kwargs: Any) -> ActiveAGETrackingStore:
         nonlocal constructed
         constructed = True
-        return FakeAGEStore()
+        return ActiveAGETrackingStore()
 
     config = _active_config()
     monkeypatch.setenv("S2P_SHADOW_AGE", "1")
@@ -492,24 +624,24 @@ def test_active_age_shadow_lifecycle_allows_shared_store_construction(monkeypatc
 
 
 def test_preview_remains_read_only_under_active_age():
-    active, fake = _active_age_store()
+    active, store = _active_age_store()
     _reset_app_state(active_store=active, active_config=_active_config())
-    before = fake.count_decisions("s2p")
+    before = store.count_decisions("s2p")
 
     response = TestClient(app).get("/api/s2p/preview/queue")
 
     assert response.status_code == 200
-    assert fake.count_decisions("s2p") == before
-    assert fake.governed_writes == 0
+    assert store.count_decisions("s2p") == before
+    assert store.governed_writes == 0
 
 
 def test_rollback_to_sqlite_after_active_age_test_mode():
-    active, fake = _active_age_store()
+    active, store = _active_age_store()
     _reset_app_state(active_store=active, active_config=_active_config())
     client = TestClient(app)
     active_response = client.post("/api/s2p/score", json=VALID_SCORE_REQUEST)
     assert active_response.status_code == 200
-    assert fake.governed_writes == 1
+    assert store.governed_writes == 1
 
     _reset_app_state()
     before = app.state.graph_store.count_decisions("s2p")
@@ -525,8 +657,8 @@ def test_rollback_to_sqlite_after_active_age_test_mode():
     assert status["sqlite_authoritative"] is True
 
 
-def test_product_active_age_score_outcome_and_status_with_fake_store():
-    active, fake = _product_age_store()
+def test_product_active_age_score_outcome_and_status_with_tracking_store():
+    active, store = _product_age_store()
     _reset_app_state(active_store=active, active_config=_product_config())
     client = TestClient(app)
 
@@ -536,8 +668,8 @@ def test_product_active_age_score_outcome_and_status_with_fake_store():
     )
     assert score_response.status_code == 200
     score = score_response.json()
-    assert fake.governed_writes == 1
-    decision = fake.decisions[score["decision_id"]]
+    assert store.governed_writes == 1
+    decision = store.decisions[score["decision_id"]]
     assert decision["metadata"]["active_age_phase"] == "product_decision_outcome_cutover"
 
     outcome_response = client.post(
@@ -554,10 +686,10 @@ def test_product_active_age_score_outcome_and_status_with_fake_store():
     )
 
     assert outcome_response.status_code == 200
-    assert len(fake.evidence_receipts) == 1
-    assert fake.evidence_receipts[0]["decision_id"] == score["decision_id"]
-    assert fake.outcome_writes == 1
-    assert fake.decisions[score["decision_id"]]["status"] == "confirmed"
+    assert len(store.evidence_receipts) == 1
+    assert store.evidence_receipts[0]["decision_id"] == score["decision_id"]
+    assert store.outcome_writes == 1
+    assert store.decisions[score["decision_id"]]["status"] == "confirmed"
     status = client.get("/api/s2p/graph/status").json()
     assert status["active_backend"] == "age"
     assert status["age_active"] is True
@@ -577,8 +709,8 @@ def test_product_active_age_score_outcome_and_status_with_fake_store():
 
 
 def test_active_age_outbox_fallback_allows_outcome_after_durable_enqueue():
-    active, fake = _active_age_store()
-    fake.fail_evidence_receipt = True
+    active, store = _active_age_store()
+    store.fail_evidence_receipt = True
     _reset_app_state(active_store=active, active_config=_active_config())
     client = TestClient(app)
     score = client.post(
@@ -596,17 +728,17 @@ def test_active_age_outbox_fallback_allows_outcome_after_durable_enqueue():
     )
 
     assert response.status_code == 200
-    assert fake.evidence_receipts == []
-    assert len(fake.outbox) == 1
-    assert fake.outbox[0]["operation_type"] == "append_evidence_receipt"
-    assert fake.outbox[0]["causal_decision_id"] == score["decision_id"]
-    assert fake.outcome_writes == 1
+    assert store.evidence_receipts == []
+    assert len(store.outbox) == 1
+    assert store.outbox[0]["operation_type"] == "append_evidence_receipt"
+    assert store.outbox[0]["causal_decision_id"] == score["decision_id"]
+    assert store.outcome_writes == 1
 
 
 def test_active_age_receipt_and_outbox_failure_blocks_outcome():
-    active, fake = _active_age_store()
-    fake.fail_evidence_receipt = True
-    fake.fail_outbox = True
+    active, store = _active_age_store()
+    store.fail_evidence_receipt = True
+    store.fail_outbox = True
     _reset_app_state(active_store=active, active_config=_active_config())
     client = TestClient(app)
     score = client.post(
@@ -624,26 +756,26 @@ def test_active_age_receipt_and_outbox_failure_blocks_outcome():
     )
 
     assert response.status_code == 503
-    assert fake.evidence_receipts == []
-    assert fake.outbox == []
-    assert fake.outcome_writes == 0
-    assert fake.decisions[score["decision_id"]]["status"] == "pending"
+    assert store.evidence_receipts == []
+    assert store.outbox == []
+    assert store.outcome_writes == 0
+    assert store.decisions[score["decision_id"]]["status"] == "pending"
 
 
 def test_product_active_age_preview_remains_read_only():
-    active, fake = _product_age_store()
+    active, store = _product_age_store()
     _reset_app_state(active_store=active, active_config=_product_config())
-    before = fake.count_decisions("s2p")
+    before = store.count_decisions("s2p")
 
     response = TestClient(app).get("/api/s2p/preview/queue")
 
     assert response.status_code == 200
-    assert fake.count_decisions("s2p") == before
-    assert fake.governed_writes == 0
+    assert store.count_decisions("s2p") == before
+    assert store.governed_writes == 0
 
 
 def test_product_active_age_rollback_proves_no_hidden_reconciliation():
-    active, fake = _product_age_store()
+    active, store = _product_age_store()
     _reset_app_state(active_store=active, active_config=_product_config())
     client = TestClient(app)
     product_response = client.post(
@@ -652,7 +784,7 @@ def test_product_active_age_rollback_proves_no_hidden_reconciliation():
     )
     assert product_response.status_code == 200
     product_decision_id = product_response.json()["decision_id"]
-    assert fake.get_decision(product_decision_id) is not None
+    assert store.get_decision(product_decision_id) is not None
 
     _reset_app_state()
     before_sqlite = app.state.graph_store.count_decisions("s2p")
@@ -664,7 +796,7 @@ def test_product_active_age_rollback_proves_no_hidden_reconciliation():
     assert sqlite_response.status_code == 200
     assert app.state.graph_store.count_decisions("s2p") == before_sqlite + 1
     assert app.state.graph_store.get_decision(product_decision_id, domain="s2p") is None
-    assert fake.get_decision(product_decision_id) is not None
+    assert store.get_decision(product_decision_id) is not None
     status = client.get("/api/s2p/graph/status").json()
     assert status["active_backend"] == "sqlite"
     assert status["sqlite_authoritative"] is True

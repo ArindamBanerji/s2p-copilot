@@ -11,7 +11,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.main import app  # noqa: E402
 from app.routers import s2p as s2p_router  # noqa: E402
+from app.framework import audit  # noqa: E402
 from copilot_sdk.scoring.dk_persistence import DKWelfordTracker  # noqa: E402
+from copilot_sdk.graph.memory_store import InMemoryGraphStore  # noqa: E402
 
 
 class RecordingDKLearningStore:
@@ -37,41 +39,27 @@ class RecordingCentroidLearningStore(RecordingDKLearningStore):
         self.centroid_updates.append(kwargs)
 
 
-class FakeGraphStore:
-    domain = "s2p"
-
-    def __init__(self) -> None:
-        self.decisions: dict[str, dict[str, object]] = {
-            "S2P-DK-1": _decision(),
-        }
-
-    def get_decision(
-        self,
-        decision_id: str,
-        domain: str | None = None,
-    ) -> dict[str, object] | None:
-        if domain is not None:
-            assert domain == self.domain
-        return self.decisions.get(decision_id)
-
-    def write_outcome(
-        self,
-        decision_id: str,
-        actual_action: str,
-        is_correct: bool,
-        metadata: dict[str, object] | None = None,
-        domain: str | None = None,
-    ) -> None:
-        raise AssertionError("outcome writes are not part of this double")
-
-    def get_archived_decisions(self, domain: str) -> list[dict[str, object]]:
-        assert domain == self.domain
-        return []
+def _graph_store() -> InMemoryGraphStore:
+    store = InMemoryGraphStore(domain="s2p")
+    store.write_decision(
+        "s2p",
+        "price_variance",
+        "auto_approve",
+        0.9,
+        {"match_status": 0.9, "price_variance": 0.1, "contract_gap": 0.2},
+        metadata={
+            "decision_id": "S2P-DK-1",
+            "factor_vector": [0.9, 0.1, 0.2],
+            "supplier_id": "SUP-DK",
+            "invoice_id": "S2P-DK-INV-1",
+        },
+    )
+    return store
 
 
 class FakeDKScorer:
     def __init__(self, weights: list[list[float]] | None = None) -> None:
-        self.graph_store = FakeGraphStore()
+        self.graph_store = _graph_store()
         self.weights = weights
         self.reestimate_calls = 0
         self.get_weight_calls = 0
@@ -146,6 +134,13 @@ def _install_endpoint_state(
     scorer: FakeDKScorer,
     learning_store: Any | None = None,
 ) -> None:
+    # These outcome tests start from an already-scored decision. Seal that
+    # fixture through the real writer so the outcome exercises chain append.
+    app.state.audit_writer.record_decision(
+        scorer.graph_store, decision_id="S2P-DK-1", event_id="S2P-DK-EVENT",
+        action="auto_approve", confidence=0.9,
+        factors={"match_status": 0.9}, conservation_status="GREEN",
+    )
     monkeypatch.setattr(app.state, "scorer", scorer, raising=False)
     monkeypatch.setattr(app.state, "graph_store", scorer.graph_store, raising=False)
     if learning_store is None:
@@ -365,6 +360,9 @@ def test_s2p_outcome_endpoint_persists_dk_when_store_exists(monkeypatch) -> None
     assert update["domain"] == "s2p"
     assert update["weight_tensor"] == [[0.2, 0.8, 0.4]]
     assert isinstance(update["welford_state"], dict)
+    verification = audit.verify_chain(store=scorer.graph_store)
+    assert verification["verified"] is True
+    assert verification["entries_checked"] == 2
 
 
 def test_s2p_endpoint_l5_failure_nonfatal(monkeypatch) -> None:

@@ -2,6 +2,7 @@
 
 import os
 import sys
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -14,6 +15,7 @@ from app.routers import s2p_preview
 
 client = TestClient(app)
 ENGINE_VERSION = "v0.7.23"
+pytestmark = pytest.mark.usefixtures("preview_graph")
 
 
 def _queue(limit: int | None = None):
@@ -36,23 +38,12 @@ def test_preview_queue_explicit_limit_returns_matching_exceptions():
     assert len(data["exceptions"]) == 10
 
 
-def test_preview_queue_includes_process_context_when_celonis_cache_available(monkeypatch):
-    monkeypatch.setattr(
-        s2p_preview,
-        "_load_celonis_cache",
-        lambda: {
-            "process_model": "Purchase-to-Pay",
-            "variant": "Standard with Returns",
-            "activities": [
-                {"name": "Create Purchase Order", "avg_duration_hours": 3.4},
-                {
-                    "name": "Match Invoice to GR",
-                    "avg_duration_hours": 42.0,
-                    "bottleneck": True,
-                },
-            ],
-        },
-    )
+def test_preview_queue_includes_process_context_from_graph(preview_graph):
+    context = {"process_model": "Purchase-to-Pay", "variant": "Standard with Returns",
+               "bottleneck_activity": "Match Invoice to GR", "duration_median_min": 2520.0,
+               "source": "graph"}
+    for row in preview_graph._decisions.values():
+        row["metadata"]["process_context"] = context
     app.state.s2p_tab_state_cache.delete_standard("reset")
 
     row = _queue()["exceptions"][0]
@@ -62,7 +53,7 @@ def test_preview_queue_includes_process_context_when_celonis_cache_available(mon
         "variant": "Standard with Returns",
         "bottleneck_activity": "Match Invoice to GR",
         "duration_median_min": 2520.0,
-        "source": "celonis_cache",
+        "source": "graph",
     }
 
 

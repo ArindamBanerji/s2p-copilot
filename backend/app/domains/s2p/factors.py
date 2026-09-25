@@ -4,12 +4,21 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import logging
+import os
 import re
 from typing import Any, Optional, Protocol
 
 from app.domains.s2p.config import S2PDomainConfig
 
 log = logging.getLogger(__name__)
+
+
+def _production_profile() -> bool:
+    profile = os.environ.get(
+        "S2P_PROFILE",
+        os.environ.get("GRAPH_PROFILE", os.environ.get("COPILOT_PROFILE", "production")),
+    ).strip().lower()
+    return profile == "production"
 
 
 @dataclass
@@ -431,6 +440,18 @@ def compute_all_factors(
 ) -> dict[str, float]:
     """Compute all canonical S2P factors, never raising from individual factors."""
     invoice_dict = _as_invoice(invoice)
+    if _production_profile() and context is None:
+        supplied = invoice_dict.get("factors")
+        supplied_names = set(supplied) if isinstance(supplied, dict) else set()
+        supplied_names.update(
+            name for name in FACTOR_NAMES if invoice_dict.get(name) is not None
+        )
+        missing = [name for name in FACTOR_NAMES if name not in supplied_names]
+        if missing:
+            raise ValueError(
+                "S2P factor context unavailable; abstaining because required factors are missing: "
+                + ", ".join(missing)
+            )
     values: dict[str, float] = {}
     for factor in ALL_FACTORS:
         try:

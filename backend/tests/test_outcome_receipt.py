@@ -476,7 +476,7 @@ def test_paused_learning_without_variant_still_creates_receipt(monkeypatch):
     assert receipts[0]["conservation_state_after"] == "RED"
 
 
-def test_receipt_not_created_when_scorer_pauses_before_outcome_write(monkeypatch):
+def test_partial_persistence_reported_when_scorer_pauses_before_outcome_write(monkeypatch):
     score = score_for_receipt()
 
     def paused_learn(*_args, **_kwargs):
@@ -499,7 +499,11 @@ def test_receipt_not_created_when_scorer_pauses_before_outcome_write(monkeypatch
     )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "paused"
+    payload = response.json()
+    assert payload["status"] == "partial"
+    assert payload["persistence"]["conservation_l5"] in {True, False}
+    assert payload["persistence"]["centroid_l5"] in {True, False}
+    assert payload["persistence"]["dk_l5"] in {True, False}
     assert get_receipt_store().count == 0
     assert get_receipt_store().verify_chain()["verified"] is True
 

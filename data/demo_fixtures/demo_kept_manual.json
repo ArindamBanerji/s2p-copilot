@@ -1,0 +1,32 @@
+{
+  "className": "still_manual_capex_over_50k",
+  "keptManual": true,
+  "currentCount": 120,
+  "accuracyBar": 0.95,
+  "conservationStatus": "GREEN",
+  "attempts": [
+    {
+      "attempt": 1,
+      "decisionId": "manual-retention-1",
+      "date": "2026-08-20",
+      "observedAccuracy": 0.81,
+      "reason": "below 95% accuracy bar on high-value capital expenditure invoices"
+    },
+    {
+      "attempt": 2,
+      "decisionId": "manual-retention-2",
+      "date": "2026-08-29",
+      "observedAccuracy": 0.86,
+      "reason": "supplier-specific contract variance remains unresolved"
+    },
+    {
+      "attempt": 3,
+      "decisionId": "manual-retention-3",
+      "date": "2026-09-14",
+      "observedAccuracy": 0.89,
+      "reason": "accuracy improved but did not clear the 95% auto-approval bar"
+    }
+  ],
+  "planted": true,
+  "scenario": "S2P-06"
+}

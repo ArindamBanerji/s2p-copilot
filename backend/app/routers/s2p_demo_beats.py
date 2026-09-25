@@ -151,12 +151,24 @@ def extinction(request: Request) -> dict[str, Any]:
 
 
 def _frozen_twin_contract(payload: dict[str, Any], *, source: str) -> dict[str, Any]:
+    # Keep the legacy current/delta names while exposing the names consumed by
+    # the twin panel. The aliases are derived from the same comparison values.
+    live_accuracy = payload.get("current_accuracy")
+    accuracy_gap = payload.get("delta_accuracy")
+    comparison_points = payload.get("comparison_points")
+    if not isinstance(comparison_points, list):
+        comparison_points = []
     return {
         **payload,
+        "live_accuracy": live_accuracy,
+        "accuracy_gap": accuracy_gap,
+        "gap": accuracy_gap,
+        "frozen_at": payload.get("frozen_snapshot_time"),
+        "comparison_points": comparison_points,
         "current_vs_frozen": {
-            "current_accuracy": payload.get("current_accuracy"),
+            "current_accuracy": live_accuracy,
             "frozen_accuracy": payload.get("frozen_accuracy"),
-            "delta_accuracy": payload.get("delta_accuracy"),
+            "delta_accuracy": accuracy_gap,
             "current_coverage": payload.get("current_coverage"),
             "frozen_coverage": payload.get("frozen_coverage"),
             "delta_coverage": payload.get("delta_coverage"),
@@ -178,13 +190,16 @@ def frozen_twin(request: Request) -> dict[str, Any]:
     manager = getattr(request.app.state, "s2p_autonomy", None)
     scorer = _scorer(request)
     rows = _rows(reader)
-    verified = [row for row in rows if row.get("is_correct") is not None]
+    # Decision-only reads do not join Outcome fields on every store adapter.
+    # Use the canonical verified join for ground truth, not a null filter on
+    # the raw Decision collection (which silently compared zero decisions).
+    verified = _rows(reader, verified=True)
     if not isinstance(manager, S2PAutonomyManager) or not manager.twin.is_frozen():
         current = _centroids(scorer)
         initial = np.asarray(S2PDomainConfig.get_profile_centroids(), dtype=float)
         drift = float(np.linalg.norm(current - initial))
         payload = {
-            "frozen_available": True,
+            "frozen_available": False,
             "current_decisions": len(rows),
             "compared_decisions": 0,
             "frozen_decisions_would_miss": [],
@@ -198,8 +213,17 @@ def frozen_twin(request: Request) -> dict[str, Any]:
             "evidence_tier": "T_S",
             "centroid_drift_from_config_baseline": drift,
             "evidence_note": "Graph unavailable; comparison uses the live scorer and canonical S2P config baseline.",
+            "comparison_points": [],
         }
         return _frozen_twin_contract(payload, source="live scorer and canonical S2P config baseline")
+    from app.routers.s2p_demo_control import selected_twin
+    from app.services.s2p_autonomy import _score_payload
+
+    try:
+        twin = selected_twin(manager)
+    except (OSError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=503, detail="Selected twin unavailable") from exc
+    provenance = twin.get_snapshot().conservation_state.get("demo_provenance")
     comparisons: list[dict[str, Any]] = []
     for row in verified:
         vector = row.get("factor_vector")
@@ -210,7 +234,14 @@ def frozen_twin(request: Request) -> dict[str, Any]:
         if not isinstance(vector, (list, tuple)) or category not in S2PDomainConfig.categories:
             continue
         try:
-            comparison = manager.parallel_score([float(value) for value in vector], category)
+            parallel = twin.score_parallel(
+                [float(value) for value in vector],
+                S2PDomainConfig.get_category_index(category),
+                getattr(manager.scorer, "_scorer", manager.scorer),
+            )
+            comparison = {"live": _score_payload(parallel.live_result),
+                          "frozen": _score_payload(parallel.frozen_result),
+                          "confidence_delta": float(parallel.delta)}
         except (TypeError, ValueError, RuntimeError):
             comparison = None
         if comparison is not None:
@@ -221,6 +252,21 @@ def frozen_twin(request: Request) -> dict[str, Any]:
     denominator = len(comparisons)
     current_accuracy = current_correct / denominator if denominator else None
     frozen_accuracy = frozen_correct / denominator if denominator else None
+    comparison_points: list[dict[str, Any]] = []
+    live_hits = 0
+    frozen_hits = 0
+    for decision_n, item in enumerate(comparisons, start=1):
+        actual_action = item.get("actual_action")
+        live_hits += int(item.get("live", {}).get("action") == actual_action)
+        frozen_hits += int(item.get("frozen", {}).get("action") == actual_action)
+        comparison_points.append(
+            {
+                "decision_n": decision_n,
+                "frozen_accuracy": frozen_hits / decision_n,
+                "live_accuracy": live_hits / decision_n,
+                "decision_id": item.get("decision_id"),
+            }
+        )
     current_coverage = denominator / len(rows) if rows else None
     frozen_coverage = denominator / len(rows) if rows else None
     payload = {
@@ -239,10 +285,28 @@ def frozen_twin(request: Request) -> dict[str, Any]:
         "current_accuracy": current_accuracy,
         "frozen_accuracy": frozen_accuracy,
         "visual_diff": comparisons,
-        "evidence_tier": "T_A",
-        "evidence_note": "Comparison uses the persisted immutable S2P day-one twin and live verified decisions.",
+        "evidence_tier": "T_S" if provenance else "T_A",
+        "provenance": provenance,
+        "evidence_note": (
+            "Comparison uses an archived, immutable demo re-freeze and live verified decisions; synthetic, not pilot evidence."
+            if provenance else "Comparison uses the persisted immutable S2P day-one twin and live verified decisions."
+        ),
+        "comparison_points": comparison_points,
     }
-    return _frozen_twin_contract(payload, source="persisted immutable S2P day-one twin and live verified decisions")
+    return _frozen_twin_contract(payload, source="immutable demo re-freeze" if provenance else "persisted immutable S2P day-one twin and live verified decisions")
+
+
+@router.post("/learning/frozen-twin/freeze")
+def frozen_twin_freeze(request: Request) -> dict[str, Any]:
+    """Initialize the S2P day-zero twin; repeated calls remain idempotent."""
+    manager = _manager(request)
+    try:
+        return manager.freeze()
+    except FileExistsError:
+        status = manager.twin_status()
+        return {**status, "frozen": True, "created": False}
+    except (RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=f"Frozen Twin unavailable: {exc}") from exc
 
 
 @router.get("/context/what-if/{invoice_id}")

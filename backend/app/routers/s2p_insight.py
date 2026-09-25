@@ -126,12 +126,27 @@ def _process_bottleneck(invoice: dict[str, Any], activities: list[dict[str, Any]
     }
 
 
+def _numeric_factors(value: Any) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    factors: dict[str, float] = {}
+    for name, raw in value.items():
+        try:
+            factors[str(name)] = float(raw)
+        except (TypeError, ValueError):
+            continue
+    return factors
+
+
 @router.get("/fingerprint", response_model=GenericResponse)
 def fingerprint(invoice_id: str) -> dict[str, Any]:
     invoice = find_invoice(invoice_id)
     if invoice is None:
         return {"error": f"Invoice {invoice_id} not found", "narrative": f"Invoice {invoice_id} was not found."}
-    factors = compute_all_factors(invoice)
+    try:
+        factors = compute_all_factors(invoice)
+    except Exception:
+        factors = _numeric_factors(invoice.get("factors"))
     dominant_factor = max(factors, key=lambda name: factors[name]) if factors else None
     return {
         "invoice_id": invoice.get("invoice_id", invoice_id),

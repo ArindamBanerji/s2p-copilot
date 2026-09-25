@@ -18,6 +18,7 @@ from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import load_invoices
 from app.services.receipt_store import get_receipt_store
+from app.services.extinction_evidence import extinction_history
 from app.services.s2p_evidence_templates import S2PEvidenceEngine, evidence_context_from_record
 from app.services.s2p_situation_pattern import S2PInvoiceTraversalPattern
 from app.services.s2p_trust_explanations import format_trust_explanation
@@ -484,12 +485,16 @@ def rules() -> dict[str, Any]:
 
 @router.get("/compliance", response_model=GenericResponse)
 @cached_static("evidence-compliance", copilot="s2p")
-def compliance() -> dict[str, Any]:
+def compliance(request: Request) -> dict[str, Any]:
     invoices = _load_invoices()
     flagged: list[dict[str, Any]] = []
     compliant = 0
     for invoice in invoices:
-        factors = compute_all_factors(invoice)
+        try:
+            factors = compute_all_factors(invoice)
+        except Exception:
+            raw_factors = invoice.get("factors")
+            factors = dict(raw_factors) if isinstance(raw_factors, dict) else {}
         tax_score = float(factors.get("tax_regulatory_compliance", 1.0))
         is_compliant = tax_score < 0.3
         compliant += int(is_compliant)
@@ -504,6 +509,40 @@ def compliance() -> dict[str, Any]:
                 }
             )
     total = len(invoices)
+    categories = list(S2PDomainConfig.categories)
+    # Keep a compact, observed class timeline for the demo panel.  The input
+    # order is the fixture's event order; each bucket is a rolling slice of
+    # the same invoice stream, so no synthetic decisions are introduced.
+    bucket_count = 5
+    bucket_size = max(1, (len(invoices) + bucket_count - 1) // bucket_count)
+    class_timeline: dict[str, list[int]] = {}
+    for category in categories:
+        class_timeline[category] = [
+            sum(1 for invoice in invoices[start : start + bucket_size] if invoice.get("category") == category)
+            for start in range(0, len(invoices), bucket_size)
+        ][:bucket_count]
+        while len(class_timeline[category]) < bucket_count:
+            class_timeline[category].append(0)
+    invoice_class_trends: list[dict[str, Any]] = []
+    for category, timeline in class_timeline.items():
+        if timeline and timeline[-1] < timeline[0]:
+            invoice_class_trends.append(
+                {
+                    "category": category,
+                    "last_seen_decision": sum(timeline[:-1]),
+                    "current_decision": sum(timeline),
+                    "trend": "declining",
+                }
+            )
+    graph_store = _graph_store(request)
+    extinction_classes: list[dict[str, Any]] = []
+    if graph_store is not None:
+        try:
+            extinction_classes = extinction_history(graph_store)
+        except Exception:
+            # Invoice-derived compliance evidence remains valid if optional
+            # extinction-history storage is unavailable.
+            extinction_classes = []
     return {
         "total": total,
         "compliant": compliant,
@@ -511,4 +550,12 @@ def compliance() -> dict[str, Any]:
         "flagged_count": len(flagged),
         "flagged_invoices": flagged[:20],
         "factor": S2PDomainConfig.factors[-1],
+        "extinction_classes": extinction_classes,
+        "extinct_classes": extinction_classes,
+        "queue_extinctions": extinction_classes,
+        "invoice_class_trends": invoice_class_trends,
+        "class_timeline": class_timeline,
+        "evidence_tier": "T_S",
+        "extinction_source": "persisted_verified_outcome_transitions",
+        "extinction_note": "Historical queue-depletion events; not a claim of permanent class elimination.",
     }

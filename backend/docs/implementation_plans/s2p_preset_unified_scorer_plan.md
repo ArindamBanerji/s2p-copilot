@@ -17,7 +17,7 @@ READY_FOR_IMPLEMENTATION: YES, with the scope repair above.
 | S2P in scoring preset registry | YES | `PRESET_REGISTRY` imports `S2PPreset` and maps `"s2p": S2PPreset` (`copilot_sdk/scoring/presets/__init__.py:6-13`). Runtime command also printed `SCORING_HAS_S2P= True`. |
 | S2P in RL preset registry | YES | `RL_PRESET_REGISTRY` maps `"s2p"` to `GradedFinancialRewardFunction` and `penalty_ratio: 5.0` (`copilot_sdk/rl/presets.py:16-33`). Runtime command also printed `RL_HAS_S2P= True`. |
 | `from_preset("s2p")` works | PARTIAL | With `db_path=":memory:"`, runtime construction succeeded and produced a `CompoundingScorer`; without an explicit path it failed opening the SDK package data DB. The SDK default path is created from `Path(__file__).resolve().parents[1] / "data"` (`copilot_sdk/scoring/scorer.py:142-150`). The app uses an explicit `SQLiteGraphStore` instead (`app/main.py:54-60`). |
-| S2P preset shape is 5x5x7 | YES | `S2PPreset.shape` sets `n_categories=5`, `n_actions=5`, and `n_factors=7` (`copilot_sdk/scoring/presets/s2p.py:16-45`). |
+| S2P preset shape is 5x5x8 | YES | `S2PPreset.shape` sets `n_categories=5`, `n_actions=5`, and `n_factors=8` (`copilot_sdk/scoring/presets/s2p.py:16-45`). |
 | S2P preset penalty ratio is 5.0 | YES | `S2PPreset.penalty_ratio` returns `5.0` (`copilot_sdk/scoring/presets/s2p.py:47-49`). |
 | Actual app scorer has RL components | YES | `build_s2p_scorer` passes a graph store and `S2PRewardFunction` into `from_preset` (`app/main.py:54-60`); `from_preset` fills missing credit and exploration components when RL is enabled (`copilot_sdk/scoring/scorer.py:160-178`). Runtime import of `app.main.app` showed `reward_type=S2PRewardFunction`, `has_credit=True`, and `has_explorer=True`. |
 

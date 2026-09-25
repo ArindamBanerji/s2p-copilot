@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
-
 from app.domains.s2p.config import S2PDomainConfig
 from app.routers.s2p_data_helpers import find_invoice
 from app.services.s2p_context_builder import S2PContextBuilder
-from copilot_sdk.graph.enrichment import ProvenancedValue
+from copilot_sdk.graph.enrichment import EnrichmentSourceSet, ProvenancedValue
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
@@ -20,131 +18,38 @@ class FakeScorer:
         return [0.5] * len(S2PDomainConfig.factors)
 
 
-class FakeGraphStore(InMemoryGraphStore):
-    domain = "s2p"
-
-    def __init__(self) -> None:
-        super().__init__(domain="s2p")
-        self.write_calls = 0
-        self.decisions: list[dict[str, Any]] = [
-            {
-                "decision_id": "D-TARGET",
-                "category": "contract_gap",
-                "recommended_action": "escalate_to_buyer",
-                "created_at": "2026-01-02T00:00:00Z",
-                "metadata": {"supplier_id": "SUP-001", "invoice_id": "S2P-INV-0001"},
-            },
-            {
-                "decision_id": "D-SIM-2",
-                "category": "contract_gap",
-                "recommended_action": "hold_for_review",
-                "created_at": "2026-01-04T00:00:00Z",
-                "metadata": {"supplier_id": "SUP-001", "invoice_id": "S2P-INV-9998"},
-            },
-            {
-                "decision_id": "D-SIM-1",
-                "category": "contract_gap",
-                "recommended_action": "hold_for_review",
-                "created_at": "2026-01-03T00:00:00Z",
-                "metadata": {"supplier_id": "SUP-001", "invoice_id": "S2P-INV-9999"},
-            },
-            {
-                "decision_id": "D-OTHER",
-                "category": "price_variance",
-                "recommended_action": "hold_for_review",
-                "created_at": "2026-01-05T00:00:00Z",
-                "metadata": {"supplier_id": "SUP-001", "invoice_id": "S2P-INV-0002"},
-            },
-        ]
-
-    def get_all_decisions(self, domain: str | None = None):
-        if domain is not None:
-            assert domain == "s2p"
-        return list(self.decisions)
-
-    def get_decisions(
-        self,
-        domain: str,
-        category: str | None = None,
-        limit: int = 400,
-    ):
-        assert domain == "s2p"
-        rows = [
-            decision
-            for decision in self.decisions
-            if category is None or decision.get("category") == category
-        ]
-        return rows[:limit]
-
-    def get_decision(self, decision_id: str, domain: str | None = None):
-        if domain is not None:
-            assert domain == self.domain
-        for decision in self.decisions:
-            if decision["decision_id"] == decision_id:
-                return decision
-        return None
-
-    def write_decision(
-        self,
-        domain: str,
-        category: str,
-        action: str,
-        confidence: float,
-        factors: dict,
-        metadata: dict | None = None,
-    ) -> str:
-        self.write_calls += 1
-        return "D-TEST"
-
-    def write_outcome(
-        self,
-        decision_id: str,
-        actual_action: str,
-        is_correct: bool,
-        metadata: dict | None = None,
-        domain: str | None = None,
-    ) -> None:
-        raise AssertionError("outcome writes are not part of this double")
-
-    def get_archived_decisions(self, domain: str) -> list[dict]:
-        assert domain == self.domain
-        return []
-
-
-class MissingDecisionGraphStore(FakeGraphStore):
-    def get_decision(self, decision_id: str, domain: str | None = None):
-        return None
-
-
-class NoGetDecisionGraphStore(FakeGraphStore):
-    def get_decision(self, decision_id: str, domain: str | None = None):
-        return None
-
-
-class VerifiedDecisionGraphStore(FakeGraphStore):
-    def __init__(self) -> None:
-        super().__init__()
-        for decision in self.decisions:
-            if decision["decision_id"] in {"D-TARGET", "D-SIM-1", "D-SIM-2"}:
-                decision["verified"] = True
-
-
-class EmptyEnrichmentGraphStore(FakeGraphStore):
-    def read_entity_enrichment(self, *, domain: str, entity_type: str, entity_id: str, namespace: str | None = None):
-        assert domain == "s2p"
-        assert entity_type == "Supplier"
-        assert entity_id == "SUP-001"
-        assert namespace == "s2p_supplier_metrics"
-        return {}
-
-
-class PersistedEnrichmentGraphStore(FakeGraphStore):
-    def read_entity_enrichment(self, *, domain: str, entity_type: str, entity_id: str, namespace: str | None = None):
-        assert domain == "s2p"
-        assert entity_type == "Supplier"
-        assert entity_id == "SUP-001"
-        assert namespace == "s2p_supplier_metrics"
-        return {
+def _context_store(*, verified: bool = False, with_enrichment: bool = False) -> InMemoryGraphStore:
+    store = InMemoryGraphStore(domain="s2p")
+    rows = [
+        ("D-TARGET", "contract_gap", "escalate_to_buyer", "S2P-INV-0001", 1767312000.0),
+        ("D-SIM-2", "contract_gap", "hold_for_review", "S2P-INV-9998", 1767484800.0),
+        ("D-SIM-1", "contract_gap", "hold_for_review", "S2P-INV-9999", 1767398400.0),
+        ("D-OTHER", "price_variance", "hold_for_review", "S2P-INV-0002", 1767571200.0),
+    ]
+    for decision_id, category, action, invoice_id, created_at in rows:
+        metadata = {
+            "decision_id": decision_id,
+            "supplier_id": "SUP-001",
+            "invoice_id": invoice_id,
+            "created_at": created_at,
+        }
+        if verified and decision_id in {"D-TARGET", "D-SIM-1", "D-SIM-2"}:
+            metadata["verified"] = True
+        store.write_decision(
+            "s2p",
+            category,
+            action,
+            0.8,
+            {"match_status": 0.9, "contract_gap": 0.8},
+            metadata=metadata,
+        )
+    if with_enrichment:
+        store.write_entity_enrichment(
+            domain="s2p",
+            entity_type="Supplier",
+            entity_id="SUP-001",
+            namespace="s2p_supplier_metrics",
+            metrics={
             "exception_rate": ProvenancedValue.from_verified(
                 0.25,
                 source_count=8,
@@ -157,7 +62,14 @@ class PersistedEnrichmentGraphStore(FakeGraphStore):
                 label="integration pending",
                 computed_at="2026-01-15T00:00:00Z",
             ),
-        }
+            },
+            computed_from=EnrichmentSourceSet(
+                verified_decision_count=8,
+                decision_ids=["D-TARGET", "D-SIM-1", "D-SIM-2"],
+                computation_version="test",
+            ),
+        )
+    return store
 
 
 def _known_invoice():
@@ -223,7 +135,7 @@ def test_no_fake_contract_terms_when_missing():
 
 
 def test_similar_decisions_from_graph_store_source():
-    result = _build(graph_store=FakeGraphStore(), decision_id="D-TARGET")
+    result = _build(graph_store=_context_store(), decision_id="D-TARGET")
 
     similar = [node for node in result.nodes if node.type == "similar_decision"]
     assert similar
@@ -241,7 +153,7 @@ def test_similar_decisions_not_built_from_fixtures():
 
 
 def test_similar_decisions_match_supplier_and_category():
-    decisions = S2PContextBuilder(graph_store=FakeGraphStore()).find_similar_decisions(
+    decisions = S2PContextBuilder(graph_store=_context_store()).find_similar_decisions(
         supplier_id="SUP-001",
         category="contract_gap",
         decision_id="D-TARGET",
@@ -252,7 +164,7 @@ def test_similar_decisions_match_supplier_and_category():
 
 
 def test_similar_decisions_include_explicit_criteria():
-    result = _build(graph_store=FakeGraphStore(), decision_id="D-TARGET")
+    result = _build(graph_store=_context_store(), decision_id="D-TARGET")
 
     similar = [node for node in result.nodes if node.type == "similar_decision"]
     assert similar
@@ -269,7 +181,7 @@ def test_similar_decisions_include_explicit_criteria():
 
 
 def test_similar_decisions_exclude_target():
-    decisions = S2PContextBuilder(graph_store=FakeGraphStore()).find_similar_decisions(
+    decisions = S2PContextBuilder(graph_store=_context_store()).find_similar_decisions(
         supplier_id="SUP-001",
         category="contract_gap",
         decision_id="D-TARGET",
@@ -280,7 +192,7 @@ def test_similar_decisions_exclude_target():
 
 
 def test_similar_decisions_max_results():
-    decisions = S2PContextBuilder(graph_store=FakeGraphStore()).find_similar_decisions(
+    decisions = S2PContextBuilder(graph_store=_context_store()).find_similar_decisions(
         supplier_id="SUP-001",
         category="contract_gap",
         decision_id="D-TARGET",
@@ -292,7 +204,7 @@ def test_similar_decisions_max_results():
 
 
 def test_target_decision_node_requires_verified_graph_store_read():
-    result = _build(graph_store=MissingDecisionGraphStore(), decision_id="D-MISSING")
+    result = _build(graph_store=InMemoryGraphStore(domain="s2p"), decision_id="D-MISSING")
 
     assert not any(
         node.type == "decision" and node.source == "graph_store" and node.id == "D-MISSING"
@@ -302,7 +214,7 @@ def test_target_decision_node_requires_verified_graph_store_read():
 
 
 def test_target_decision_node_uses_graph_store_record_when_found():
-    result = S2PContextBuilder(graph_store=FakeGraphStore()).build_invoice_context(
+    result = S2PContextBuilder(graph_store=_context_store()).build_invoice_context(
         invoice_id="S2P-INV-0001",
         category="price_variance",
         decision_id="D-TARGET",
@@ -325,7 +237,7 @@ def test_target_decision_node_uses_graph_store_record_when_found():
 
 
 def test_graph_store_unverified_decision_does_not_claim_verified():
-    result = _build(graph_store=FakeGraphStore(), decision_id="D-TARGET")
+    result = _build(graph_store=_context_store(), decision_id="D-TARGET")
 
     target = next(node for node in result.nodes if node.type == "decision" and node.id == "D-TARGET")
     assert target.properties["source"] == "graph_store"
@@ -335,7 +247,7 @@ def test_graph_store_unverified_decision_does_not_claim_verified():
 
 
 def test_graph_store_verified_decision_can_claim_verified():
-    result = _build(graph_store=VerifiedDecisionGraphStore(), decision_id="D-TARGET")
+    result = _build(graph_store=_context_store(verified=True), decision_id="D-TARGET")
 
     target = next(node for node in result.nodes if node.type == "decision" and node.id == "D-TARGET")
     assert target.properties["source"] == "graph_store"
@@ -345,14 +257,14 @@ def test_graph_store_verified_decision_can_claim_verified():
 
 
 def test_similar_decision_evidence_chain_distinguishes_graphstore_read_from_verified():
-    unverified = _build(graph_store=FakeGraphStore(), decision_id="D-TARGET")
+    unverified = _build(graph_store=_context_store(), decision_id="D-TARGET")
     unverified_entry = next(entry for entry in unverified.evidence_chain if entry["type"] == "similar_decisions")
     assert unverified_entry["provenance_label"] == "decision history · GraphStore read"
     assert unverified_entry["verified_count"] == 0
     assert unverified_entry["unverified_count"] == 2
     assert unverified_entry["verified"] is False
 
-    verified = _build(graph_store=VerifiedDecisionGraphStore(), decision_id="D-TARGET")
+    verified = _build(graph_store=_context_store(verified=True), decision_id="D-TARGET")
     verified_entry = next(entry for entry in verified.evidence_chain if entry["type"] == "similar_decisions")
     assert "verified" in verified_entry["provenance_label"]
     assert verified_entry["verified_count"] == 2
@@ -362,7 +274,7 @@ def test_similar_decision_evidence_chain_distinguishes_graphstore_read_from_veri
 
 
 def test_no_graph_store_source_from_context_only():
-    result = S2PContextBuilder(graph_store=NoGetDecisionGraphStore()).build_invoice_context(
+    result = S2PContextBuilder(graph_store=InMemoryGraphStore(domain="s2p")).build_invoice_context(
         invoice_id="S2P-INV-0001",
         category="contract_gap",
         decision_id="D-CONTEXT-ONLY",
@@ -410,7 +322,7 @@ def test_centroid_unavailable_warning():
 
 
 def test_each_node_has_source_field():
-    result = _build(scorer=FakeScorer(), graph_store=FakeGraphStore(), decision_id="D-TARGET")
+    result = _build(scorer=FakeScorer(), graph_store=_context_store(), decision_id="D-TARGET")
 
     assert result.nodes
     assert all(node.source in {"fixture", "graph_store", "scorer"} for node in result.nodes)
@@ -424,7 +336,7 @@ def test_each_node_has_source_field():
 
 
 def test_every_evidence_chain_entry_has_provenance():
-    result = _build(scorer=FakeScorer(), graph_store=FakeGraphStore(), decision_id="D-TARGET")
+    result = _build(scorer=FakeScorer(), graph_store=_context_store(), decision_id="D-TARGET")
 
     assert result.evidence_chain
     for entry in result.evidence_chain:
@@ -447,7 +359,7 @@ def test_fixture_supplier_values_are_integration_pending_context():
 
 
 def test_supplier_node_no_enrichment_key_when_store_empty():
-    result = _build(graph_store=EmptyEnrichmentGraphStore())
+    result = _build(graph_store=_context_store())
 
     supplier = next(node for node in result.nodes if node.type == "supplier")
     assert supplier.source == "fixture"
@@ -462,7 +374,7 @@ def test_supplier_node_no_enrichment_key_when_store_empty():
 
 
 def test_supplier_node_enrichment_structurally_separated():
-    result = _build(graph_store=PersistedEnrichmentGraphStore())
+    result = _build(graph_store=_context_store(with_enrichment=True))
 
     supplier = next(node for node in result.nodes if node.type == "supplier")
     assert supplier.source == "fixture"
@@ -521,7 +433,7 @@ def test_no_mutation_of_inputs():
     context = deepcopy(invoice)
     before = deepcopy(context)
 
-    S2PContextBuilder(scorer=FakeScorer(), graph_store=FakeGraphStore()).build_invoice_context(
+    S2PContextBuilder(scorer=FakeScorer(), graph_store=_context_store()).build_invoice_context(
         invoice_id=invoice["invoice_id"],
         category=invoice["category"],
         decision_id="D-TARGET",

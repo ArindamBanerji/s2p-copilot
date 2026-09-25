@@ -6,27 +6,36 @@ from fastapi.testclient import TestClient
 
 from app.graph.s2p_graph_reader import S2PGraphReader
 from app.main import app, build_s2p_scorer
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
 client = TestClient(app)
 
 
-class ReadOnlyGraphStore:
-    domain = "s2p"
-
+class ReadOnlyTrackingGraphStore(InMemoryGraphStore):
     def __init__(self, decisions: list[dict] | None = None):
-        self.decisions = decisions or []
+        super().__init__(domain="s2p")
+        self._sealed = False
         self.write_calls = 0
-
-    def get_all_decisions(self, domain: str | None = None) -> list[dict]:
-        if domain is not None:
-            assert domain == "s2p"
-        return list(self.decisions)
-
-    def get_decision(self, decision_id: str, domain: str | None = None):
-        if domain is not None:
-            assert domain == self.domain
-        return next((row for row in self.decisions if row.get("decision_id") == decision_id), None)
+        for decision in decisions or []:
+            self.write_decision(
+                "s2p",
+                str(decision.get("category") or "price_variance"),
+                str(decision.get("recommended_action") or "hold_for_review"),
+                float(decision.get("confidence") or 0.91),
+                {"match_status": 0.9, "amount_variance_ratio": 0.1},
+                metadata=dict(decision),
+            )
+            if decision.get("is_correct") is not None:
+                self.write_outcome(
+                    str(decision["decision_id"]),
+                    str(decision.get("recommended_action") or "hold_for_review"),
+                    bool(decision["is_correct"]),
+                    metadata={"verified_at": 1767225600.0},
+                    domain="s2p",
+                )
+        self._sealed = True
+        self.write_calls = 0
 
     def write_outcome(
         self,
@@ -36,24 +45,24 @@ class ReadOnlyGraphStore:
         metadata: dict | None = None,
         domain: str | None = None,
     ) -> None:
-        self.write_calls += 1
-        raise AssertionError("audit export must not write outcomes")
-
-    def get_archived_decisions(self, domain: str) -> list[dict]:
-        assert domain == self.domain
-        return []
+        if self._sealed:
+            self.write_calls += 1
+            raise AssertionError("audit export must not write outcomes")
+        super().write_outcome(decision_id, actual_action, is_correct, metadata, domain=domain)
 
     def count_verified(self, domain: str = "s2p") -> int:
         assert domain == "s2p"
-        return sum(1 for decision in self.decisions if decision.get("is_correct") is not None)
+        return len(self.get_verified_decisions(domain))
 
     def count_correct(self, domain: str = "s2p") -> int:
         assert domain == "s2p"
-        return sum(1 for decision in self.decisions if decision.get("is_correct") is True)
+        return sum(1 for decision in self.get_verified_decisions(domain) if decision.get("is_correct") is True)
 
-    def add_decision(self, decision: dict | None = None) -> None:
-        self.write_calls += 1
-        raise AssertionError("audit export must not write decisions")
+    def write_decision(self, *args, **kwargs):
+        if self._sealed:
+            self.write_calls += 1
+            raise AssertionError("audit export must not write decisions")
+        return super().write_decision(*args, **kwargs)
 
     def link_decision_to_entity(
         self,
@@ -157,7 +166,7 @@ def test_audit_export_does_not_write_to_graph_store() -> None:
     original_graph = app.state.graph_store
     original_scorer = app.state.scorer
     original_reader = app.state.s2p_graph_reader
-    fake_graph = ReadOnlyGraphStore(
+    fake_graph = ReadOnlyTrackingGraphStore(
         [
             {
                 "decision_id": "AUDIT-1",
@@ -191,7 +200,7 @@ def test_audit_export_graph_failure_returns_503() -> None:
     original_scorer = app.state.scorer
     original_reader = app.state.s2p_graph_reader
 
-    class FailingGraphStore(ReadOnlyGraphStore):
+    class FailingGraphStore(ReadOnlyTrackingGraphStore):
         def get_all_decisions(self, domain: str | None = None) -> list[dict]:
             raise RuntimeError("AGE unavailable")
 

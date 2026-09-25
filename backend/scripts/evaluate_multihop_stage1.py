@@ -11,9 +11,10 @@ from typing import Any, Iterable, Literal, cast
 
 import numpy as np
 
-SCENARIO_PATH = Path("data/s2p_multihop_stage1.json")
-RESULTS_PATH = Path("data/s2p_multihop_stage1_results.json")
-REPORT_PATH = Path("data/s2p_multihop_stage1_report.md")
+ROOT = Path(__file__).resolve().parents[1]
+SCENARIO_PATH = ROOT / "data" / "s2p_multihop_stage1.json"
+RESULTS_PATH = ROOT / "data" / "s2p_multihop_stage1_results.json"
+REPORT_PATH = ROOT / "data" / "s2p_multihop_stage1_report.md"
 
 CATEGORY_NAMES = [
     "price_mismatch",
@@ -29,6 +30,12 @@ ACTION_NAMES = [
     "hold_for_review",
     "escalate_to_procurement",
 ]
+CATEGORY_ALIASES = {
+    "policy_violation": "compliance_risk",
+    "receipt_missing": "quantity_mismatch",
+    "contract_deviation": "supplier_pattern",
+}
+
 FACTOR_NAMES = [
     "receipt_match",
     "price_conformance",
@@ -43,7 +50,92 @@ Arm = Literal["single_pass", "breadth", "content_rule", "vld"]
 
 
 def load_stage1(path: str | Path = SCENARIO_PATH) -> dict[str, Any]:
-    return cast(dict[str, Any], json.loads(Path(path).read_text(encoding="utf-8")))
+    payload = cast(dict[str, Any], json.loads(Path(path).read_text(encoding="utf-8")))
+    payload["scenarios"] = [_normalize_scenario_branches(s) for s in payload.get("scenarios", [])]
+    return payload
+
+
+def _branch_id(branch: Any) -> str:
+    if isinstance(branch, dict):
+        return str(branch.get("branch_id") or branch.get("branch_name") or branch.get("id") or branch.get("evidence_source") or "")
+    return str(branch)
+
+
+def _branch_prerequisites(branch: Any) -> list[str]:
+    if not isinstance(branch, dict):
+        return []
+    candidates = (
+        branch.get("requires_branches"),
+        branch.get("prerequisite_branches"),
+        branch.get("requires_branch_ids"),
+    )
+    for value in candidates:
+        if value:
+            return [str(x) for x in value]
+    access = branch.get("access")
+    if isinstance(access, dict) and access.get("requires_completed_branches"):
+        return [str(x) for x in access.get("requires_completed_branches", [])]
+    return []
+
+
+def _branch_record_steps(records: list[Any]) -> dict[str, int]:
+    by_id = {_branch_id(record): record for record in records if _branch_id(record)}
+    memo: dict[str, int] = {}
+
+    def depth(branch_id: str, seen: set[str] | None = None) -> int:
+        if branch_id in memo:
+            return memo[branch_id]
+        seen = set(seen or set())
+        if branch_id in seen:
+            return 1
+        seen.add(branch_id)
+        prereqs = [p for p in _branch_prerequisites(by_id.get(branch_id, {})) if p in by_id]
+        if not prereqs:
+            memo[branch_id] = 1
+        else:
+            memo[branch_id] = 1 + max(depth(p, seen) for p in prereqs)
+        return memo[branch_id]
+
+    return {branch_id: depth(branch_id) for branch_id in by_id}
+
+
+def _group_branch_ids_by_step(branches: Any, *, scenario: dict[str, Any], field: str) -> dict[str, list[str]]:
+    if isinstance(branches, dict):
+        return {str(step): [_branch_id(branch) for branch in values if _branch_id(branch)] for step, values in branches.items()}
+    if not isinstance(branches, list) or not branches:
+        return {}
+    available_records = scenario.get("available_branches", [])
+    records = available_records if isinstance(available_records, list) else []
+    step_by_id = _branch_record_steps(records)
+    grouped: dict[str, list[str]] = {}
+    for index, branch in enumerate(branches, 1):
+        branch_id = _branch_id(branch)
+        if not branch_id:
+            continue
+        step = step_by_id.get(branch_id)
+        if step is None:
+            step = index if field == "correct_branches" else 1
+        grouped.setdefault(str(step), []).append(branch_id)
+    return dict(sorted(grouped.items(), key=lambda item: int(item[0])))
+
+
+def _normalize_scenario_branches(scenario: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(scenario)
+    normalized["available_branches"] = _group_branch_ids_by_step(
+        scenario.get("available_branches", {}), scenario=scenario, field="available_branches"
+    )
+    normalized["correct_branches"] = _group_branch_ids_by_step(
+        scenario.get("correct_branches", {}), scenario=scenario, field="correct_branches"
+    )
+    records = scenario.get("available_branches", [])
+    read_costs = dict(scenario.get("read_costs", {}))
+    if isinstance(records, list):
+        for record in records:
+            branch_id = _branch_id(record)
+            if branch_id and isinstance(record, dict) and "read_cost" in record:
+                read_costs.setdefault(branch_id, int(record.get("read_cost", 1)))
+    normalized["read_costs"] = read_costs
+    return normalized
 
 
 def surface_vector(scenario: dict[str, Any]) -> np.ndarray:
@@ -52,7 +144,8 @@ def surface_vector(scenario: dict[str, Any]) -> np.ndarray:
 
 
 def scenario_category(scenario: dict[str, Any]) -> str:
-    return str(scenario["alert"]["category"])
+    category = str(scenario["alert"]["category"])
+    return CATEGORY_ALIASES.get(category, category)
 
 
 def truth_action(scenario: dict[str, Any]) -> str:
@@ -91,6 +184,7 @@ class ScenarioGraphStore:
     """Scenario-local evidence graph for planted branch reads."""
 
     def __init__(self, scenario: dict[str, Any]) -> None:
+        scenario = _normalize_scenario_branches(scenario)
         self.scenario = scenario
         self.surface = surface_vector(scenario)
         self.correct_by_step = {
@@ -271,12 +365,12 @@ def _chance_control_action(scenario: dict[str, Any]) -> str:
     truth = truth_action(scenario)
     scenario_id = str(scenario.get("scenario_id", ""))
     try:
-        variation = int(scenario_id.rsplit("-v", 1)[1])
+        if "RHO50" in scenario_id:
+            variation = int(scenario_id.rsplit("-", 2)[1])
+        else:
+            variation = int(scenario_id.split("-", 2)[1])
     except (IndexError, ValueError):
-        try:
-            variation = int(scenario_id.rsplit("-", 1)[1])
-        except (IndexError, ValueError):
-            variation = 0
+        variation = 0
     if variation % len(ACTION_NAMES) == 1:
         return truth
     truth_index = ACTION_NAMES.index(truth)

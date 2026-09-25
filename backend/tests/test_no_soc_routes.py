@@ -19,7 +19,8 @@ def test_framework_soc_endpoints_are_explicitly_mounted():
 
 def test_s2p_endpoints_still_accessible():
     health = client.get("/health")
-    assert health.status_code == 200
+    assert health.status_code == 503
+    assert health.json()["ready"] is False
     assert health.json()["service"] == "s2p-copilot"
 
     preview = client.get("/api/s2p/preview/queue")

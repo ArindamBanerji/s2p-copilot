@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Query
+from copilot_sdk.config import resolve_profile
 
 from app.domains.s2p.factors import compute_all_factors
 from app.models.responses import CollectionResponse, GenericResponse
@@ -35,6 +36,8 @@ def _data_path(filename: str) -> Path:
 
 
 def _load_candidate_json(path: Path, default: Any) -> Any:
+    if resolve_profile(domain="s2p") == "production":
+        return default
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

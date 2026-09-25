@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, cast
 
 from copilot_sdk.situation import TraversalEdge, TraversalNode
@@ -115,16 +116,35 @@ class S2PContextBuilder:
         self.build_po_contract_context(result, merged, invoice_node_id, max_depth)
         if invoice:
             self._add_category_context(result, merged, supplier_node_id, max_depth)
+        history_as_of_date = _first(
+            merged,
+            "as_of_date",
+            "as_of",
+            "episode_timestamp",
+            "snapshot_timestamp",
+            "invoice_date",
+            "created_at",
+            "timestamp",
+        )
+        explicit_as_of_date = _first(
+            merged,
+            "as_of_date",
+            "as_of",
+            "episode_timestamp",
+            "snapshot_timestamp",
+        )
         similar = self.find_similar_decisions(
             supplier_id=_first(merged, "supplier_id", "supplier"),
             category=str(merged.get("category") or category or ""),
             decision_id=decision_id,
+            as_of_date=history_as_of_date,
             max_results=3,
         )
         similarity_criteria = _similarity_criteria(
             supplier_id=_first(merged, "supplier_id", "supplier"),
             category=str(merged.get("category") or category or ""),
             decision_id=decision_id,
+            as_of_date=explicit_as_of_date,
         )
         if similar:
             self._add_similar_decision_context(result, similar, invoice_node_id, max_depth, similarity_criteria)
@@ -153,10 +173,12 @@ class S2PContextBuilder:
         supplier_id: Any,
         category: str | None,
         decision_id: str | None = None,
+        as_of_date: Any = None,
         max_results: int = 3,
     ) -> list[dict[str, Any]]:
         if self.reader is None or not supplier_id or not category:
             return []
+        cutoff = _parse_as_of_datetime(as_of_date)
         rows = self._decision_rows(str(category))
         matches: list[dict[str, Any]] = []
         for row in rows:
@@ -169,6 +191,10 @@ class S2PContextBuilder:
                 continue
             if str(_first(flat, "supplier_id", "supplier") or "") != str(supplier_id):
                 continue
+            if cutoff is not None:
+                decision_time = _decision_datetime(row)
+                if decision_time is not None and decision_time > cutoff:
+                    continue
             matches.append(row)
         matches.sort(key=_decision_timestamp, reverse=True)
         return matches[: max(0, int(max_results))]
@@ -702,18 +728,54 @@ def _similarity_criteria(
     supplier_id: Any,
     category: str | None,
     decision_id: str | None,
+    as_of_date: Any = None,
 ) -> dict[str, Any]:
-    return {
+    criteria = {
         "supplier_id": str(supplier_id) if supplier_id not in (None, "") else None,
         "category": str(category) if category not in (None, "") else None,
         "exclude_decision_id": str(decision_id) if decision_id not in (None, "") else None,
         "order_by": "created_at DESC",
     }
+    formatted_as_of = _format_as_of_datetime(_parse_as_of_datetime(as_of_date))
+    if formatted_as_of is not None:
+        criteria["as_of_date"] = formatted_as_of
+    return criteria
 
 
 def _decision_timestamp(decision: dict[str, Any]) -> str:
     flat = _flatten(decision)
     return str(_first(flat, "created_at", "timestamp", "decision_timestamp") or "")
+
+
+def _decision_datetime(decision: dict[str, Any]) -> datetime | None:
+    flat = _flatten(decision)
+    return _parse_as_of_datetime(_first(flat, "created_at", "timestamp", "decision_timestamp"))
+
+
+def _parse_as_of_datetime(value: Any) -> datetime | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_as_of_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.astimezone(timezone.utc).isoformat()
 
 
 def _flatten(decision: dict[str, Any]) -> dict[str, Any]:

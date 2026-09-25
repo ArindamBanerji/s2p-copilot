@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from copilot_sdk.graph.enrichment import ProvenancedValue
+from copilot_sdk.graph.enrichment import EnrichmentSourceSet, ProvenancedValue
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 from app.domains.s2p.config import S2PDomainConfig
@@ -21,24 +21,47 @@ from app.services.supplier_intelligence import (
 from app.services.supplier_profile_accumulator import accumulator
 
 
-class FakeGraphStore(InMemoryGraphStore):
-    def __init__(self, enrichment=None, decisions=None):
+class TrackingGraphStore(InMemoryGraphStore):
+    def __init__(self):
         super().__init__(domain="s2p")
-        self.enrichment = enrichment or {}
-        self.decisions = decisions or []
+        self._sealed = False
         self.write_called = False
 
-    def read_entity_enrichment(self, **kwargs):
-        return self.enrichment.get(kwargs["entity_id"], {})
-
-    def get_verified_decisions(self, domain: str | None = None):
-        if domain is not None:
-            assert domain == "s2p"
-        return list(self.decisions)
+    def seal(self) -> None:
+        self._sealed = True
+        self.write_called = False
 
     def write_entity_enrichment(self, **kwargs):
-        self.write_called = True
-        raise AssertionError("R18A must not write enrichment")
+        if self._sealed:
+            self.write_called = True
+            raise AssertionError("R18A must not write enrichment")
+        return super().write_entity_enrichment(**kwargs)
+
+
+def _graph_store(enrichment=None) -> TrackingGraphStore:
+    store = TrackingGraphStore()
+    for supplier_id, metrics in (enrichment or {}).items():
+        if metrics:
+            store.write_entity_enrichment(
+                domain="s2p",
+                entity_type="Supplier",
+                entity_id=supplier_id,
+                namespace="s2p_supplier_metrics",
+                metrics=metrics,
+                computed_from=EnrichmentSourceSet(
+                    verified_decision_count=max(
+                        (
+                            int(metric.source_count)
+                            for metric in metrics.values()
+                            if getattr(metric, "verified", False) is True
+                        ),
+                        default=0,
+                    ),
+                    computation_version="test",
+                ),
+            )
+    store.seal()
+    return store
 
 
 @pytest.fixture(autouse=True)
@@ -401,7 +424,7 @@ def test_new_manager_summary():
 
 
 def test_fallback_without_enrichment_is_integration_pending():
-    composer = SupplierIntelligenceComposer(graph_store=FakeGraphStore({}))
+    composer = SupplierIntelligenceComposer(graph_store=_graph_store({}))
     intelligence = composer.compose_profile("SUP-001")
 
     assert intelligence["depth"]["headline_tier"] == "none"
@@ -422,7 +445,7 @@ def test_fixture_fallback_remains_context_not_learned():
 
 
 def test_learned_provenance_preserved_in_compose_behavioral_metrics_and_depth():
-    store = FakeGraphStore({"SUP-001": _enrichment(exception_rate=0.03, accuracy=0.96, count=60)})
+    store = _graph_store({"SUP-001": _enrichment(exception_rate=0.03, accuracy=0.96, count=60)})
     composer = SupplierIntelligenceComposer(graph_store=store)
     intelligence = composer.compose_profile("SUP-001")
 
@@ -438,7 +461,7 @@ def test_learned_provenance_preserved_in_compose_behavioral_metrics_and_depth():
 
 def test_existing_supplier_profile_fields_unchanged_by_intelligence_block():
     base_profile = s2p_suppliers._profile_detail(accumulator.get_profile("SUP-001"))
-    response = s2p_suppliers.profile("SUP-001", _request(FakeGraphStore({"SUP-001": {}})))
+    response = s2p_suppliers.profile("SUP-001", _request(_graph_store({"SUP-001": {}})))
 
     for key, value in base_profile.items():
         assert key in response
@@ -448,7 +471,7 @@ def test_existing_supplier_profile_fields_unchanged_by_intelligence_block():
 
 
 def test_endpoint_adds_intelligence_with_enrichment_and_keeps_json_safe():
-    store = FakeGraphStore({"SUP-001": _enrichment(exception_rate=0.03, accuracy=0.96, count=60)})
+    store = _graph_store({"SUP-001": _enrichment(exception_rate=0.03, accuracy=0.96, count=60)})
     response = s2p_suppliers.profile("SUP-001", _request(store))
 
     assert response["intelligence"]["depth"]["headline_tier"] in {"comprehensive", "reliable", "deep"}
@@ -460,13 +483,13 @@ def test_endpoint_adds_intelligence_with_enrichment_and_keeps_json_safe():
 
 def test_unknown_supplier_behavior_remains_404():
     with pytest.raises(Exception) as excinfo:
-        s2p_suppliers.profile("UNKNOWN", _request(FakeGraphStore({})))
+        s2p_suppliers.profile("UNKNOWN", _request(_graph_store({})))
 
     assert getattr(excinfo.value, "status_code", None) == 404
 
 
 def test_fixture_otif_is_not_measured_or_verified():
-    composer = SupplierIntelligenceComposer(graph_store=FakeGraphStore({"SUP-001": {}}))
+    composer = SupplierIntelligenceComposer(graph_store=_graph_store({"SUP-001": {}}))
     intelligence = composer.compose_profile("SUP-001")
 
     otif = intelligence["behavioral_metrics"]["context"]["otif"]
@@ -487,7 +510,7 @@ def test_lead_time_context_is_not_measured_or_verified():
 
 
 def test_learned_metrics_carry_source_count():
-    composer = SupplierIntelligenceComposer(graph_store=FakeGraphStore({"SUP-001": _enrichment(count=75)}))
+    composer = SupplierIntelligenceComposer(graph_store=_graph_store({"SUP-001": _enrichment(count=75)}))
     intelligence = composer.compose_profile("SUP-001")
 
     assert intelligence["behavioral_metrics"]["learned"]["accuracy"]["source_count"] == 75

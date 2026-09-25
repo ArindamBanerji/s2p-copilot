@@ -1,0 +1,38 @@
+[
+  {
+    "className": "price_variance_lt3pct_commodity",
+    "startCount": 200,
+    "endCount": 0,
+    "extinctionDate": "2026-09-12",
+    "earningDecisionId": "150",
+    "verifiedCount": 200,
+    "conservationStatus": "GREEN",
+    "retired": true,
+    "planted": true,
+    "scenario": "S2P-05"
+  },
+  {
+    "className": "duplicate_utility_under_500",
+    "startCount": 85,
+    "endCount": 0,
+    "extinctionDate": "2026-09-14",
+    "earningDecisionId": "90",
+    "verifiedCount": 85,
+    "conservationStatus": "GREEN",
+    "retired": true,
+    "planted": true,
+    "scenario": "S2P-05"
+  },
+  {
+    "className": "still_manual_capex_over_50k",
+    "startCount": 120,
+    "endCount": 120,
+    "extinctionDate": null,
+    "earningDecisionId": "manual-retention-3",
+    "verifiedCount": 120,
+    "conservationStatus": "GREEN",
+    "retired": false,
+    "planted": true,
+    "scenario": "S2P-06"
+  }
+]

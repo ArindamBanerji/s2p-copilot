@@ -1,0 +1,13 @@
+{
+  "invoice_id": "S2P-DEMO-CONTAINER-01",
+  "type": "container_demurrage",
+  "demurrage_per_day": 1200,
+  "days_at_port": 3,
+  "container_contents": "slow_moving_industrial_parts",
+  "warehouse_slow_mover_value": 2300000,
+  "working_capital_cost": 14200,
+  "situation_analysis_action": "HOLD",
+  "situation_analysis_reasoning": "hold 3 days demurrage $3,600; clearing costs $14,200 in carry + markdown; net save $10,600",
+  "planted": true,
+  "scenario": "S2P-03"
+}

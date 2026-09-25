@@ -141,14 +141,31 @@ class S2PAutonomyManager:
 
     def drift(self) -> dict[str, Any]:
         report = self.twin.get_drift_report(getattr(self.scorer, "_scorer", self.scorer))
-        return {**asdict(report), "evidence_tier": "T_A", "evidence_label": "computed from frozen and live scorer state"}
+        return {
+            **asdict(report),
+            "current_accuracy": None,
+            "frozen_accuracy": None,
+            "delta_accuracy": None,
+            "current_coverage": None,
+            "frozen_coverage": None,
+            "delta_coverage": None,
+            "evidence_tier": "T_A",
+            "evidence_label": "computed from frozen and live scorer state",
+        }
 
-    def parallel_score(self, factor_vector: list[float], category: str) -> dict[str, Any] | None:
+    def parallel_score(
+        self,
+        factor_vector: list[float],
+        category: str,
+        *,
+        record_event: bool = True,
+    ) -> dict[str, Any] | None:
         if not self.twin.is_frozen():
             return None
         result = self.twin.score_parallel(factor_vector, S2PDomainConfig.get_category_index(category), getattr(self.scorer, "_scorer", self.scorer))
         output = {"live": _score_payload(result.live_result), "frozen": _score_payload(result.frozen_result), "confidence_delta": float(result.delta), "evidence_tier": "T_A"}
-        self._record_event("frozen_twin_comparison", category, output)
+        if record_event:
+            self._record_event("frozen_twin_comparison", category, output)
         return output
 
     def _record_event(self, event_type: str, category: str | None, payload: Mapping[str, Any]) -> None:
@@ -162,4 +179,5 @@ class S2PAutonomyManager:
 
 
 def _score_payload(result: Any) -> dict[str, Any]:
-    return {"action": str(getattr(result, "action", "")), "confidence": float(getattr(result, "confidence", 0.0)), "action_index": int(getattr(result, "action_index", 0))}
+    action = getattr(result, "action_name", getattr(result, "action", ""))
+    return {"action": str(action), "confidence": float(getattr(result, "confidence", 0.0)), "action_index": int(getattr(result, "action_index", 0))}

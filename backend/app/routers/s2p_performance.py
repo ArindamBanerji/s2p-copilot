@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/s2p/performance", tags=["s2p-performance"])
 
 PENALTY_RATIO = 5.0
 ANNUAL_TARGET_USD = 680000
-SUMMARY_CACHE_TTL_SECONDS = 2.0
+SUMMARY_CACHE_TTL_SECONDS = 5.0
 _SUMMARY_CACHE_LOCK = threading.RLock()
 _SUMMARY_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 
@@ -32,7 +32,9 @@ def _graph_store(request: Request) -> Any | None:
 
 
 def _summary_cache_key(graph_store: Any | None, domain: str | None = None) -> str:
-    return f"{id(graph_store)}:{domain or 's2p'}"
+    # Store objects may be recreated by the active-graph lifecycle. Keep one
+    # bounded domain cache instead of retaining an entry for every instance.
+    return domain or "s2p"
 
 
 def clear_summary_cache() -> None:
@@ -86,6 +88,20 @@ def _count_decisions(reader: S2PGraphReader) -> int:
 
 
 def _count_recommended_action(reader: S2PGraphReader, action: str) -> int:
+    age_store = _age_store_or_none(reader.store)
+    if age_store is not None:
+        try:
+            query = (
+                "MATCH (d:Decision) "
+                f"WHERE d.domain = {age_store._S(reader.domain)} "
+                f"AND d.recommended_action = {age_store._S(action)} "
+                "RETURN count(*) AS action_count"
+            )
+            rows = age_store._run_query(query)
+            if rows and isinstance(rows[0], dict):
+                return int(rows[0].get("action_count") or rows[0].get("count") or 0)
+        except Exception:
+            pass
     return int(reader.count_recommended_action(action))
 
 
@@ -100,6 +116,18 @@ def _verified_decisions(reader: S2PGraphReader) -> list[dict[str, Any]]:
     return reader.get_verified_decisions()
 
 
+def _age_store_or_none(store: Any) -> Any | None:
+    current = store
+    for _ in range(3):
+        if callable(getattr(current, "_run_query", None)):
+            return current
+        inner = getattr(current, "_store", None)
+        if inner is None:
+            return None
+        current = inner
+    return current if callable(getattr(current, "_run_query", None)) else None
+
+
 def _is_override_decision(decision: dict[str, Any]) -> bool:
     outcome = str(decision.get("outcome") or decision.get("actual_outcome") or "").strip().lower()
     if outcome in {"override", "overridden"}:
@@ -111,6 +139,13 @@ def _category_coverage(reader: S2PGraphReader) -> float:
     """JM alpha: verified categories with data divided by configured categories."""
     if not S2P_CATEGORIES:
         return 0.0
+    count_categories_with_n = getattr(reader.store, "count_categories_with_n", None)
+    if callable(count_categories_with_n):
+        try:
+            categories_with_data = int(count_categories_with_n(reader.domain, n=1))
+            return max(0.0, min(categories_with_data, len(S2P_CATEGORIES))) / len(S2P_CATEGORIES)
+        except Exception:
+            pass
     categories = {
         str(decision.get("category") or "")
         for decision in _verified_decisions(reader)

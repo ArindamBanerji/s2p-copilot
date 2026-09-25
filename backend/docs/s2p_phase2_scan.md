@@ -221,7 +221,7 @@ Active-use nuance:
 
 ## Section 8: Recommended S2P-PHASE2-IMPL Scope
 
-1. Drop broad "build factor computers" work. Keep only a decision/implementation slice for `process_bottleneck_factor` if it remains a product requirement. It should be added as a canonical factor only if the domain shape intentionally changes from 5x5x7; otherwise it should stay a process-context signal.
+1. Drop broad "build factor computers" work. Keep only a decision/implementation slice for `process_bottleneck_factor` if it remains a product requirement. It should be added as a canonical factor only if the domain shape intentionally changes from 5x5x8; otherwise it should stay a process-context signal.
 2. Drop broad "build triage pipeline" work. The score -> computed factors -> scorer action -> decision id -> learn/outcome loop exists.
 3. Reduce "RL" to a precise requirement. Current evidence supports reward-backed learning and prompt/rule variant exploration via the S2P evolver; it does not prove explicit score/learn credit assignment or bandit policy inside the live triage loop. Define whether that mechanism is required before implementation.
 4. Reduce "process context panel" to frontend/backend integration details. Backend has `/api/s2p/insight/process-signals` and `/api/s2p/pvg/cycle-time`; if the panel must be live, specify the external source contract. If cache-backed is acceptable, wire the UI to the existing routes.

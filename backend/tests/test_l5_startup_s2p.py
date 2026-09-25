@@ -71,7 +71,7 @@ def test_s2p_startup_conservation_none_expected() -> None:
 
 def test_s2p_startup_status_indicates_source() -> None:
     with TestClient(app) as client:
-        assert client.get("/health").status_code == 200
+        assert client.get("/health").status_code == 503
         status = client.app.state.l5_startup_status
 
     assert status["dk_source"] in {"missing", "l5", "error", "deferred"}

@@ -220,6 +220,11 @@ class GraphProposalStore:
         self._graph_store.save_evolution_state(self._DOMAIN, proposal.proposal_id, {
             "proposal": proposal.to_dict(), "outcome": previous_outcome,
         })
+        self._graph_store.save_evolution_state(
+            self._DOMAIN,
+            self._decision_index_id(proposal.decision_id),
+            {"kind": "proposal_decision_index", "proposal_id": proposal.proposal_id},
+        )
 
     def get(self, proposal_id: str) -> DecisionChangeProposal | None:
         state = self._graph_store.get_evolution_state(self._DOMAIN, proposal_id)
@@ -235,7 +240,7 @@ class GraphProposalStore:
         for state in self._graph_store.list_evolutions(self._DOMAIN):
             payload = state.get("proposal")
             if not isinstance(payload, dict):
-                raise ValueError("Malformed proposal state in GraphStore")
+                continue
             proposal = DecisionChangeProposal.from_dict(payload)
             if proposal.invoice_id == invoice_id:
                 proposals.append(proposal)
@@ -246,16 +251,42 @@ class GraphProposalStore:
         for state in self._graph_store.list_evolutions(self._DOMAIN):
             payload = state.get("proposal")
             if not isinstance(payload, dict):
-                raise ValueError("Malformed proposal state in GraphStore")
+                continue
             proposals.append(DecisionChangeProposal.from_dict(payload))
         proposals.sort(key=lambda item: item.created_at, reverse=True)
         return proposals[: max(int(limit), 0)]
 
     def get_by_decision_id(self, decision_id: str) -> DecisionChangeProposal | None:
-        for proposal in self.list_recent(10**9):
-            if proposal.decision_id == str(decision_id):
-                return proposal
-        return None
+        normalized_id = str(decision_id)
+        index_state = self._graph_store.get_evolution_state(
+            self._DOMAIN, self._decision_index_id(normalized_id)
+        )
+        if index_state is not None:
+            proposal_id = index_state.get("proposal_id")
+            if proposal_id:
+                return self.get(str(proposal_id))
+
+        # Backfill proposals written before the decision index existed. Inspect
+        # the raw mappings so a legacy lookup does not deserialize the entire
+        # proposal history merely to find one decision.
+        newest_payload: dict[str, Any] | None = None
+        for state in self._graph_store.list_evolutions(self._DOMAIN):
+            payload = state.get("proposal")
+            if not isinstance(payload, dict) or str(payload.get("decision_id")) != normalized_id:
+                continue
+            if newest_payload is None or str(payload.get("created_at", "")) > str(
+                newest_payload.get("created_at", "")
+            ):
+                newest_payload = payload
+        if newest_payload is None:
+            return None
+        proposal = DecisionChangeProposal.from_dict(newest_payload)
+        self._graph_store.save_evolution_state(
+            self._DOMAIN,
+            self._decision_index_id(normalized_id),
+            {"kind": "proposal_decision_index", "proposal_id": proposal.proposal_id},
+        )
+        return proposal
 
     def link_outcome(self, proposal_id: str, receipt_id: str,
                      outcome_payload: Mapping[str, Any] | None = None) -> None:
@@ -289,6 +320,10 @@ class GraphProposalStore:
 
     def close(self) -> None:
         """The application owns the shared GraphStore lifecycle."""
+
+    @staticmethod
+    def _decision_index_id(decision_id: str) -> str:
+        return f"proposal-decision-index:{decision_id}"
 
 
 class ProposalService:

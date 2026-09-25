@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.graph.s2p_graph_reader import S2PGraphReader
@@ -25,38 +27,22 @@ def reset_financial_app_state():
     financial_router.reset_financial_snapshots()
 
 
-class FakeGraphStore:
-    domain = "s2p"
-
-    def __init__(self, decisions: list[dict] | None = None, *, fail_reads: bool = False):
-        self.decisions = list(decisions or [])
+class TrackingGraphStore(InMemoryGraphStore):
+    def __init__(self) -> None:
+        super().__init__(domain="s2p")
         self.calls: list[tuple] = []
-        self.fail_reads = fail_reads
 
-    def get_all_decisions(self, domain: str | None = None):
+    def get_all_decisions(self, domain: str):
         self.calls.append((domain,))
-        if self.fail_reads:
-            raise RuntimeError("AGE unavailable")
-        return list(self.decisions)
+        return super().get_all_decisions(domain)
 
-    def get_decision(self, decision_id: str, domain: str | None = None):
-        if domain is not None:
-            assert domain == self.domain
-        return next((row for row in self.decisions if row.get("decision_id") == decision_id), None)
 
-    def write_outcome(
-        self,
-        decision_id: str,
-        actual_action: str,
-        is_correct: bool,
-        metadata: dict | None = None,
-        domain: str | None = None,
-    ) -> None:
-        raise AssertionError("financial route must not write outcomes")
+class FailingReadStore(InMemoryGraphStore):
+    def __init__(self) -> None:
+        super().__init__(domain="s2p")
 
-    def get_archived_decisions(self, domain: str):
-        assert domain == self.domain
-        return []
+    def get_all_decisions(self, domain: str):
+        raise RuntimeError("AGE unavailable")
 
 
 class FakeReceiptStore:
@@ -74,7 +60,36 @@ def _set_financial_state(
     *,
     fail_reads: bool = False,
 ) -> None:
-    graph_store = FakeGraphStore(decisions, fail_reads=fail_reads)
+    graph_store = FailingReadStore() if fail_reads else TrackingGraphStore()
+    for row in decisions:
+        decision_id = str(row.get("decision_id") or row.get("invoice_id") or "D")
+        category = str(row.get("category") or "price_variance")
+        action = str(row.get("recommended_action") or row.get("action") or "auto_approve")
+        metadata = {
+            key: value
+            for key, value in row.items()
+            if key not in {"status", "category", "recommended_action", "action"}
+        }
+        created_at = metadata.get("created_at")
+        if isinstance(created_at, str):
+            metadata["created_at"] = datetime.fromisoformat(
+                created_at.replace("Z", "+00:00")
+            ).timestamp()
+        graph_store.write_decision(
+            "s2p",
+            category,
+            action,
+            float(row.get("confidence", 0.8)),
+            {"amount": float(row.get("amount", 0.0) or 0.0)},
+            metadata={**metadata, "decision_id": decision_id},
+        )
+        if str(row.get("status") or "").lower() in {"confirmed", "overridden", "verified"}:
+            graph_store.write_outcome(
+                decision_id,
+                action,
+                bool(row.get("is_correct", True)),
+                domain="s2p",
+            )
     app.state.graph_store = graph_store
     app.state.scorer = SimpleNamespace(graph_store=graph_store)
     monkeypatch.setattr(financial_router, "get_receipt_store", lambda: FakeReceiptStore(receipts or []))
@@ -93,6 +108,16 @@ def test_financial_impact_summary_returns_p28_fields(monkeypatch):
                 "amount_recovered": 80.0,
                 "supplier_name": "Acme",
                 "created_at": 1700000000.0,
+            }
+        ],
+        [
+            {
+                "decision_id": "D1",
+                "category": "price_variance",
+                "amount": 1000.0,
+                "amount_at_risk": 100.0,
+                "amount_recovered": 80.0,
+                "supplier_name": "Acme",
             }
         ],
     )
@@ -215,7 +240,7 @@ def test_financial_impact_trend_is_not_captured_as_category(monkeypatch):
     assert "points" in response.json()
 
 
-def test_financial_impact_trend_without_timestamps_returns_empty_series(monkeypatch):
+def test_financial_impact_trend_with_minimal_canonical_decision_returns_zero_recovery(monkeypatch):
     _set_financial_state(
         monkeypatch,
         [{"decision_id": "D1", "status": "confirmed", "category": "price_variance"}],
@@ -225,9 +250,10 @@ def test_financial_impact_trend_without_timestamps_returns_empty_series(monkeypa
 
     assert response.status_code == 200
     data = response.json()
-    assert data["as_of"] is None
-    assert data["points"] == []
-    assert data["totals"]["total_decisions"] == 0
+    assert data["as_of"] is not None
+    assert data["points"]
+    assert data["totals"]["total_decisions"] == 1
+    assert data["totals"]["total_recovered"] == 0.0
 
 
 def test_financial_impact_category_filters_decisions_and_receipts(monkeypatch):

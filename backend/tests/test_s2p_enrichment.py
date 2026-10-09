@@ -24,6 +24,28 @@ def _store() -> InMemoryGraphStore:
     return InMemoryGraphStore(domain=DOMAIN)
 
 
+def test_enrichment_distinguishes_absent_supplier_from_graph_outage():
+    class FailingStore(InMemoryGraphStore):
+        def read_entity_enrichment(self, **_kwargs):
+            raise RuntimeError("graph unavailable")
+
+        def list_entity_enrichments(self, **_kwargs):
+            raise ConnectionError("graph unavailable")
+
+    service = S2PSupplierEnrichmentService(graph_store=_store())
+    absent, absent_available = service.read_supplier("SUP-ABSENT", return_status=True)
+    failed_service = S2PSupplierEnrichmentService(graph_store=FailingStore(domain=DOMAIN))
+    failed, failed_available = failed_service.read_supplier("SUP-001", return_status=True)
+    summary, summary_available = failed_service.summary(return_status=True)
+
+    assert absent == {}
+    assert absent_available is True
+    assert failed is None
+    assert failed_available is False
+    assert summary == []
+    assert summary_available is False
+
+
 def _write_decision(
     store: InMemoryGraphStore,
     *,
@@ -542,6 +564,7 @@ def test_alerts_endpoint_flags_only_verified_measured_metrics(monkeypatch):
 
     assert response.status_code == 200
     alerts = response.json()["alerts"]
+    assert response.json()["alerts_available"] is True
     assert alerts
     assert alerts[0]["exception_rate"]["verified"] is True
 

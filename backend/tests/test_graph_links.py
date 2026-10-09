@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 import threading
+from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.graph_contract import S2P_GRAPH_CONTRACT
+from app.graph.s2p_graph_reader import S2PGraphReader
 from app.main import app, build_s2p_scorer
 from app.routers import s2p
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
@@ -61,7 +64,23 @@ def _score_then_outcome(client: TestClient, invoice_id: str = "S2P-GS-LINK-001")
         },
     )
     assert outcome_response.status_code == 200
+    outcome = outcome_response.json()
+    assert outcome["invoice_link_available"] is True
+    assert outcome["invoice_links"]
     return cast(dict[str, Any], score)
+
+
+def _fail_advisory_link_reads_after_commit(monkeypatch) -> None:
+    graph_store = app.state.graph_store
+    original_get_links = graph_store.get_decision_links
+    original_get_verified = graph_store.get_verified_decisions
+
+    def get_links(decision_id=None, domain=None, limit=None):
+        if original_get_verified("s2p"):
+            raise ConnectionError("advisory link read unavailable")
+        return original_get_links(decision_id, domain=domain, limit=limit)
+
+    monkeypatch.setattr(graph_store, "get_decision_links", get_links)
 
 
 def test_no_invoice_map_in_source():
@@ -120,7 +139,7 @@ def test_score_endpoint_still_returns_200_when_linking_fails(monkeypatch):
     _reset_scorer()
     client = TestClient(app)
 
-    def fail_link(decision_id, entity_id, edge_type="DECIDED_ON"):
+    def fail_link(decision_id, entity_id, edge_type="DECIDED_ON", **_kwargs):
         raise RuntimeError("link unavailable")
 
     monkeypatch.setattr(app.state.graph_store, "link_decision_to_entity", fail_link)
@@ -129,13 +148,14 @@ def test_score_endpoint_still_returns_200_when_linking_fails(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["decision_id"]
+    assert response.json()["link_persisted"] is False
 
 
 def test_outcome_still_returns_200_when_learn_linking_fails(monkeypatch):
     _reset_scorer()
     client = TestClient(app)
 
-    def fail_link(decision_id, entity_id, edge_type="DECIDED_ON"):
+    def fail_link(decision_id, entity_id, edge_type="DECIDED_ON", **_kwargs):
         raise RuntimeError("link unavailable")
 
     monkeypatch.setattr(app.state.graph_store, "link_decision_to_entity", fail_link)
@@ -166,8 +186,156 @@ def test_outcome_still_returns_200_when_learn_linking_fails(monkeypatch):
     assert payload["decision_id"] == score["decision_id"]
     assert payload["learning_applied"] is True
     assert payload["invoice_id"] == "S2P-GS-LINK-LEARN-FAIL"
+    assert isinstance(payload["invoice_link_failed"], bool)
     verified = app.state.graph_store.get_verified_decisions(getattr(app.state.graph_store, "domain", "s2p"))
     assert any(row["decision_id"] == score["decision_id"] for row in verified)
+
+
+def test_learn_with_audit_returns_committed_result_when_advisory_read_fails(monkeypatch):
+    _reset_scorer()
+    client = TestClient(app)
+    score_response = client.post(
+        "/api/s2p/score", json=_score_payload("S2P-GS-AUDIT-ADVISORY-FAIL")
+    )
+    assert score_response.status_code == 200
+    score = score_response.json()
+    decision = S2PGraphReader(store=app.state.graph_store).get_decision(score["decision_id"])
+    _fail_advisory_link_reads_after_commit(monkeypatch)
+
+    payload = s2p._learn_with_audit(
+        SimpleNamespace(app=app),
+        app.state.scorer,
+        decision,
+        score["decision_id"],
+        score["action"],
+        "confirm",
+        {},
+    )
+
+    assert payload["decision_id"] == score["decision_id"]
+    assert s2p._learn_result_applied(payload) is True
+    assert payload["invoice_links"] == []
+    assert payload["invoice_link_available"] is False
+    assert app.state.graph_store.get_verified_decisions("s2p")
+
+
+def test_advisory_link_none_return_uses_typed_unavailable_contract():
+    graph_store = SimpleNamespace(get_decision_links=lambda *_args, **_kwargs: None)
+
+    links, available, failed = s2p._read_advisory_invoice_links(
+        graph_store, "decision-none", "invoice-none"
+    )
+
+    assert links == []
+    assert available is False
+    assert failed is True
+
+
+@pytest.mark.parametrize("endpoint", ["/api/learn", "/api/s2p/outcome"])
+def test_committed_learning_returns_200_when_advisory_links_return_none(monkeypatch, endpoint):
+    _reset_scorer()
+    client = TestClient(app)
+    score_response = client.post(
+        "/api/s2p/score", json=_score_payload(f"S2P-GS-NONE-{endpoint.rsplit('/', 1)[-1].upper()}")
+    )
+    assert score_response.status_code == 200
+    score = score_response.json()
+    graph_store = app.state.graph_store
+    original_get_links = graph_store.get_decision_links
+    original_get_verified = graph_store.get_verified_decisions
+
+    def get_links(decision_id=None, domain=None, limit=None):
+        if original_get_verified("s2p"):
+            return None
+        return original_get_links(decision_id, domain=domain, limit=limit)
+
+    monkeypatch.setattr(graph_store, "get_decision_links", get_links)
+    if endpoint == "/api/learn":
+        request_body = {
+            "decision_id": score["decision_id"],
+            "actual_action": score["action"],
+            "outcome": "confirm",
+        }
+    else:
+        request_body = {
+            "decision_id": score["decision_id"],
+            "outcome": "confirm",
+            "analyst_action": score["action"],
+            "analyst_id": "analyst-none-return",
+            "factor_vector": score["factor_vector"],
+            "category": score["category"],
+            "predicted_action": score["action"],
+        }
+
+    response = client.post(endpoint, json=request_body)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision_id"] == score["decision_id"]
+    assert body["learning_applied"] is True
+    assert body["invoice_link_available"] is False
+    assert body["invoice_links"] == []
+    assert isinstance(body["invoice_links"], list)
+
+
+def test_learn_endpoint_returns_200_when_post_commit_advisory_read_fails(monkeypatch):
+    _reset_scorer()
+    client = TestClient(app)
+    score_response = client.post(
+        "/api/s2p/score", json=_score_payload("S2P-GS-LEARN-ADVISORY-FAIL")
+    )
+    assert score_response.status_code == 200
+    score = score_response.json()
+    _fail_advisory_link_reads_after_commit(monkeypatch)
+
+    response = client.post(
+        "/api/learn",
+        json={
+            "decision_id": score["decision_id"],
+            "actual_action": score["action"],
+            "outcome": "confirm",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision_id"] == score["decision_id"]
+    assert body["learning_applied"] is True
+    assert body["invoice_links"] == []
+    assert body["invoice_link_available"] is False
+    assert app.state.graph_store.get_verified_decisions("s2p")
+
+
+def test_outcome_endpoint_returns_200_when_post_commit_advisory_read_fails(monkeypatch):
+    _reset_scorer()
+    client = TestClient(app)
+    score_response = client.post(
+        "/api/s2p/score", json=_score_payload("S2P-GS-OUTCOME-ADVISORY-FAIL")
+    )
+    assert score_response.status_code == 200
+    score = score_response.json()
+    _fail_advisory_link_reads_after_commit(monkeypatch)
+
+    response = client.post(
+        "/api/s2p/outcome",
+        json={
+            "decision_id": score["decision_id"],
+            "outcome": "confirm",
+            "analyst_action": score["action"],
+            "analyst_id": "analyst-advisory",
+            "factor_vector": score["factor_vector"],
+            "category": score["category"],
+            "predicted_action": score["action"],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision_id"] == score["decision_id"]
+    assert body["learning_applied"] is True
+    assert body["invoice_links"] == []
+    assert body["invoice_link_available"] is False
+    assert app.state.graph_store.get_verified_decisions("s2p")
 
 
 class _BlockingGraphStore:

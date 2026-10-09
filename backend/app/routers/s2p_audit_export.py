@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from copilot_sdk.backend.graph_access import GRAPH_CONNECTION_ERRORS
 
 from app.domains.s2p.config import PENALTY_RATIO, S2PDomainConfig
 from app.framework import audit
@@ -18,6 +20,7 @@ router = APIRouter(prefix="/api/s2p/audit", tags=["s2p-audit"])
 
 CSV_ROW_LIMIT = 1000
 EXPORT_VERSION = "1.0"
+S2P_INFRASTRUCTURE_ERRORS = GRAPH_CONNECTION_ERRORS + (GraphUnavailableError,)
 
 
 def _graph_store(request: Request) -> Any | None:
@@ -76,17 +79,17 @@ def _float_or_zero(value: Any) -> float:
         return 0.0
 
 
-def _bool_or_none(value: Any) -> bool | None:
+def _bool_or_none(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     if value is None:
-        return None
+        return False
     text = str(value).strip().lower()
     if text in {"true", "1", "yes", "correct", "confirmed", "success"}:
         return True
     if text in {"false", "0", "no", "incorrect", "overridden", "failed"}:
         return False
-    return None
+    return False
 
 
 def _get_conservation_status(reader: S2PGraphReader, scorer: Any) -> dict[str, Any]:
@@ -101,19 +104,19 @@ def _get_conservation_status(reader: S2PGraphReader, scorer: Any) -> dict[str, A
     return {
         "verified": int(verified or 0),
         "correct": int(correct or 0),
-        "override_rate": None,
-        "theta_min": getattr(S2PDomainConfig, "tau", None),
-        "q": getattr(S2PDomainConfig, "q_window", None),
+        "override_rate": 0.0,
+        "theta_min": float(getattr(S2PDomainConfig, "tau", 0.0)),
+        "q": int(getattr(S2PDomainConfig, "q_window", 0)),
         "status": status,
         "penalty_ratio": float(PENALTY_RATIO),
     }
 
 
-def _get_iks(scorer: Any) -> dict[str, Any]:
+def _get_iks(scorer: Any) -> dict[str, Any] | None:
     try:
         trajectory = scorer.trajectory()
     except Exception:
-        return {}
+        return None
     if isinstance(trajectory, dict):
         return dict(trajectory)
     if hasattr(trajectory, "model_dump"):
@@ -135,7 +138,7 @@ def _get_date_range(decisions: list[dict[str, Any]]) -> dict[str, Any]:
         if value
     ]
     if not timestamps:
-        return {"first": None, "last": None}
+        return {"first": "", "last": ""}
     timestamps.sort()
     return {"first": timestamps[0], "last": timestamps[-1]}
 
@@ -177,16 +180,27 @@ def _compute_financial_summary(decisions: list[dict[str, Any]]) -> dict[str, Any
     }
 
 
+def _empty_factor_analysis() -> dict[str, Any]:
+    return {
+        "fingerprint": {},
+        "factor_names": [],
+        "factor_averages": {},
+        "fingerprint_available": False,
+    }
+
+
 def _factor_analysis(scorer: Any, decisions: list[dict[str, Any]]) -> dict[str, Any]:
-    fingerprint: Any = {}
+    analysis = _empty_factor_analysis()
     try:
         raw_fingerprint = scorer.fingerprint()
-        if isinstance(raw_fingerprint, dict):
-            fingerprint = raw_fingerprint
-        else:
-            fingerprint = str(raw_fingerprint)
-    except Exception:
-        fingerprint = {}
+    except S2P_INFRASTRUCTURE_ERRORS:
+        return analysis
+    if isinstance(raw_fingerprint, dict):
+        fingerprint = dict(raw_fingerprint)
+    elif is_dataclass(raw_fingerprint):
+        fingerprint = asdict(raw_fingerprint)
+    else:
+        return analysis
 
     factor_totals = {name: 0.0 for name in S2PDomainConfig.factors}
     factor_counts = {name: 0 for name in S2PDomainConfig.factors}
@@ -206,11 +220,13 @@ def _factor_analysis(scorer: Any, decisions: list[dict[str, Any]]) -> dict[str, 
         for name in S2PDomainConfig.factors
         if factor_counts[name]
     }
-    return {
+    analysis = {
         "fingerprint": fingerprint,
         "factor_names": list(S2PDomainConfig.factors),
         "factor_averages": averages,
+        "fingerprint_available": True,
     }
+    return analysis
 
 
 def _audit_verification(request: Request) -> dict[str, Any]:
@@ -279,6 +295,21 @@ def _export_payload(request: Request) -> dict[str, Any]:
     chain = _decision_chain(request)
     total = len(decisions)
     correct = int(correct_decisions or 0)
+    iks = _get_iks(scorer)
+    factor_analysis = _empty_factor_analysis()
+    try:
+        candidate_analysis = _factor_analysis(scorer, decisions)
+    except S2P_INFRASTRUCTURE_ERRORS:
+        pass
+    else:
+        if (
+            isinstance(candidate_analysis, dict)
+            and isinstance(candidate_analysis.get("fingerprint"), dict)
+            and isinstance(candidate_analysis.get("factor_names"), list)
+            and isinstance(candidate_analysis.get("factor_averages"), dict)
+            and isinstance(candidate_analysis.get("fingerprint_available"), bool)
+        ):
+            factor_analysis = candidate_analysis
 
     return {
         "summary": {
@@ -289,12 +320,14 @@ def _export_payload(request: Request) -> dict[str, Any]:
             "correct_decisions": correct,
             "accuracy": round(correct / verified_decisions, 6) if verified_decisions else 0.0,
             "conservation_status": conservation["status"],
-            "iks": _get_iks(scorer),
+            "iks": iks if iks is not None else {},
+            "iks_available": iks is not None,
             "date_range": _get_date_range(decisions),
         },
         "decision_chain": chain,
         "conservation_proof": conservation,
-        "factor_analysis": _factor_analysis(scorer, decisions),
+        "factor_analysis": factor_analysis,
+        "factor_analysis_available": factor_analysis["fingerprint_available"],
         "financial_impact": _compute_financial_summary(decisions),
         "sox_compliance": _sox_compliance(chain, conservation, decisions),
         "source": "live",

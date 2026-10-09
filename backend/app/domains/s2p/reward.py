@@ -75,7 +75,7 @@ class S2PGradedRewardFunction:
             actual_action,
             outcome,
         )
-        return result.reward
+        return float(result.reward)
 
     def compute_reward(
         self,

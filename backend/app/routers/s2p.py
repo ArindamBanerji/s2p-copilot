@@ -28,8 +28,10 @@ from copilot_sdk.backend.conservation_utils import (
     compute_conservation_metrics,
     compute_conservation_status_payload,
 )
+from copilot_sdk.backend.graph_access import GRAPH_CONNECTION_ERRORS
 from copilot_sdk.backend.diagnostics_models import build_diagnostics
 from copilot_sdk.graph.protocol import GraphStore, ProtocolV2GraphStore
+from copilot_sdk.scoring.composite_gate import chronological_decisions
 from copilot_sdk.scoring.mutation_lock import get_mutation_lock, serialize_mutation
 from copilot_sdk.scoring.dk_persistence import DKWelfordTracker, persist_dk_after_reestimate
 from copilot_sdk.state.invalidation import apply_cache_invalidation_event, get_tab_state_cache
@@ -51,6 +53,7 @@ from app.models.responses import GenericResponse, LearningGateResponse, S2PScore
 from app.routers.s2p_data_helpers import find_invoice, load_invoices
 from app.routers.s2p_preview import invalidate_preview_observation
 from app.services.s2p_preview_data import clear_decision_cache, invoice_process_context
+from app.services.response_materializer import invalidate_materializer
 from app.models.outcome_receipt import OutcomeReceipt
 from app.services.receipt_store import get_receipt_store
 from app.routers.s2p_evidence import clear_evidence_context_cache
@@ -68,6 +71,8 @@ from app.s2p_shadow import S2PShadowState
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/s2p", tags=["S2P"])
 learn_router = APIRouter(prefix="/api", tags=["S2P"])
+
+S2P_INFRASTRUCTURE_ERRORS = GRAPH_CONNECTION_ERRORS + (GraphUnavailableError,)
 
 ACTION_CATEGORY_MAP = {
     "auto_approve": "APPROVE",
@@ -97,7 +102,7 @@ class S2PScoreAuditWriter:
             store.save_governance("s2p", key, {"operation": "outcome", "decision_id": decision_id})
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Audit persistence unavailable") from exc
-        return key
+        return str(key)
 
     def finish_outcome(self, store: GraphStore, key: str) -> None:
         try:
@@ -309,6 +314,7 @@ def _resolve_graph_context(
     *,
     supplier_id: str | None = None,
     amount: float | None = None,
+    return_status: bool = False,
 ):
     reader = _s2p_graph_reader(http_request)
     try:
@@ -328,17 +334,18 @@ def _resolve_graph_context(
             invoice_id,
             exc,
         )
-        return None
+        return (None, False) if return_status else None
     if isinstance(context_raw, list):
         if not any(
             isinstance(row, dict) and _graph_context_row_is_domain_specific(row)
             for row in context_raw
         ):
-            return None
-        return {"neighbors": context_raw}
+            return (None, True) if return_status else None
+        context = {"neighbors": context_raw}
+        return (context, True) if return_status else context
     if isinstance(context_raw, dict):
-        return context_raw
-    return None
+        return (context_raw, True) if return_status else context_raw
+    return (None, True) if return_status else None
 
 
 def _graph_context_row_is_domain_specific(row: dict[str, Any]) -> bool:
@@ -358,7 +365,7 @@ def _score_process_context_with_signal(
         return process_context
     output = dict(process_context or {})
     output["cross_copilot_signal"] = signal
-    return output
+    return cast(dict[str, Any], output)
 
 
 def _supplier_name_for_signal(invoice: dict[str, Any], request: "ScoreRequest") -> str:
@@ -373,11 +380,16 @@ def _supplier_name_for_signal(invoice: dict[str, Any], request: "ScoreRequest") 
     )
 
 
-def _apply_cross_copilot_signal(invoice: dict[str, Any], request: "ScoreRequest") -> dict[str, Any] | None:
+def _apply_cross_copilot_signal(
+    invoice: dict[str, Any], request: "ScoreRequest", *, return_status: bool = False,
+) -> dict[str, Any] | tuple[dict[str, Any] | None, bool] | None:
     supplier_name = _supplier_name_for_signal(invoice, request)
-    latest = latest_supplier_signal(CrossCopilotSignalConsumer().fetch_supplier_signals(supplier_name))
+    signals, signals_available = CrossCopilotSignalConsumer().fetch_supplier_signals(
+        supplier_name, return_status=True,
+    )
+    latest = latest_supplier_signal(cast(list[dict[str, Any]], signals))
     if latest is None:
-        return None
+        return (None, bool(signals_available)) if return_status else None
 
     signal_exception = supplier_exception_from_reliability(latest.get("reliability_pct"))
     factors = dict(invoice.get("factors") or {})
@@ -399,7 +411,7 @@ def _apply_cross_copilot_signal(invoice: dict[str, Any], request: "ScoreRequest"
         if delta is not None
         else f"Purchasing: reliability {reliability:.0f}%"
     )
-    return {
+    result = {
         "source": "purchasing",
         "supplier": str(latest.get("supplier_name") or supplier_name),
         "reliability": reliability,
@@ -411,6 +423,7 @@ def _apply_cross_copilot_signal(invoice: dict[str, Any], request: "ScoreRequest"
         "ttl_days": latest.get("ttl_days", 7),
         "provenance": "signal",
     }
+    return (result, bool(signals_available)) if return_status else result
 
 
 def _to_float(value: Any, default: float) -> float:
@@ -998,11 +1011,11 @@ def _link_decision_to_invoice(
     decision_id: str | None,
     invoice_id: str | None,
     reader: S2PGraphReader | None = None,
-) -> None:
+) -> bool:
     if not decision_id or not invoice_id:
-        return
+        return False
     if not isinstance(graph_store, ProtocolV2GraphStore):
-        return
+        return False
     link = graph_store.link_decision_to_entity
     try:
         existing = (reader or S2PGraphReader(store=graph_store)).get_decision_links(decision_id)
@@ -1012,12 +1025,14 @@ def _link_decision_to_invoice(
             for item in existing
             if isinstance(item, dict)
         ):
-            return
+            return True
         link(decision_id, invoice_id, "DECIDED_ON", domain="s2p")
+        return True
     except GraphUnavailableError:
         raise
     except Exception:
         log.exception("S2P graph invoice link skipped for decision %s", decision_id)
+        return False
 
 
 def _has_decision_invoice_link(
@@ -1110,24 +1125,50 @@ def _cached_conservation_counts(
     return dict(counts)
 
 
-def cached_conservation_state_provider(app_state: Any) -> dict[str, float | int]:
+def _conservation_state_from_rows(
+    counts: dict[str, float | int],
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build the SDK conservation state from real, canonically ordered rows."""
+    ordered = cast(list[dict[str, Any]], chronological_decisions(rows))
+    for row in ordered:
+        if row.get("created_at") is None or not row.get("decision_id"):
+            raise GraphUnavailableError(
+                "Verified decision is missing created_at or decision_id"
+            )
+    return {
+        **counts,
+        "verified_decisions": ordered,
+        "recent_outcomes": [
+            bool(row.get("is_correct")) for row in ordered[-400:]
+        ],
+    }
+
+
+def cached_conservation_state_provider(app_state: Any) -> dict[str, Any]:
     graph_store = getattr(app_state, "graph_store", None)
     if graph_store is None:
         scorer = getattr(app_state, "scorer", None)
         graph_store = getattr(scorer, "graph_store", None)
-    return _cached_conservation_counts(graph_store, _graph_domain(graph_store))
+    domain = _graph_domain(graph_store)
+    counts = _cached_conservation_counts(graph_store, domain)
+    rows = S2PGraphReader(store=graph_store, domain=domain).get_verified_decisions()
+    return _conservation_state_from_rows(counts, rows)
 
 
 def _current_conservation_status(http_request: Request) -> str:
     try:
         graph_store = _graph_store_from_request(http_request)
         domain = _graph_domain(graph_store)
-        counts = _cached_conservation_counts(graph_store, domain)
-        payload = compute_conservation_status_payload(domain, counts)
-        return str(payload["status"])
-    except Exception:
+        state = cached_conservation_state_provider(http_request.app.state)
+        payload = compute_conservation_status_payload(domain, state)
+    except S2P_INFRASTRUCTURE_ERRORS:
         log.exception("Unable to evaluate conservation status for auto-approve gate")
         return "UNKNOWN"
+    status = payload.get("status")
+    if not isinstance(status, str) or not status.strip():
+        return "UNKNOWN"
+    return status
 
 
 def _score_conservation_cache_key(http_request: Request) -> str:
@@ -1440,13 +1481,41 @@ def _decision_factors(decision: dict[str, Any] | None) -> dict[str, float]:
 
 
 def _receipt_conservation_snapshot(http_request: Request) -> dict[str, Any]:
+    status = "UNKNOWN"
+    verified_count = 0
+    state_available = False
+    count_available = False
+
     try:
-        status = _current_conservation_status(http_request)
-        verified_count, _correct_count = _graph_verified_counts(http_request)
-        return {"state": status, "verified_count": verified_count}
-    except Exception:
-        log.exception("Unable to capture S2P receipt conservation snapshot")
-        return {"state": "", "verified_count": 0}
+        read_status = _current_conservation_status(http_request)
+        if isinstance(read_status, str) and read_status.strip() and read_status != "UNKNOWN":
+            status = read_status
+            state_available = True
+    except S2P_INFRASTRUCTURE_ERRORS:
+        log.exception("Unable to read S2P receipt conservation state")
+
+    try:
+        counts = _graph_verified_counts(http_request)
+        if (
+            isinstance(counts, tuple)
+            and len(counts) == 2
+            and all(isinstance(value, int) and not isinstance(value, bool) for value in counts)
+        ):
+            verified_count = counts[0]
+            count_available = True
+    except S2P_INFRASTRUCTURE_ERRORS:
+        log.exception("Unable to read S2P receipt conservation counts")
+
+    snapshot_available = state_available and count_available
+    if not snapshot_available:
+        status = "UNKNOWN"
+        verified_count = 0
+    result = {
+        "state": status,
+        "verified_count": verified_count,
+        "conservation_snapshot_available": snapshot_available,
+    }
+    return result
 
 
 def _receipt_centroid_updated(payload: dict[str, Any], before: dict[str, Any], after: dict[str, Any]) -> bool:
@@ -1544,6 +1613,10 @@ def _record_outcome_receipt(
             reward=float(payload.get("reward") or 0.0),
             centroid_updated=_receipt_centroid_updated(payload, conservation_before, conservation_after),
             conservation_status=str(conservation_after.get("state") or conservation_before.get("state") or "UNKNOWN"),
+            conservation_snapshot_available=bool(
+                conservation_before.get("conservation_snapshot_available", True)
+                and conservation_after.get("conservation_snapshot_available", True)
+            ),
             conservation_state_before=str(conservation_before.get("state") or ""),
             conservation_state_after=str(conservation_after.get("state") or ""),
             verified_count_before=int(conservation_before.get("verified_count") or 0),
@@ -1883,6 +1956,7 @@ def _learn_with_scorer(
     invoice_id_before = _decision_invoice_id(decision) if isinstance(decision, dict) else ""
     had_invoice_link = _has_decision_invoice_link(reader, decision_id, invoice_id_before)
     learn_context = _decision_context(decision, context)
+    invoice_link_failed = False
     with _GRAPH_LINK_ADVISORY_LOCK:
         can_link_invoice = isinstance(scorer.graph_store, ProtocolV2GraphStore)
         original_link = (
@@ -1898,6 +1972,7 @@ def _learn_with_scorer(
                     *,
                     domain: str = "s2p",
                 ) -> None:
+                    nonlocal invoice_link_failed
                     if (
                         had_invoice_link
                         and str(linked_decision_id) == str(decision_id)
@@ -1913,6 +1988,7 @@ def _learn_with_scorer(
                             domain=domain,
                         )
                     except Exception:
+                        invoice_link_failed = True
                         log.exception("S2P graph invoice link skipped for decision %s", linked_decision_id)
 
                 scorer.graph_store.link_decision_to_entity = _advisory_invoice_link
@@ -1933,12 +2009,40 @@ def _learn_with_scorer(
         if invoice_id:
             payload.setdefault("invoice_id", invoice_id)
             if not had_invoice_link:
-                _submit_side_effect(
-                    lambda: _link_decision_to_invoice(
+                try:
+                    link_persisted = _link_decision_to_invoice(
                         scorer.graph_store, decision_id, invoice_id, reader
                     )
-                )
+                    invoice_link_failed = invoice_link_failed or not link_persisted
+                except GraphUnavailableError:
+                    invoice_link_failed = True
+                    log.exception("S2P graph invoice link unavailable for decision %s", decision_id)
+            payload["invoice_link_failed"] = invoice_link_failed
     return cast(dict[str, Any], payload)
+
+
+def _read_advisory_invoice_links(
+    graph_store: Any,
+    decision_id: str,
+    invoice_id: str,
+) -> tuple[list[dict[str, Any]], bool, bool]:
+    """Read post-commit link evidence without invalidating a committed learn."""
+    links: list[dict[str, Any]] = []
+    try:
+        raw_links = graph_store.get_decision_links(decision_id, domain="s2p")
+    except S2P_INFRASTRUCTURE_ERRORS:
+        log.exception("S2P advisory invoice-link read unavailable for decision %s", decision_id)
+        return links, False, True
+
+    if not isinstance(raw_links, list) or not all(isinstance(item, dict) for item in raw_links):
+        return links, False, True
+    links = [dict(item) for item in raw_links]
+    link_present = any(
+        str(item.get("entity_id")) == str(invoice_id)
+        and item.get("edge_type") == "DECIDED_ON"
+        for item in links
+    )
+    return links, True, not link_present
 
 
 def _learn_with_audit(
@@ -1953,6 +2057,19 @@ def _learn_with_audit(
     active_before = active_decision_ids(scorer.graph_store, category) if category else set()
     pending_key = writer.begin_outcome(scorer.graph_store, decision_id)
     payload = _learn_with_scorer(scorer, decision_id, actual_action, outcome, context)
+    if isinstance(payload, dict):
+        payload.setdefault("invoice_links", [])
+        payload.setdefault("invoice_link_available", False)
+        invoice_id = _decision_invoice_id(decision) or str(payload.get("invoice_id") or "")
+        if invoice_id:
+            links, links_available, link_failed = _read_advisory_invoice_links(
+                scorer.graph_store, decision_id, invoice_id
+            )
+            payload["invoice_links"] = links
+            payload["invoice_link_available"] = links_available
+            payload["invoice_link_failed"] = bool(
+                payload.get("invoice_link_failed", False) or link_failed
+            )
     if _learn_result_applied(payload):
         writer.record_outcome(scorer.graph_store, decision_id=decision_id,
                               actual_action=actual_action, outcome=outcome)
@@ -2215,24 +2332,34 @@ class ScoreResponse(BaseModel):
     factor_vector: list[float]
     factor_names: list[str]
     decision_id: str
-    proposal_id: Optional[str] = None
-    process_context: Optional[dict] = None
-    active_variant: Optional[dict] = None
-    auto_approve: Optional[dict] = None
-    novelty_score: Optional[float] = None
-    threshold_decision: Optional[dict] = None
-    gate: Optional[str] = None
-    conservation_status: Optional[str] = None
-    evidence_tier: Optional[str] = None
-    learning_applied: Optional[bool] = None
-    reason: Optional[str] = None
-    action_name: Optional[str] = None
-    action_category: Optional[str] = None
-    reasoning: Optional[str] = None
+    proposal_id: str = ""
+    proposal_id_available: bool = False
+    process_context: dict[str, Any] = {}
+    process_context_available: bool = False
+    active_variant: dict[str, Any] = {}
+    active_variant_available: bool = False
+    auto_approve: dict[str, Any] = {}
+    auto_approve_available: bool = False
+    novelty_score: float = 0.0
+    novelty_score_available: bool = False
+    threshold_decision: dict[str, Any] = {}
+    threshold_decision_available: bool = False
+    gate: str = ""
+    conservation_status: str = ""
+    evidence_tier: str = ""
+    learning_applied: bool = False
+    reason: str = ""
+    reason_available: bool = False
+    action_name: str = ""
+    action_category: str = ""
+    reasoning: str = ""
     rule_override: bool = False
     prior_verified_count: int = 0
     cold_start: bool = True
-    context: Optional[dict[str, Any]] = None
+    context: dict[str, Any] = {}
+    graph_context_available: bool = True
+    degraded_fields: list[str] = []
+    link_persisted: bool = False
 
 
 @router.post("/score", response_model=S2PScoreResponse)
@@ -2273,7 +2400,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
     from app.routers.s2p_demo_control import DAY_ZERO_EVENT, demo_enabled, fresh_score, special_invoice
 
     if request.event_id == DAY_ZERO_EVENT:
-        return fresh_score(request.event_id, request.category, compute_all_factors(_invoice_from_request(request, None)))
+        return cast(dict[str, Any], fresh_score(request.event_id, request.category, compute_all_factors(_invoice_from_request(request, None))))
     demo_invoice = special_invoice(request.event_id, request.category, request.supplier_id)
     fixture_invoice = demo_invoice or find_invoice(request.event_id)
     invoice = _invoice_from_request(request, fixture_invoice)
@@ -2287,23 +2414,43 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
     except Exception:
         log.exception("S2P active variant enrichment failed")
         active_variant = None
+        degraded_fields = ["active_variant"]
+    else:
+        degraded_fields = []
     lookup_id = invoice.get("invoice_id") or request.event_id
     # The explicitly selected synthetic fixture may reuse a catalog ID (the
     # copper invoice does). Do not mix it with a different legacy invoice's
     # PO/receipt evidence. The live scorer and conservation gate still apply.
-    context = {} if demo_invoice else _resolve_graph_context(
-        lookup_id,
-        http_request,
-        supplier_id=str(invoice.get("supplier_id") or request.supplier_id),
-        amount=float(invoice.get("amount") or request.amount),
+    if demo_invoice:
+        context, graph_context_available = {}, True
+    else:
+        context_result = _resolve_graph_context(
+            lookup_id,
+            http_request,
+            supplier_id=str(invoice.get("supplier_id") or request.supplier_id),
+            amount=float(invoice.get("amount") or request.amount),
+            return_status=True,
+        )
+        if isinstance(context_result, tuple):
+            context, graph_context_available = context_result
+        else:
+            context, graph_context_available = context_result, context_result is not None
+    cross_result = _apply_cross_copilot_signal(
+        invoice, request, return_status=True,
     )
-    cross_copilot_signal = _apply_cross_copilot_signal(invoice, request)
-    computed_factors = compute_all_factors(invoice, context=context)
+    if isinstance(cross_result, tuple) and len(cross_result) == 2:
+        cross_copilot_signal, cross_signal_available = cross_result
+    else:
+        cross_copilot_signal, cross_signal_available = None, True
+    if not cross_signal_available:
+        degraded_fields.append("cross_copilot_signal")
+    computed_factors = cast(dict[str, float], compute_all_factors(invoice, context=context))
     factor_vector = [computed_factors[name] for name in S2PDomainConfig.factors]
     scorer = _sdk_scorer(http_request)
     try:
         prior_verified_count = int(getattr(scorer, "get_verified_count")())
     except (AttributeError, TypeError, ValueError):
+        degraded_fields.append("prior_verified_count")
         try:
             prior_verified_count, _ = _graph_verified_counts(http_request)
         except Exception:
@@ -2428,6 +2575,7 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
             centroid_snapshot = {}
         t4 = time.perf_counter()
         try:
+            invalidate_materializer(http_request)
             apply_cache_invalidation_event("s2p", "score")
         except Exception:
             log.exception("S2P score cache invalidation failed")
@@ -2437,19 +2585,25 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         _S2P_SCORE_LOCKS.release(score_lock_key)
 
     conservation_status = governance["conservation_status"]
+    auto_approve: dict[str, Any] = {}
     try:
-        auto_approve = _should_auto_approve(
+        candidate_auto_approve = _should_auto_approve(
             request.category,
             core["confidence"],
             conservation_status,
             core["action"],
         )
-        auto_approve["confidence"] = core["confidence"]
-        auto_approve["conservation_status"] = conservation_status
-        auto_approve["action"] = core["action"]
-    except Exception:
+    except S2P_INFRASTRUCTURE_ERRORS:
         log.exception("S2P auto-approve enrichment failed")
-        auto_approve = None
+        degraded_fields.append("auto_approve")
+    else:
+        if isinstance(candidate_auto_approve, dict):
+            auto_approve = candidate_auto_approve
+            auto_approve["confidence"] = core["confidence"]
+            auto_approve["conservation_status"] = conservation_status
+            auto_approve["action"] = core["action"]
+        else:
+            degraded_fields.append("auto_approve")
 
     novelty_score = _record_score_novelty_from_snapshot(factor_vector, request.category, centroid_snapshot, scorer)
     frozen_twin = None
@@ -2459,16 +2613,26 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         )
     except (AttributeError, TypeError, ValueError):
         logger.exception("S2P frozen-twin enrichment failed")
+        degraded_fields.append("frozen_twin_enrichment")
+    if frozen_twin is None:
+        degraded_fields.append("frozen_twin_enrichment")
     try:
         process_context = _score_process_context_with_signal(cross_copilot_signal, http_request, str(lookup_id))
     except Exception:
         log.exception("S2P process context enrichment failed")
         process_context = None
+        degraded_fields.append("process_context")
+    threshold_decision: dict[str, Any] = {}
     try:
-        threshold_decision = compute_threshold_decision(invoice)
-    except Exception:
+        candidate_threshold_decision = compute_threshold_decision(invoice)
+    except S2P_INFRASTRUCTURE_ERRORS:
         log.exception("S2P threshold decision enrichment failed")
-        threshold_decision = None
+        degraded_fields.append("threshold_decision")
+    else:
+        if isinstance(candidate_threshold_decision, dict):
+            threshold_decision = candidate_threshold_decision
+        else:
+            degraded_fields.append("threshold_decision")
     proposal_id: str | None = None
     proposal_service = getattr(http_request.app.state, "proposal_service", None)
     if proposal_service is not None:
@@ -2514,15 +2678,17 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
         )
 
     score_reader = _s2p_graph_reader(http_request)
-    _submit_side_effect(
-        lambda: _link_decision_to_invoice(
+    link_persisted = False
+    try:
+        link_persisted = bool(_link_decision_to_invoice(
             scorer.graph_store,
             core["decision_id"],
             str(lookup_id),
             score_reader,
-        )
-    )
-    if auto_approve is not None:
+        ))
+    except GraphUnavailableError:
+        log.exception("S2P graph invoice link unavailable for decision %s", core["decision_id"])
+    if auto_approve:
         _submit_side_effect(lambda: record_auto_approve_decision(dict(auto_approve)))
     _submit_side_effect(
         lambda: _record_score_shadow(
@@ -2537,12 +2703,21 @@ def score_procurement_event(request: ScoreRequest, http_request: Request) -> dic
 
     response = ScoreResponse(
         **core,
-        proposal_id=proposal_id,
-        process_context=process_context,
-        active_variant=active_variant,
+        proposal_id=proposal_id or "",
+        proposal_id_available=bool(proposal_id),
+        process_context=process_context if isinstance(process_context, dict) else {},
+        process_context_available=isinstance(process_context, dict),
+        active_variant=active_variant if isinstance(active_variant, dict) else {},
+        active_variant_available=isinstance(active_variant, dict),
         auto_approve=auto_approve,
-        novelty_score=novelty_score,
+        auto_approve_available="auto_approve" not in degraded_fields,
+        novelty_score=novelty_score if novelty_score is not None else 0.0,
+        novelty_score_available=novelty_score is not None,
         threshold_decision=threshold_decision,
+        threshold_decision_available="threshold_decision" not in degraded_fields,
+        graph_context_available=graph_context_available,
+        degraded_fields=degraded_fields,
+        link_persisted=link_persisted,
     )
     payload = cast(dict[str, Any], _json_safe(response.model_dump()))
     if provenance:
@@ -2649,6 +2824,8 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             decision = reader.get_decision(request.decision_id)
         except GraphUnavailableError as exc:
             raise HTTPException(status_code=503, detail="S2P decision lookup failed") from exc
+        if decision is None:
+            raise HTTPException(status_code=404, detail="S2P decision not found")
         shadow = _s2p_shadow_state(http_request)
         if (
             shadow is not None
@@ -2687,6 +2864,17 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             request.outcome,
             context,
         )
+        if isinstance(payload, dict):
+            invoice_id = _decision_invoice_id(decision) or str(payload.get("invoice_id") or "")
+            if invoice_id:
+                links, links_available, link_failed = _read_advisory_invoice_links(
+                    scorer.graph_store, request.decision_id, invoice_id
+                )
+                payload["invoice_links"] = links
+                payload["invoice_link_available"] = links_available
+                payload["invoice_link_failed"] = bool(
+                    payload.get("invoice_link_failed", False) or link_failed
+                )
         learning_applied = _learn_result_applied(payload)
         if learning_applied:
             _resolve_decision_proposal(
@@ -2722,6 +2910,7 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             actual_action=request.actual_action,
             payload=payload,
         )
+        invalidate_materializer(http_request)
         apply_cache_invalidation_event("s2p", "learn")
         invalidate_preview_observation(_decision_invoice_id(decision))
         conservation_after_snapshot = _receipt_conservation_snapshot(http_request)
@@ -2825,6 +3014,8 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             decision = reader.get_decision(request.decision_id)
         except GraphUnavailableError as exc:
             raise HTTPException(status_code=503, detail="S2P decision lookup failed") from exc
+        if decision is None:
+            raise HTTPException(status_code=404, detail="S2P decision not found")
         category = _decision_category(decision) or request.category
         pre_centroid = _read_centroid_for_l5(
             scorer,
@@ -2852,6 +3043,17 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             request.outcome,
             outcome_context,
         )
+        if isinstance(payload, dict):
+            invoice_id = _decision_invoice_id(decision) or str(payload.get("invoice_id") or "")
+            if invoice_id:
+                links, links_available, link_failed = _read_advisory_invoice_links(
+                    scorer.graph_store, request.decision_id, invoice_id
+                )
+                payload["invoice_links"] = links
+                payload["invoice_link_available"] = links_available
+                payload["invoice_link_failed"] = bool(
+                    payload.get("invoice_link_failed", False) or link_failed
+                )
         learning_applied = _learn_result_applied(payload)
         if learning_applied:
             _resolve_decision_proposal(
@@ -2899,6 +3101,7 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             actual_action=request.analyst_action,
             payload=payload,
         )
+        invalidate_materializer(http_request)
         apply_cache_invalidation_event("s2p", "learn")
         invalidate_preview_observation(invoice_id)
         conservation_after_snapshot = _receipt_conservation_snapshot(http_request)

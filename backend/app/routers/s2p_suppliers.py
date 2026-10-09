@@ -71,14 +71,20 @@ def _summary(supplier: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _trend_direction(exception_rate_trend: float | None) -> str:
+def _trend_direction(
+    exception_rate_trend: float | None, *, return_status: bool = False,
+) -> str | tuple[str, bool]:
     if exception_rate_trend is None:
-        return "stable"
+        result = "stable"
+        return (result, False) if return_status else result
     if exception_rate_trend > 0.0:
-        return "declining"
+        result = "declining"
+        return (result, True) if return_status else result
     if exception_rate_trend < 0.0:
-        return "improving"
-    return "stable"
+        result = "improving"
+        return (result, True) if return_status else result
+    result = "stable"
+    return (result, True) if return_status else result
 
 
 def _profile_summary(profile: SupplierProfile) -> dict[str, Any]:
@@ -86,6 +92,9 @@ def _profile_summary(profile: SupplierProfile) -> dict[str, Any]:
     invoices = _supplier_invoices(supplier_id)
     otif_score = float(profile.otif or 0.0)
     data = asdict(profile)
+    trend_direction, trend_available = cast(tuple[str, bool], _trend_direction(
+        profile.exception_rate_trend, return_status=True,
+    ))
     data.update(
         {
             "supplier_id": supplier_id,
@@ -96,7 +105,8 @@ def _profile_summary(profile: SupplierProfile) -> dict[str, Any]:
             "exception_rate": float(profile.exception_rate or 0.0),
             "invoice_count": int(profile.invoice_count or 0),
             "category_distribution": _category_distribution(invoices),
-            "trend_direction": _trend_direction(profile.exception_rate_trend),
+            "trend_direction": trend_direction,
+            "trend_available": trend_available,
         }
     )
     return data
@@ -207,6 +217,7 @@ def suppliers() -> dict[str, Any]:
         "suppliers": rows,
         "total": len(rows),
         "source": "accumulator_with_fixture_fallback",
+        "profiles_available": accumulator.profiles_available,
     }
 
 

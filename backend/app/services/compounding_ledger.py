@@ -5,11 +5,10 @@ from __future__ import annotations
 import json
 import math
 from datetime import datetime, timezone
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Protocol
 from uuid import uuid4
 
 from app.domains.s2p.proposals import DecisionChangeProposal
-from app.services.proposal_service import ProposalStore
 from copilot_sdk.graph.protocol import GraphStore
 
 
@@ -35,6 +34,16 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+class ProposalReadStore(Protocol):
+    """Read interface shared by graph-backed and SQLite proposal stores."""
+
+    def list_recent(self, limit: int = 50) -> list[DecisionChangeProposal]: ...
+
+    def get_outcome(self, proposal_id: str) -> dict[str, Any] | None: ...
+
+    def count(self, status: str | None = None) -> int: ...
+
+
 class CompoundingLedger:
     """Persist live S2P observations as append-only AGE events."""
 
@@ -42,7 +51,7 @@ class CompoundingLedger:
 
     def __init__(
         self,
-        proposal_store: ProposalStore,
+        proposal_store: ProposalReadStore,
         graph_store: GraphStore,
         *,
         iks_provider: Callable[[], Mapping[str, Any] | float | None] | None = None,

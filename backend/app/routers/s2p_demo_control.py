@@ -86,10 +86,9 @@ def selected_twin(manager: S2PAutonomyManager) -> FrozenTwin:
     """Production baseline remains immutable, even after demo selection/restart."""
     if not demo_presentation_enabled():
         return manager.twin
-    pointer = manager.twin.store.base_dir / "s2p-demo-active.json"
-    if not pointer.exists():
+    selection = manager.twin.store.graph_store.get_governance("s2p", "demo_twin_active")
+    if selection is None:
         return manager.twin
-    selection = json.loads(pointer.read_text(encoding="utf-8"))
     snapshot_id = str(selection["snapshot_id"])
     suffix = snapshot_id.removeprefix("s2p-demo-")
     if not snapshot_id.startswith("s2p-demo-") or len(suffix) != 32 or any(c not in "0123456789abcdef" for c in suffix):
@@ -124,11 +123,9 @@ def demo_refreeze(body: RefreezeRequest, request: Request) -> dict[str, Any]:
             if not previous.verify_integrity():
                 raise ValueError("Previous snapshot integrity check failed")
             run_id = uuid4().hex
-            base = manager.twin.store.base_dir
-            archive = base / "demo-archive"
-            archive.mkdir(parents=True, exist_ok=True)
-            with (archive / f"{run_id}.json").open("x", encoding="utf-8") as handle:
-                handle.write(previous.to_json())
+            graph_store = manager.twin.store.graph_store
+            graph_store.save_evolution("s2p", f"frozen_twin_archive:{run_id}",
+                                       {"snapshot": json.loads(previous.to_json())})
             provenance = {"origin": "demo_reseed", "archived_previous": True,
                           "previous_checksum": previous.checksum, "archive_id": run_id,
                           "planted": True, "evidence_tier": "T_S"}
@@ -137,10 +134,7 @@ def demo_refreeze(body: RefreezeRequest, request: Request) -> dict[str, Any]:
             snapshot = twin.freeze(getattr(manager.scorer, "_scorer", manager.scorer),
                                    {**dict(manager.conservation.get_state()), "demo_provenance": provenance},
                                    float(manager.scorer.trajectory().current_iks), snapshot_id)
-            temporary = base / f"s2p-demo-active-{run_id}.tmp"
-            with temporary.open("x", encoding="utf-8") as handle:
-                json.dump({"snapshot_id": snapshot_id}, handle)
-            os.replace(temporary, base / "s2p-demo-active.json")
+            graph_store.save_governance("s2p", "demo_twin_active", {"snapshot_id": snapshot_id})
             return {"frozen": True, "snapshot_id": snapshot_id, "checksum": snapshot.checksum,
                     "provenance": provenance}
         except (OSError, ValueError, RuntimeError, KeyError) as exc:

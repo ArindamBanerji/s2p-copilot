@@ -57,8 +57,8 @@ def test_product_like_config_status_reports_guarded_intent_without_activation():
     body = TestClient(app).get("/api/s2p/graph/status").json()
 
     assert body["requested_backend"] == "age"
-    assert body["active_backend"] == "sqlite"
-    assert body["sqlite_authoritative"] is True
+    assert body["active_backend"] == "memory"
+    assert body["memory_authoritative"] is True
     assert body["age_active"] is False
     assert body["active_graph_name"] == "soc_graph"
     assert body["age_graph_kind"] == "product"
@@ -164,8 +164,8 @@ def test_generic_graph_env_does_not_switch_s2p_product_like_backend():
 
     body = TestClient(app).get("/api/s2p/graph/status").json()
 
-    assert body["requested_backend"] == "sqlite"
-    assert body["active_backend"] == "sqlite"
+    assert body["requested_backend"] == "memory"
+    assert body["active_backend"] == "memory"
     assert body["ignored_generic_graph_env"] is True
     assert body["active_graph_name"] is None
     _assert_no_secret_text(body)

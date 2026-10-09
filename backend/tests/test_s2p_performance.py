@@ -15,6 +15,8 @@ from app.domains.s2p.config import S2P_CATEGORIES
 from app.graph.s2p_graph_reader import S2PGraphReader
 from app.main import app, build_s2p_scorer
 from app.routers import s2p_performance
+from app.services.response_materializer import ResponseMaterializer
+from app.services.s2p_materialization import SnapshotStore
 
 client = TestClient(app)
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -241,11 +243,19 @@ def test_savings_estimate_positive_when_decisions_seeded():
     assert response.json()["savings_estimate_usd"] > 0
 
 
-def test_summary_concurrent_requests_coalesce_history_reads():
+def _summary_materializer(store, ttl=30.0):
+    return ResponseMaterializer("s2p", lambda: store, {
+        "performance_summary": lambda shared: s2p_performance._build_summary(
+            S2PGraphReader(SnapshotStore(shared))),
+    }, ttl=ttl)
+
+
+def test_summary_concurrent_requests_coalesce_history_reads(monkeypatch):
     original = app.state.graph_store
     fake = SlowSummaryGraphStore()
     app.state.graph_store = fake
     app.state.s2p_graph_reader = S2PGraphReader(store=fake)
+    monkeypatch.setattr(app.state, "materializer", _summary_materializer(fake), raising=False)
     s2p_performance.clear_summary_cache()
     try:
         started = time.perf_counter()
@@ -267,14 +277,13 @@ def test_summary_cache_expires(monkeypatch):
     app.state.graph_store = fake
     app.state.s2p_graph_reader = S2PGraphReader(store=fake)
     s2p_performance.clear_summary_cache()
-    monkeypatch.setattr(s2p_performance, "SUMMARY_CACHE_TTL_SECONDS", 60.0)
+    materializer = _summary_materializer(fake, ttl=60.0)
+    monkeypatch.setattr(app.state, "materializer", materializer, raising=False)
     try:
         first = client.get("/api/s2p/performance/summary").json()
         cached = client.get("/api/s2p/performance/summary").json()
-        key = s2p_performance._summary_cache_key(fake, fake.domain)
-        with s2p_performance._SUMMARY_CACHE_LOCK:
-            _timestamp, payload = s2p_performance._SUMMARY_CACHE[key]
-            s2p_performance._SUMMARY_CACHE[key] = (time.monotonic() - 61.0, payload)
+        with materializer._lock:
+            materializer._last_refresh = time.monotonic() - 61.0
         refreshed = client.get("/api/s2p/performance/summary").json()
     finally:
         app.state.graph_store = original

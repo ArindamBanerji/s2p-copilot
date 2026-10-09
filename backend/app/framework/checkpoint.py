@@ -71,7 +71,9 @@ class CheckpointService:
         return checkpoint_id
 
     @staticmethod
-    async def list_checkpoints(graph_service: Any) -> list:
+    async def list_checkpoints(
+        graph_service: Any, *, return_status: bool = False,
+    ) -> list | tuple[list, bool]:
         """Return all Checkpoint nodes ordered by timestamp DESC."""
         try:
             result = await graph_service.run_query(
@@ -85,9 +87,9 @@ class CheckpointService:
             )
         except Exception as exc:
             log.warning("[CHECKPOINT] list_checkpoints query failed: %s", exc)
-            return []
+            return ([], False) if return_status else []
 
-        return [
+        checkpoints = [
             {
                 "id":             r.get("id"),
                 "timestamp":      str(r.get("timestamp") or ""),
@@ -96,6 +98,7 @@ class CheckpointService:
             }
             for r in result
         ]
+        return (checkpoints, True) if return_status else checkpoints
 
     @staticmethod
     async def rollback(

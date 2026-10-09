@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 import numpy as np
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from copilot_sdk.backend.investigation_router import create_investigation_router
@@ -14,6 +17,7 @@ from app.domains.s2p.config import S2PDomainConfig
 from app.evidence_provider import S2PEvidenceProvider
 from app.main import app
 from app.vld_preseed import seed_vld_s2p_showcase, showcase_invoice
+from app.routers.s2p_evidence import _trust_explanation_payload
 
 
 def test_evidence_provider_protocol(tmp_path) -> None:
@@ -28,6 +32,22 @@ def test_evidence_supplier_trust_with_history(tmp_path) -> None:
     assert evidence["source"] == "supplier_history"
     assert evidence["trust_score"] > 0.8
     assert evidence["partial_delivery_pricing_error_ratio"] == 3.1
+
+
+def test_evidence_trust_marks_graph_failure() -> None:
+    class FailingScorer:
+        def get_verified_count(self):
+            raise RuntimeError("graph unavailable")
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(scorer=FailingScorer())))
+    payload = _trust_explanation_payload(
+        cast(Request, request),
+        category="price_variance",
+        action="hold_for_review",
+        confidence=0.5,
+        variables={"factors": {}},
+    )
+    assert payload["graph_available"] is False
 
 
 def test_evidence_contract_coverage(tmp_path) -> None:
@@ -200,10 +220,10 @@ def _investigate_export_geometry(invoice: dict, payload: dict, *, k_weights: lis
     )
 
 
-def _s2p_export() -> dict:
+def _s2p_export() -> dict[str, Any]:
     sdk = Path(__file__).resolve().parents[3] / "copilot-sdk"
     with (sdk / "real_centroids_v1.json").open(encoding="utf-8") as handle:
-        return json.load(handle)["copilots"]["s2p"]
+        return cast(dict[str, Any], json.load(handle)["copilots"]["s2p"])
 
 
 def _router_test_app(payload: dict):

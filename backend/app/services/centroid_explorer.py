@@ -4,15 +4,24 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import math
+from numbers import Real
+from sqlite3 import OperationalError as SQLiteOperationalError
 from typing import Any, cast
 
+from psycopg import InterfaceError, OperationalError
+from ci_platform.graph.age_graph_store import GraphUnavailableError as AGEGraphUnavailableError
+
 from app.domains.s2p.config import S2PDomainConfig
-from app.graph.s2p_graph_reader import S2PGraphReader
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from copilot_sdk.graph.protocol import GraphStore
 
 
 DOMAIN = "s2p"
 SUPPLIER_ENRICHMENT_NAMESPACE = "s2p_supplier_metrics"
+DK_READ_ERRORS = (
+    OSError, GraphUnavailableError, AGEGraphUnavailableError,
+    OperationalError, InterfaceError, SQLiteOperationalError,
+)
 
 
 class CentroidExplorerError(ValueError):
@@ -51,7 +60,10 @@ class FactorContribution:
     direction: str
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        # Keep absence internally; JSON consumers always receive a number.
+        payload["dk_weight"] = self.dk_weight if self.dk_weight is not None else 0.0
+        return payload
 
 
 @dataclass(frozen=True)
@@ -66,7 +78,9 @@ class CentroidExplanation:
     centroid_distances: dict[str, float]
     summary: str
     dk_status: str
+    dk_available: bool = True
     p39_evidence: dict[str, Any] = field(default_factory=dict)
+    p39_available: bool = True
     read_only: bool = True
 
     def to_dict(self) -> dict[str, Any]:
@@ -74,6 +88,8 @@ class CentroidExplanation:
         payload["factor_contributions"] = [
             contribution.to_dict() for contribution in self.factor_contributions
         ]
+        if self.p39_available:
+            payload.pop("p39_available", None)
         return payload
 
 
@@ -134,12 +150,16 @@ class S2PCentroidExplorerService:
         decision = self._get_decision(decision_id)
         if decision is None:
             raise CentroidExplorerError(f"Decision not found: {decision_id}", status_code=404)
+        p39_evidence = self._p39_evidence(decision)
+        dk_weights, dk_available = read_dk_weights(self.scorer, expected_len=self.preset.n_factors)
         return explain_decision(
             decision,
             self.scorer,
             self.preset,
-            dk_weights=_call_or_none(getattr(self.scorer, "get_dk_weights", None)),
-            p39_evidence=self._p39_evidence(decision),
+            dk_weights=dk_weights,
+            dk_available=dk_available,
+            p39_evidence=p39_evidence,
+            p39_available=p39_evidence is not None,
         )
 
     def get_centroid_drift(self, category: str, action: str, *, limit: int = 50) -> DriftResponse:
@@ -192,12 +212,12 @@ class S2PCentroidExplorerService:
         result = self.reader.get_decision(str(decision_id))
         return result if isinstance(result, dict) else None
 
-    def _p39_evidence(self, decision: dict[str, Any]) -> dict[str, Any]:
+    def _p39_evidence(self, decision: dict[str, Any]) -> dict[str, Any] | None:
         supplier_id = _supplier_id(decision)
         if not supplier_id:
             return {}
         if not isinstance(self.graph_store, GraphStore):
-            return {}
+            return None
         try:
             values = self.graph_store.read_entity_enrichment(
                 domain=DOMAIN,
@@ -206,7 +226,7 @@ class S2PCentroidExplorerService:
                 namespace=SUPPLIER_ENRICHMENT_NAMESPACE,
             )
         except Exception:
-            return {}
+            return None
         if not isinstance(values, dict):
             return {}
         return {
@@ -238,7 +258,9 @@ def explain_decision(
     preset: type[S2PDomainConfig] = S2PDomainConfig,
     *,
     dk_weights: Any = None,
+    dk_available: bool = True,
     p39_evidence: dict[str, Any] | None = None,
+    p39_available: bool = True,
 ) -> CentroidExplanation:
     decision_id = str(decision.get("decision_id") or "")
     category = str(decision.get("category") or _metadata(decision).get("category") or "")
@@ -267,7 +289,10 @@ def explain_decision(
     closest_centroid = action_centroids[closest_action]
     category_index = list(preset.categories).index(category)
     dk_row = _dk_row(dk_weights, category_index, preset.n_factors)
-    dk_status = "available" if dk_row is not None else "learning"
+    dk_available = dk_available and (dk_weights is None or dk_row is not None)
+    if not dk_available:
+        dk_row = None
+    dk_status = "unavailable" if not dk_available else ("available" if dk_row is not None else "learning")
     display_weights = dk_row if dk_row is not None else [1.0 / preset.n_factors] * preset.n_factors
 
     contributions = [
@@ -300,7 +325,9 @@ def explain_decision(
             contributions=contributions,
         ),
         dk_status=dk_status,
+        dk_available=dk_available,
         p39_evidence=dict(p39_evidence or {}),
+        p39_available=p39_available,
     )
 
 
@@ -404,25 +431,20 @@ def _factor_contribution(
 
 
 def _dk_row(dk_weights: Any, category_index: int, expected_len: int) -> list[float] | None:
-    if dk_weights is None or isinstance(dk_weights, (str, bytes, dict)):
-        return None
-    try:
-        rows = list(dk_weights)
-    except TypeError:
-        return None
-    if not rows:
+    to_list = getattr(dk_weights, "tolist", None)
+    rows = to_list() if callable(to_list) else dk_weights
+    if not isinstance(rows, (list, tuple)) or not rows:
         return None
     row: Any
-    if all(isinstance(item, list) for item in rows):
+    if all(isinstance(item, (list, tuple)) for item in rows):
         if category_index < 0 or category_index >= len(rows):
             return None
         row = rows[category_index]
     else:
         row = rows
-    try:
-        values = [float(value) for value in list(row)]
-    except (TypeError, ValueError):
+    if not all(isinstance(value, Real) and not isinstance(value, bool) for value in row):
         return None
+    values = [float(value) for value in row]
     values = _pad_legacy_s2p_vector(values, expected_len)
     if len(values) != expected_len or not all(math.isfinite(value) for value in values):
         return None
@@ -536,13 +558,27 @@ def _serialize_provenanced(value: Any) -> dict[str, Any]:
     }
 
 
-def _call_or_none(function: Any, *args: Any, **kwargs: Any) -> Any:
-    if not callable(function):
-        return None
+def read_dk_weights(scorer: Any, *, expected_len: int = S2PDomainConfig.n_factors) -> tuple[Any, bool]:
+    """Preserve cold-start None while distinguishing failed or malformed reads."""
+    weights: Any = None
+    available = True
     try:
-        return function(*args, **kwargs)
-    except Exception:
-        return None
+        getter = getattr(scorer, "get_dk_weights", None)
+        if callable(getter):
+            weights = getter()
+        else:
+            available = False
+        if weights is not None:
+            to_list = getattr(weights, "tolist", None)
+            rows = to_list() if callable(to_list) else weights
+            if not isinstance(rows, (list, tuple)) or not rows:
+                available = False
+            else:
+                count = len(rows) if isinstance(rows[0], (list, tuple)) else 1
+                available = all(_dk_row(rows, index, expected_len) is not None for index in range(count))
+    except DK_READ_ERRORS:
+        available = False
+    return (weights if available else None), available
 
 
 def _index_or_error(values: list[str], value: str, label: str) -> int:

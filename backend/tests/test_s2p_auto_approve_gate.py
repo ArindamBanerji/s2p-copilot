@@ -65,7 +65,7 @@ class TrackingGraphStore(InMemoryGraphStore):
         domain: str | None = None,
     ) -> None:
         self.write_outcome_calls += 1
-        return super().write_outcome(
+        super().write_outcome(
             decision_id,
             actual_action,
             is_correct,
@@ -491,7 +491,10 @@ def test_threshold_contracts_after_verified_incorrect_auto_approval():
 
 def test_audit_event_status_shadow_only_not_verified():
     _set_graph_store(_graph_store(_verified_rows()))
-    client.post("/api/s2p/auto-approve/enable", json={"mode": "shadow", "min_verified_decisions": 1})
+    client.post(
+        "/api/s2p/auto-approve/enable",
+        json={"mode": "shadow", "min_verified_decisions": 1, "spot_check_rate": 0.0},
+    )
     client.post(
         "/api/s2p/auto-approve/evaluate",
         json={

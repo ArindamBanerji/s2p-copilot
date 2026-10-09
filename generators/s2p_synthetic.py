@@ -98,6 +98,8 @@ DISTRIBUTION = {
 SUPPLIERS = [
     {
         "supplier_id": "SUP-001",
+        "source": "graph",
+        "lead_time": {"contractual": 30, "actual_q4": 35},
         "name": "Aster Industrial Chemicals",
         "category": "industrial chemicals",
         "exception_rate": 0.12,
@@ -110,6 +112,8 @@ SUPPLIERS = [
     },
     {
         "supplier_id": "SUP-002",
+        "source": "graph",
+        "lead_time": {"contractual": 14, "actual_q4": 16},
         "name": "Pacifica Logistics",
         "category": "logistics",
         "exception_rate": 0.09,
@@ -122,6 +126,8 @@ SUPPLIERS = [
     },
     {
         "supplier_id": "SUP-003",
+        "source": "graph",
+        "lead_time": {"contractual": 21, "actual_q4": 19},
         "name": "Northstar Packaging",
         "category": "packaging",
         "exception_rate": 0.04,
@@ -134,6 +140,8 @@ SUPPLIERS = [
     },
     {
         "supplier_id": "SUP-004",
+        "source": "graph",
+        "lead_time": {"contractual": 30, "actual_q4": 28},
         "name": "Novatek IT Services",
         "category": "IT services",
         "exception_rate": 0.03,
@@ -146,6 +154,8 @@ SUPPLIERS = [
     },
     {
         "supplier_id": "SUP-005",
+        "source": "graph",
+        "lead_time": {"contractual": 45, "actual_q4": 52},
         "name": "Yangtze Raw Materials",
         "category": "raw materials",
         "exception_rate": 0.14,
@@ -158,6 +168,8 @@ SUPPLIERS = [
     },
     {
         "supplier_id": "SUP-006",
+        "source": "graph",
+        "lead_time": {"contractual": 14, "actual_q4": 13},
         "name": "Meridian Office Services",
         "category": "office services",
         "exception_rate": 0.02,
@@ -170,6 +182,8 @@ SUPPLIERS = [
     },
     {
         "supplier_id": "SUP-007",
+        "source": "graph",
+        "lead_time": {"contractual": 21, "actual_q4": 24},
         "name": "Boreal Equipment Maintenance",
         "category": "equipment maintenance",
         "exception_rate": 0.08,
@@ -182,6 +196,8 @@ SUPPLIERS = [
     },
     {
         "supplier_id": "SUP-008",
+        "source": "graph",
+        "lead_time": {"contractual": 14, "actual_q4": 14},
         "name": "Gridline Utilities",
         "category": "utilities",
         "exception_rate": 0.05,
@@ -194,6 +210,8 @@ SUPPLIERS = [
     },
     {
         "supplier_id": "SUP-009",
+        "source": "graph",
+        "lead_time": {"contractual": 35, "actual_q4": 41},
         "name": "Rhine-Stahl Metals",
         "category": "metals",
         "exception_rate": 0.11,
@@ -206,6 +224,8 @@ SUPPLIERS = [
     },
     {
         "supplier_id": "SUP-010",
+        "source": "graph",
+        "lead_time": {"contractual": 28, "actual_q4": 25},
         "name": "Helix Lab Supplies",
         "category": "pharma/lab supplies",
         "exception_rate": 0.06,

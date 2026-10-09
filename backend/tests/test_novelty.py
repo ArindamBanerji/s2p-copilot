@@ -296,7 +296,7 @@ def test_score_response_includes_novelty_score_key():
     assert "novelty_score" in response.json()
 
 
-def test_score_novelty_score_json_safe_inf_to_null(monkeypatch):
+def test_score_novelty_score_json_safe_inf_to_typed_unavailable(monkeypatch):
     monkeypatch.setattr(
         s2p_router,
         "compute_nearest_distance",
@@ -306,7 +306,8 @@ def test_score_novelty_score_json_safe_inf_to_null(monkeypatch):
     response = client.post("/api/s2p/score", json=VALID_REQUEST)
 
     assert response.status_code == 200
-    assert response.json()["novelty_score"] is None
+    assert response.json()["novelty_score"] == 0.0
+    assert response.json()["novelty_score_available"] is False
     history = get_novelty_tracker().get_history()
     assert len(history) == 1
     assert history[0]["nearest_distance"] == 0.0

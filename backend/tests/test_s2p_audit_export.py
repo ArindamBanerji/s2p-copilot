@@ -4,8 +4,10 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+from app.domains.s2p.config import S2PDomainConfig
 from app.graph.s2p_graph_reader import S2PGraphReader
 from app.main import app, build_s2p_scorer
+from app.routers import s2p_audit_export
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
@@ -99,6 +101,8 @@ def test_audit_export_returns_required_sections() -> None:
         "engine",
     } <= set(payload)
     assert payload["source"] == "live"
+    assert payload["factor_analysis"]["fingerprint_available"] is True
+    assert payload["factor_analysis_available"] is True
 
 
 def test_audit_export_summary_and_conservation_fields() -> None:
@@ -162,6 +166,68 @@ def test_audit_export_handles_fresh_state_without_crashing() -> None:
     assert csv.json()["exported"] >= 0
 
 
+def test_audit_export_marks_failed_iks_and_factor_analysis(monkeypatch) -> None:
+    reset_sdk_scorer()
+    monkeypatch.setattr(s2p_audit_export, "_get_iks", lambda _scorer: None)
+    monkeypatch.setattr(s2p_audit_export, "_factor_analysis", lambda _scorer, _decisions: None)
+
+    payload = client.get("/api/s2p/audit/export").json()
+
+    assert payload["summary"]["iks"] == {}
+    assert payload["summary"]["iks_available"] is False
+    assert payload["factor_analysis"] == {
+        "fingerprint": {},
+        "factor_names": [],
+        "factor_averages": {},
+        "fingerprint_available": False,
+    }
+    assert payload["factor_analysis_available"] is False
+
+
+def test_factor_analysis_preserves_typed_fields_when_fingerprint_returns_none() -> None:
+    result = s2p_audit_export._factor_analysis(
+        SimpleNamespace(fingerprint=lambda: None), []
+    )
+
+    assert result == {
+        "fingerprint": {},
+        "factor_names": [],
+        "factor_averages": {},
+        "fingerprint_available": False,
+    }
+
+
+def test_factor_analysis_preserves_typed_fields_when_fingerprint_read_fails() -> None:
+    def unavailable() -> dict:
+        raise ConnectionError("fingerprint unavailable")
+
+    result = s2p_audit_export._factor_analysis(
+        SimpleNamespace(fingerprint=unavailable), []
+    )
+
+    assert result == {
+        "fingerprint": {},
+        "factor_names": [],
+        "factor_averages": {},
+        "fingerprint_available": False,
+    }
+
+
+def test_factor_analysis_populates_fields_when_fingerprint_is_available() -> None:
+    factors = {name: float(index + 1) / 10 for index, name in enumerate(S2PDomainConfig.factors)}
+    fingerprint = {"digest": "fp-1"}
+
+    result = s2p_audit_export._factor_analysis(
+        SimpleNamespace(fingerprint=lambda: fingerprint),
+        [{"factors": factors}],
+    )
+
+    assert result["fingerprint"] == fingerprint
+    assert result["factor_names"] == list(S2PDomainConfig.factors)
+    assert result["factor_averages"] == factors
+    assert result["fingerprint_available"] is True
+
+
 def test_audit_export_does_not_write_to_graph_store() -> None:
     original_graph = app.state.graph_store
     original_scorer = app.state.scorer
@@ -182,7 +248,12 @@ def test_audit_export_does_not_write_to_graph_store() -> None:
         ]
     )
     app.state.graph_store = fake_graph
-    app.state.scorer = SimpleNamespace(graph_store=fake_graph, get_phase=lambda: "GREEN", trajectory=lambda: {})
+    app.state.scorer = SimpleNamespace(
+        graph_store=fake_graph,
+        get_phase=lambda: "GREEN",
+        trajectory=lambda: {},
+        fingerprint=lambda: {"digest": "audit-export-test"},
+    )
     app.state.s2p_graph_reader = S2PGraphReader(store=fake_graph)
     try:
         assert client.get("/api/s2p/audit/export").status_code == 200

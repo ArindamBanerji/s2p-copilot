@@ -24,6 +24,7 @@ class OutcomeReceipt:
     is_correct: bool | None = None
     factors: dict[str, Any] | None = None
     conservation_status: str = "UNKNOWN"
+    conservation_snapshot_available: bool = True
     amount: float | None = None
     amount_at_risk: float | None = None
     override_reason: Optional[str] = None
@@ -58,6 +59,7 @@ class OutcomeReceipt:
         else:
             self.factors = {str(key): float(value) for key, value in self.factors.items()}
         self.conservation_status = self.conservation_status or self.conservation_state_after or "UNKNOWN"
+        self.conservation_snapshot_available = bool(self.conservation_snapshot_available)
         self.amount = float(self.amount) if self.amount is not None else None
         self.amount_at_risk = float(self.amount_at_risk) if self.amount_at_risk is not None else None
         self.amount_recovered = float(self.amount_recovered) if self.amount_recovered is not None else None
@@ -94,6 +96,7 @@ class OutcomeReceipt:
             "centroid_updated": bool(self.centroid_updated),
             "conservation_state_before": self.conservation_state_before,
             "conservation_state_after": self.conservation_state_after,
+            "conservation_snapshot_available": self.conservation_snapshot_available,
             "verified_count_before": self.verified_count_before,
             "verified_count_after": self.verified_count_after,
             "previous_receipt_hash": self.previous_receipt_hash,
@@ -131,6 +134,7 @@ class OutcomeReceipt:
             "centroid_updated": self.centroid_updated,
             "conservation_state_before": self.conservation_state_before,
             "conservation_state_after": self.conservation_state_after,
+            "conservation_snapshot_available": self.conservation_snapshot_available,
             "verified_count_before": self.verified_count_before,
             "verified_count_after": self.verified_count_after,
             "previous_hash": self.previous_receipt_hash,

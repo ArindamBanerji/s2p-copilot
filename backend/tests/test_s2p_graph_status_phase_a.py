@@ -55,10 +55,10 @@ def _assert_no_secret_text(value) -> None:
     assert "secret" not in encoded.lower()
 
 
-def test_active_graph_config_defaults_to_sqlite_without_age_requirements():
+def test_active_graph_config_defaults_to_memory_without_age_requirements():
     config = S2PActiveGraphConfig.from_env({})
 
-    assert config.requested_backend == "sqlite"
+    assert config.requested_backend == "memory"
     assert config.domain == "s2p"
     assert config.dsn is None
     assert config.graph is None
@@ -141,14 +141,14 @@ def test_active_age_rejects_blank_domain():
         )
 
 
-def test_graph_status_default_reports_sqlite_authoritative():
+def test_graph_status_default_reports_memory_authoritative():
     response = TestClient(app).get("/api/s2p/graph/status")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["active_backend"] == "sqlite"
-    assert body["requested_backend"] == "sqlite"
-    assert body["sqlite_authoritative"] is True
+    assert body["active_backend"] == "memory"
+    assert body["requested_backend"] == "memory"
+    assert body["memory_authoritative"] is True
     assert body["age_active"] is False
     assert body["active_domain"] == "s2p"
     assert body["migration_backfill_status"] == "not_in_scope"
@@ -172,8 +172,8 @@ def test_generic_graph_env_is_ignored_for_s2p_active_backend():
 
     assert response.status_code == 200
     body = response.json()
-    assert body["active_backend"] == "sqlite"
-    assert body["requested_backend"] == "sqlite"
+    assert body["active_backend"] == "memory"
+    assert body["requested_backend"] == "memory"
     assert body["ignored_generic_graph_env"] is True
     assert body["active_graph_name"] is None
     _assert_no_secret_text(body)
@@ -194,7 +194,7 @@ def test_active_age_config_validates_test_graph_without_constructing_age_store()
 
     assert response.status_code == 200
     body = response.json()
-    assert body["active_backend"] == "sqlite"
+    assert body["active_backend"] == "memory"
     assert body["requested_backend"] == "age"
     assert body["age_active"] is False
     assert body["shadow_allowed"] is True
@@ -274,7 +274,7 @@ def test_product_graph_status_reports_readiness_fields_without_cutover():
 
     body = TestClient(app).get("/api/s2p/graph/status").json()
 
-    assert body["active_backend"] == "sqlite"
+    assert body["active_backend"] == "memory"
     assert body["requested_backend"] == "age"
     assert body["age_active"] is False
     assert body["active_graph_name"] == "soc_graph"
@@ -388,7 +388,7 @@ def test_status_redacts_dsn_and_reports_rollback_instructions():
     _assert_no_secret_text(body)
 
 
-def test_phase_a_active_age_intent_does_not_switch_score_writes_off_sqlite():
+def test_phase_a_active_age_intent_does_not_switch_score_writes_off_memory():
     config = S2PActiveGraphConfig.from_env(
         {
             "S2P_ACTIVE_GRAPH_BACKEND": "age",
@@ -407,5 +407,5 @@ def test_phase_a_active_age_intent_does_not_switch_score_writes_off_sqlite():
     assert "AGE" not in type(app.state.graph_store).__name__
     status = TestClient(app).get("/api/s2p/graph/status").json()
     assert status["requested_backend"] == "age"
-    assert status["active_backend"] == "sqlite"
+    assert status["active_backend"] == "memory"
     assert status["age_active"] is False

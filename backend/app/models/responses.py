@@ -38,6 +38,9 @@ class S2PScoreResponse(FlexibleResponse):
     evidence_tier: str | None = None
     learning_applied: bool | None = None
     reason: str | None = None
+    graph_context_available: bool = True
+    degraded_fields: list[str] = []
+    link_persisted: bool = False
 
 
 class LearningGateResponse(FlexibleResponse):

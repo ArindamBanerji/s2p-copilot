@@ -1,9 +1,7 @@
-"""Budget restart contracts through real policies, scorers and graph stores."""
+"""Budget reconstruction contracts through real policies, scorers and graph stores."""
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from pathlib import Path
-import sqlite3
 from typing import Any
 
 from fastapi import Depends, FastAPI
@@ -17,16 +15,29 @@ from app.routers.s2p_demo_control import budget_candidates
 from app.services.budget_persistence import PersistentBudgetPolicy, STATE_KEY
 from copilot_sdk.backend.investigation_router import create_investigation_router
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
+from copilot_sdk.graph.legacy_signal_filter import LegacySignalFilteringGraphStore
 from copilot_sdk.graph.protocol import GraphStore
-from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
 from copilot_sdk.scoring import CompoundingScorer
 from copilot_sdk.scoring.budget_policy import MAX_HISTORY
 
 
-@pytest.fixture(params=["memory", "sqlite"])
-def store(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[GraphStore]:
-    real: GraphStore = (InMemoryGraphStore(domain="s2p") if request.param == "memory"
-            else SQLiteGraphStore(tmp_path / "budget.db", domain="s2p"))
+class FailingMemoryStore(InMemoryGraphStore):
+    fail_governance_writes = False
+
+    def save_governance(self, domain: str, key: str, state: dict[str, Any]) -> None:
+        if self.fail_governance_writes:
+            raise RuntimeError("graph write unavailable")
+        super().save_governance(domain, key, state)
+
+
+@pytest.fixture(params=["memory", "wrapped-memory"])
+def store(request: pytest.FixtureRequest) -> Iterator[GraphStore]:
+    primary = InMemoryGraphStore(domain="s2p")
+    real: GraphStore = (
+        primary
+        if request.param == "memory"
+        else LegacySignalFilteringGraphStore(primary, domain="s2p")
+    )
     try:
         yield real
     finally:
@@ -63,9 +74,8 @@ def budget_app(policy: PersistentBudgetPolicy, scorer: CompoundingScorer) -> Fas
     return app
 
 
-def test_real_investigations_survive_sqlite_reopen(tmp_path: Path) -> None:
-    path = tmp_path / "restart.db"
-    first = SQLiteGraphStore(path, domain="s2p")
+def test_real_investigations_survive_policy_reconstruction() -> None:
+    first = InMemoryGraphStore(domain="s2p")
     try:
         scorer = scorer_with_outcomes(first)
         policy = PersistentBudgetPolicy(first)
@@ -97,27 +107,20 @@ def test_real_investigations_survive_sqlite_reopen(tmp_path: Path) -> None:
             assert row["provenance"]["metadata"]["planted"] is True
             assert row["provenance"]["metadata"]["provenance"] == "sample"
         persisted = first.list_governance("s2p")
-    finally:
-        first.close()
-
-    reopened = SQLiteGraphStore(path, domain="s2p")
-    try:
-        # A different runtime's centroids must not reclassify stored evidence.
-        new_scorer = CompoundingScorer.from_preset("s2p", graph_store=reopened, profile="test")
-        reopened.connection.execute("PRAGMA query_only=ON")
-        restored = PersistentBudgetPolicy(reopened)
+        # A reconstructed policy and scorer must not reclassify stored evidence.
+        new_scorer = CompoundingScorer.from_preset("s2p", graph_store=first, profile="test")
+        restored = PersistentBudgetPolicy(first)
         with TestClient(budget_app(restored, new_scorer)) as client:
             assert client.get("/api/self/investigation-budget").json() == before
             assert client.get("/api/self/investigation-budget").json() == before
-        assert reopened.list_governance("s2p") == persisted
-        assert PersistentBudgetPolicy(reopened).get_stats() == restored.get_stats()
-        reopened.connection.execute("PRAGMA query_only=OFF")
+        assert first.list_governance("s2p") == persisted
+        assert PersistentBudgetPolicy(first).get_stats() == restored.get_stats()
         restored.allocate(0.7, "contract_gap", 30, decision_id=ids[0])
-        continued = PersistentBudgetPolicy(reopened)
+        continued = PersistentBudgetPolicy(first)
         assert continued.get_stats()["decisions"] == 3
         assert continued._history[:2] == policy._history
     finally:
-        reopened.close()
+        first.close()
 
 
 def test_history_bound_preserves_exact_lifetime_counters(store: GraphStore) -> None:
@@ -179,14 +182,14 @@ def test_concurrent_request_provenance_is_persisted(store: GraphStore) -> None:
     assert main._budget_request.get() is None
 
 
-def test_storage_failure_rolls_back_telemetry(tmp_path: Path) -> None:
-    store = SQLiteGraphStore(tmp_path / "failure.db", domain="s2p")
+def test_storage_failure_rolls_back_telemetry() -> None:
+    store = FailingMemoryStore(domain="s2p")
     try:
         policy = PersistentBudgetPolicy(store)
         policy.allocate(0.95, "contract_gap", 30)
         before = deepcopy(policy._history), policy.get_stats()
-        store.connection.execute("PRAGMA query_only=ON")
-        with pytest.raises(sqlite3.OperationalError):
+        store.fail_governance_writes = True
+        with pytest.raises(RuntimeError, match="graph write unavailable"):
             policy.allocate(0.2, "contract_gap", 30)
         assert (policy._history, policy.get_stats()) == before
         restored = PersistentBudgetPolicy(store)
@@ -195,14 +198,14 @@ def test_storage_failure_rolls_back_telemetry(tmp_path: Path) -> None:
         store.close()
 
 
-def test_http_storage_failure_does_not_report_success(tmp_path: Path) -> None:
-    store = SQLiteGraphStore(tmp_path / "http-failure.db", domain="s2p")
+def test_http_storage_failure_does_not_report_success() -> None:
+    store = FailingMemoryStore(domain="s2p")
     try:
         scorer = scorer_with_outcomes(store)
         factors = {name: 0.5 for name in S2PDomainConfig.factors}
         decision = scorer.score(factors, "contract_gap")
         policy = PersistentBudgetPolicy(store)
-        store.connection.execute("PRAGMA query_only=ON")
+        store.fail_governance_writes = True
         with TestClient(budget_app(policy, scorer)) as client:
             response = client.post("/api/investigation/investigate", json={
                 "decision_id": decision.decision_id, "category": "contract_gap",

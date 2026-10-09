@@ -12,6 +12,7 @@ from copilot_sdk.situation import NLRenderer, SituationAnalyzer
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
+from app.services.centroid_explorer import DK_READ_ERRORS, read_dk_weights
 from app.services.situation_traversals import (
     SITUATION_NL_TEMPLATES,
     S2P_TRAVERSAL_PATTERNS,
@@ -53,13 +54,18 @@ async def get_situation(
     metadata_value = decision.get("metadata")
     metadata = cast(dict[str, Any], metadata_value) if isinstance(metadata_value, dict) else {}
     entity_id = str(metadata.get("invoice_id") or decision.get("entity_id") or "").strip()
-    if not await _entity_context_available(reader, entity_id):
+    context_result = await _entity_context_available(reader, entity_id, return_status=True)
+    context_available, graph_available = (
+        context_result if isinstance(context_result, tuple) else (context_result, True)
+    )
+    if not context_available:
         return _degraded_response(
             decision_id,
             category,
             decision,
             status="unavailable",
             reason="Entity not yet indexed in graph store",
+            graph_available=graph_available,
         )
     analyzer = SituationAnalyzer(
         [replace(pattern, reader=reader) for pattern in S2P_TRAVERSAL_PATTERNS],
@@ -104,7 +110,8 @@ async def get_situation(
     variables["confidence"] = confidence
     variables["confidence_pct"] = _confidence_pct(confidence)
     variables["action"] = str(decision.get("recommended_action") or variables.get("action") or "unknown")
-    dk_weights = _dk_weights(request)
+    dk_weights, dk_available = _dk_weights(request)
+    dk_status = "unavailable" if not dk_available else ("available" if dk_weights is not None else "learning")
     rendered = _renderer.render(category, variables, dk_weights=dk_weights)
     nl_explanation = rendered.rendered
     chain = build_context_chain(context, nl_explanation=nl_explanation)
@@ -131,6 +138,8 @@ async def get_situation(
         "factors_used": list(context.metadata.get("factors_used") or []),
         "traversal_depth": chain.hop_count,
         "context_available": bool(context.metadata.get("context_available", True)),
+        "dk_status": dk_status,
+        "dk_available": dk_available,
         "warnings": list(context.warnings),
         "template_variables": chain.template_variables,
         "missing_variables": list(rendered.missing_variables),
@@ -171,18 +180,21 @@ def _decision(reader: S2PGraphReader, decision_id: str) -> dict[str, Any] | None
     return decision if isinstance(decision, dict) else None
 
 
-async def _entity_context_available(reader: S2PGraphReader, entity_id: str) -> bool:
+async def _entity_context_available(
+    reader: S2PGraphReader, entity_id: str, *, return_status: bool = False,
+) -> bool | tuple[bool, bool]:
     """Use S2P's bounded directed read before generic graph traversal."""
     if not entity_id:
-        return False
+        return (False, True) if return_status else False
     try:
         rows = await asyncio.wait_for(
             asyncio.to_thread(reader.query_direct_context, entity_id, limit=1),
             timeout=2.0,
         )
-        return bool(rows)
+        result = bool(rows)
+        return (result, True) if return_status else result
     except Exception:
-        return False
+        return (False, False) if return_status else False
 
 
 def _degraded_response(
@@ -192,6 +204,7 @@ def _degraded_response(
     *,
     status: str,
     reason: str,
+    graph_available: bool = True,
 ) -> dict[str, Any]:
     factors = decision.get("factors")
     factors_used = list(factors) if isinstance(factors, dict) else []
@@ -208,6 +221,9 @@ def _degraded_response(
         "factors_used": factors_used,
         "traversal_depth": 0,
         "context_available": False,
+        "graph_available": graph_available,
+        "dk_status": "unavailable",
+        "dk_available": False,
         "warnings": [reason],
         "template_variables": {},
         "missing_variables": [],
@@ -220,19 +236,18 @@ def _degraded_response(
     }
 
 
-def _dk_weights(request: Request) -> dict[str, Any] | None:
-    state = getattr(request.app, "state", None)
-    scorer = getattr(state, "scorer", None)
-    get_dk_weights = getattr(scorer, "get_dk_weights", None)
-    if not callable(get_dk_weights):
-        return None
+def _dk_weights(request: Request) -> tuple[dict[str, Any] | None, bool]:
+    payload: dict[str, Any] | None = None
+    available = True
     try:
-        weights = get_dk_weights()
-    except Exception:
-        return None
-    if weights is None:
-        return None
-    return {"weights": weights, "factor_names": list(S2PDomainConfig.factors)}
+        state = getattr(request.app, "state", None)
+        scorer = getattr(state, "scorer", None)
+        weights, available = read_dk_weights(scorer)
+        if weights is not None:
+            payload = {"weights": weights, "factor_names": list(S2PDomainConfig.factors)}
+    except DK_READ_ERRORS:
+        available = False
+    return payload, available
 
 
 def _bounded_depth(value: Any) -> int:

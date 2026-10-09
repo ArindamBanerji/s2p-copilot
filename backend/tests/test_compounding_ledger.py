@@ -25,7 +25,7 @@ class LedgerGraphStore(InMemoryGraphStore):
         events = super().get_evolution_events(domain, limit=kwargs.get("limit", 100))
         if isinstance(event_type, str):
             events = [event for event in events if event.get("event_type") == event_type]
-        return list(reversed(events))
+        return list(events)
 
 
 def _score(decision_id: str = "decision-1") -> dict:

@@ -15,6 +15,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
@@ -123,6 +125,26 @@ def test_score_response_has_required_fields():
     for key in ("event_id", "category", "action", "action_index",
                 "confidence", "probabilities", "factor_vector", "factor_names"):
         assert key in data, f"Missing key: {key}"
+
+
+def test_score_response_no_none_c1():
+    response = client.post(
+        "/api/s2p/score",
+        json={**VALID_REQUEST, "event_id": "E-C1-NO-NONE"},
+    )
+    assert response.status_code == 200
+
+    def assert_no_none(value, path="root"):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                assert item is not None, f"None at {path}.{key}"
+                assert_no_none(item, f"{path}.{key}")
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                assert item is not None, f"None at {path}[{index}]"
+                assert_no_none(item, f"{path}[{index}]")
+
+    assert_no_none(response.json())
 
 
 class SlowScoreScorer:
@@ -245,7 +267,8 @@ def test_enrichment_failure_doesnt_break_score(monkeypatch):
     data = response.json()
 
     assert response.status_code == 200
-    assert data["process_context"] is None
+    assert data["process_context"] == {}
+    assert data["process_context_available"] is False
     assert data["decision_id"]
 
 
@@ -352,28 +375,53 @@ def test_concurrent_full_conservation_requests_do_not_serialize_counts(monkeypat
     assert elapsed < 1.5
 
 
-def test_browser_like_conservation_and_score_waterfall_shares_counts_cache(monkeypatch):
+def test_browser_like_conservation_and_score_waterfall_shares_counts_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     reset_sdk_scorer()
+
+    class ObservedStore(InMemoryGraphStore):
+        def __init__(self) -> None:
+            super().__init__(domain="s2p")
+            self.coverage_reads = 0
+            self.reads_lock = threading.Lock()
+
+        def count_categories_with_n(self, domain: str, n: int = 1) -> int:
+            # Measure the real counts path while retaining the cold-cache race.
+            with self.reads_lock:
+                self.coverage_reads += 1
+            time.sleep(0.05)
+            return int(super().count_categories_with_n(domain, n))
+
+    store = ObservedStore()
+    categories = S2PDomainConfig.categories[:4]
+    seeded = [
+        (f"waterfall-{index:03d}", 1_700_000_000.0 + index // 2,
+         categories[index % len(categories)], index < 10)
+        for index in range(12)
+    ]
+    for decision_id, created_at, category, correct in reversed(seeded):
+        store.write_decision(
+            domain="s2p", category=category, action=S2PDomainConfig.actions[0],
+            confidence=0.9,
+            factors={name: 0.5 for name in S2PDomainConfig.factors},
+            metadata={"decision_id": decision_id, "created_at": created_at},
+        )
+        store.write_outcome(
+            decision_id, S2PDomainConfig.actions[0 if correct else 1], correct,
+            domain="s2p", outcome="confirmed" if correct else "overridden",
+        )
+    scorer = build_s2p_scorer(graph_store=store)
+    monkeypatch.setattr(app.state, "scorer", scorer)
+    monkeypatch.setattr(app.state, "graph_store", store)
+    monkeypatch.setattr(app.state, "s2p_graph_reader", S2PGraphReader(store=store))
+    monkeypatch.setattr(app.state, "s2p_reward_function", scorer._reward_fn)
+    s2p_router._clear_score_conservation_status_cache()
     # Startup materialization may already have a ready conservation entry.
     # Clear that entry so this test exercises the shared counts computation
     # deterministically, without depending on startup timing.
     app.state.s2p_tab_state_cache.delete_standard("score")
-    calls = 0
-    calls_lock = threading.Lock()
-
-    def slow_counts(_graph_store, _domain=None):
-        nonlocal calls
-        with calls_lock:
-            calls += 1
-        time.sleep(0.05)
-        return {
-            "verified_count": 12,
-            "correct_count": 10,
-            "total_decisions": 12,
-            "penalty_ratio": 5.0,
-        }
-
-    monkeypatch.setattr(s2p_router, "_read_conservation_counts", slow_counts)
+    store.coverage_reads = 0
 
     requests = [
         lambda: client.get("/api/s2p/preview/queue"),
@@ -389,11 +437,22 @@ def test_browser_like_conservation_and_score_waterfall_shares_counts_cache(monke
 
     assert [response.status_code for response in responses] == [200, 200, 200, 200]
     conservation = responses[2].json()
-    assert conservation["verified_count"] == 12
-    assert conservation["correct_count"] == 10
+    assert conservation["verified_count"] == len(seeded)
+    assert conservation["correct_count"] == sum(correct for _, _, _, correct in seeded)
+    assert conservation["q"] == pytest.approx(conservation["correct_count"] / len(seeded))
     assert responses[-1].json()["auto_approve"]["conservation_status"]
-    assert 1 <= calls <= 4
+    assert 1 <= store.coverage_reads <= 4
     assert elapsed < 1.5
+
+    # A score write can invalidate counts; after priming, the next read must reuse them.
+    state = s2p_router.cached_conservation_state_provider(app.state)
+    reads_after_prime = store.coverage_reads
+    cached_state = s2p_router.cached_conservation_state_provider(app.state)
+    assert store.coverage_reads == reads_after_prime
+    assert cached_state["verified_count"] == state["verified_count"] == len(seeded)
+    assert [(row["created_at"], row["decision_id"]) for row in cached_state["verified_decisions"]] == [
+        (created_at, decision_id) for decision_id, created_at, _, _ in seeded
+    ]
 
 
 def test_read_conservation_counts_uses_verified_decision_count_for_conservation_v():
@@ -662,7 +721,7 @@ def test_current_conservation_status_failure_remains_unknown(monkeypatch):
     reset_sdk_scorer()
 
     def broken_counts(_graph_store, _domain=None):
-        raise RuntimeError("conservation store unavailable")
+        raise ConnectionError("conservation store unavailable")
 
     monkeypatch.setattr(s2p_router, "_read_conservation_counts", broken_counts)
 
@@ -782,7 +841,173 @@ def test_score_endpoint_graph_context_failure_degrades_gracefully(monkeypatch):
     assert response.status_code == 200
     assert isinstance(body["decision_id"], str)
     assert "neighbors" not in body
+    assert body["graph_context_available"] is False
     assert calls == [None]
+
+
+def test_score_enrichment_failures_are_reported_without_changing_action(monkeypatch):
+    baseline = client.post("/api/s2p/score", json={**VALID_REQUEST, "event_id": "E-SS16-BASE"})
+    assert baseline.status_code == 200
+    expected_action = baseline.json()["action"]
+    reset_sdk_scorer()
+
+    monkeypatch.setattr(s2p_router, "get_active_variant", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("variant")))
+    monkeypatch.setattr(s2p_router, "_score_process_context_with_signal", lambda *_args: (_ for _ in ()).throw(RuntimeError("context")))
+    monkeypatch.setattr(type(app.state.scorer), "get_verified_count", lambda _self: (_ for _ in ()).throw(ValueError("count")), raising=False)
+    monkeypatch.setattr(s2p_router, "_graph_verified_counts", lambda *_args: (_ for _ in ()).throw(RuntimeError("count")))
+
+    response = client.post("/api/s2p/score", json={**VALID_REQUEST, "event_id": "E-SS16-DEGRADED"})
+    body = response.json()
+    assert response.status_code == 200
+    assert body["action"] == expected_action
+    assert set(body["degraded_fields"]) >= {"active_variant", "process_context", "prior_verified_count"}
+
+
+def test_auto_approve_failure_is_reported_as_degraded(monkeypatch):
+    _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.01))
+    monkeypatch.setattr(
+        s2p_router,
+        "_should_auto_approve",
+        lambda *_args: (_ for _ in ()).throw(ConnectionError("auto approve unavailable")),
+    )
+
+    response = client.post(
+        "/api/s2p/score", json={**VALID_REQUEST, "event_id": "E-AUTO-APPROVE-DEGRADED"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["auto_approve"] == {}
+    assert "auto_approve" in response.json()["degraded_fields"]
+
+
+def test_threshold_failure_is_reported_as_degraded(monkeypatch):
+    _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.01))
+    monkeypatch.setattr(
+        s2p_router,
+        "compute_threshold_decision",
+        lambda *_args: (_ for _ in ()).throw(ConnectionError("threshold unavailable")),
+    )
+
+    response = client.post(
+        "/api/s2p/score", json={**VALID_REQUEST, "event_id": "E-THRESHOLD-DEGRADED"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["threshold_decision"] == {}
+    assert "threshold_decision" in response.json()["degraded_fields"]
+
+
+def test_successful_score_enrichments_are_not_reported_as_degraded(monkeypatch):
+    _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.01))
+
+    response = client.post(
+        "/api/s2p/score", json={**VALID_REQUEST, "event_id": "E-ENRICHMENTS-AVAILABLE"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["auto_approve"], dict) and body["auto_approve"]
+    assert isinstance(body["threshold_decision"], dict) and body["threshold_decision"]
+    assert "auto_approve" not in body["degraded_fields"]
+    assert "threshold_decision" not in body["degraded_fields"]
+
+
+def test_both_score_enrichment_none_returns_are_reported(monkeypatch):
+    _install_fast_score_dependencies(monkeypatch, SlowScoreScorer(score_sleep=0.01))
+    monkeypatch.setattr(s2p_router, "_should_auto_approve", lambda *_args: None)
+    monkeypatch.setattr(s2p_router, "compute_threshold_decision", lambda *_args: None)
+
+    response = client.post(
+        "/api/s2p/score", json={**VALID_REQUEST, "event_id": "E-ENRICHMENTS-DEGRADED"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["auto_approve"] == {}
+    assert body["threshold_decision"] == {}
+    assert set(body["degraded_fields"]) >= {"auto_approve", "threshold_decision"}
+
+
+def test_receipt_conservation_snapshot_marks_state_failure(monkeypatch):
+    monkeypatch.setattr(
+        s2p_router,
+        "_current_conservation_status",
+        lambda _request: (_ for _ in ()).throw(ConnectionError("status")),
+    )
+    monkeypatch.setattr(s2p_router, "_graph_verified_counts", lambda _request: (7, 6))
+    snapshot = s2p_router._receipt_conservation_snapshot(object())
+    assert snapshot["state"] == "UNKNOWN"
+    assert snapshot["verified_count"] == 0
+    assert snapshot["conservation_snapshot_available"] is False
+
+
+def test_receipt_conservation_snapshot_available_when_all_reads_succeed(monkeypatch):
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", lambda _request: "GREEN")
+    monkeypatch.setattr(s2p_router, "_graph_verified_counts", lambda _request: (7, 6))
+
+    snapshot = s2p_router._receipt_conservation_snapshot(object())
+
+    assert snapshot == {
+        "state": "GREEN",
+        "verified_count": 7,
+        "conservation_snapshot_available": True,
+    }
+
+
+def test_receipt_conservation_snapshot_marks_count_failure(monkeypatch):
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", lambda _request: "GREEN")
+    monkeypatch.setattr(
+        s2p_router,
+        "_graph_verified_counts",
+        lambda _request: (_ for _ in ()).throw(ConnectionError("counts")),
+    )
+
+    snapshot = s2p_router._receipt_conservation_snapshot(object())
+
+    assert snapshot["state"] == "UNKNOWN"
+    assert snapshot["verified_count"] == 0
+    assert snapshot["conservation_snapshot_available"] is False
+
+
+def test_receipt_conservation_snapshot_marks_both_reads_failed(monkeypatch):
+    monkeypatch.setattr(
+        s2p_router,
+        "_current_conservation_status",
+        lambda _request: (_ for _ in ()).throw(ConnectionError("status")),
+    )
+    monkeypatch.setattr(
+        s2p_router,
+        "_graph_verified_counts",
+        lambda _request: (_ for _ in ()).throw(ConnectionError("counts")),
+    )
+
+    snapshot = s2p_router._receipt_conservation_snapshot(object())
+
+    assert snapshot["state"] == "UNKNOWN"
+    assert snapshot["verified_count"] == 0
+    assert snapshot["conservation_snapshot_available"] is False
+
+
+def test_receipt_conservation_snapshot_marks_none_state_unavailable(monkeypatch):
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", lambda _request: None)
+    monkeypatch.setattr(s2p_router, "_graph_verified_counts", lambda _request: (7, 6))
+
+    snapshot = s2p_router._receipt_conservation_snapshot(object())
+
+    assert snapshot["state"] == "UNKNOWN"
+    assert snapshot["verified_count"] == 0
+    assert snapshot["conservation_snapshot_available"] is False
+
+
+def test_receipt_conservation_snapshot_marks_none_counts_unavailable(monkeypatch):
+    monkeypatch.setattr(s2p_router, "_current_conservation_status", lambda _request: "GREEN")
+    monkeypatch.setattr(s2p_router, "_graph_verified_counts", lambda _request: None)
+
+    snapshot = s2p_router._receipt_conservation_snapshot(object())
+
+    assert snapshot["state"] == "UNKNOWN"
+    assert snapshot["verified_count"] == 0
+    assert snapshot["conservation_snapshot_available"] is False
 
 
 def test_score_endpoint_graph_context_timeout_degrades_gracefully(monkeypatch):
@@ -1135,7 +1360,8 @@ def test_score_process_context_reads_current_invoice_graph_history():
 def test_score_omits_process_context_without_invoice_evidence():
     response = client.post("/api/s2p/score", json=VALID_REQUEST)
     assert response.status_code == 200
-    assert response.json()["process_context"] is None
+    assert response.json()["process_context"] == {}
+    assert response.json()["process_context_available"] is False
 
 
 def test_process_context_signal_merge_queries_graph_in_production(monkeypatch):

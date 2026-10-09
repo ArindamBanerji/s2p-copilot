@@ -1,10 +1,19 @@
 import math
 
+import pytest
+from copilot_sdk.evolution.graph_store import GraphVariantStore
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.domains.s2p.evolver_config import S2P_EVOLVER_CONFIG
-from app.services.s2p_evolver import get_evolution_summary, record_triage_outcome, reset_s2p_evolver
+from app.domains.s2p.evolver_config import S2P_EVOLVER_CONFIG, S2P_VARIANTS
+from app.services.s2p_evolver import (
+    get_evolution_summary,
+    get_evolver,
+    record_triage_outcome,
+    reset_s2p_evolver,
+    set_graph_store,
+)
 
 
 client = TestClient(app)
@@ -72,12 +81,7 @@ def test_evolution_variants_endpoint():
     data = response.json()
     assert_json_safe(data)
     sdk_summary = data["sdk_summary"]
-    assert sdk_summary["families"] == [
-        "evidence_ordering",
-        "routing_threshold",
-        "escalation_criteria",
-        "triage_weights",
-    ]
+    assert sdk_summary["families"] == list(dict.fromkeys(spec.family for spec in S2P_VARIANTS))
     variants = {row["id"]: row for row in sdk_summary["variants"]}
     assert set(variants) >= {
         "EVIDENCE_ORDER_v1",
@@ -87,6 +91,39 @@ def test_evolution_variants_endpoint():
     }
     assert variants["ESCALATION_CRITERIA_v1"]["family"] == "escalation_criteria"
     assert variants["TRIAGE_WEIGHTS_v1"]["family"] == "triage_weights"
+
+
+def test_evolution_families_follow_config_after_reverse_registration():
+    graph_store = InMemoryGraphStore(domain="s2p")
+    variant_store = GraphVariantStore(graph_store, "s2p")
+    for spec in reversed(S2P_VARIANTS):
+        variant_store.register_variant(spec)
+    set_graph_store(graph_store)
+
+    response = client.get("/api/s2p/evolution/variants")
+
+    assert response.status_code == 200
+    summary = response.json()["sdk_summary"]
+    assert summary["variant_count"] == len(S2P_VARIANTS)
+    assert summary["families"] == list(dict.fromkeys(spec.family for spec in S2P_VARIANTS))
+
+
+def test_evolution_unknown_families_follow_present_config_families(monkeypatch: pytest.MonkeyPatch):
+    evolver = get_evolver()
+    # Keep one configured family (including its versions) to check deduplication
+    # and ensure absent configured families are not invented by the summary.
+    known_family = S2P_VARIANTS[-1].family
+    raw_summary = evolver.get_summary()
+    known_variants = [row for row in raw_summary["variants"] if row["family"] == known_family]
+    # Supply out-of-order SDK summary rows independently of event replay/reset.
+    raw_summary["variants"] = [
+        {"family": "z_dynamic"}, *known_variants, {"family": "a_dynamic"},
+    ]
+    monkeypatch.setattr(evolver, "get_summary", lambda: raw_summary)
+
+    assert get_evolution_summary()["families"] == [known_family, "a_dynamic", "z_dynamic"]
+    raw_summary["variants"] = []
+    assert get_evolution_summary()["families"] == []
 
 
 def test_evolution_promotion_check_endpoint():

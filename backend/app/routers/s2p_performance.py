@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import threading
-import time
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from gae.calibration import compute_theta_min
@@ -12,14 +10,12 @@ from gae.calibration import compute_theta_min
 from app.domains.s2p.config import S2P_CATEGORIES
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
+from app.services.response_materializer import materialized_response
 
 router = APIRouter(prefix="/api/s2p/performance", tags=["s2p-performance"])
 
 PENALTY_RATIO = 5.0
 ANNUAL_TARGET_USD = 680000
-SUMMARY_CACHE_TTL_SECONDS = 5.0
-_SUMMARY_CACHE_LOCK = threading.RLock()
-_SUMMARY_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 def _graph_store(request: Request) -> Any | None:
@@ -31,15 +27,8 @@ def _graph_store(request: Request) -> Any | None:
     return getattr(scorer, "graph_store", None)
 
 
-def _summary_cache_key(graph_store: Any | None, domain: str | None = None) -> str:
-    # Store objects may be recreated by the active-graph lifecycle. Keep one
-    # bounded domain cache instead of retaining an entry for every instance.
-    return domain or "s2p"
-
-
 def clear_summary_cache() -> None:
-    with _SUMMARY_CACHE_LOCK:
-        _SUMMARY_CACHE.clear()
+    """Compatibility hook; the app now owns response invalidation."""
 
 
 def _graph_reader(request: Request) -> S2PGraphReader:
@@ -172,21 +161,6 @@ def _build_summary(reader: S2PGraphReader) -> dict[str, Any]:
     }
 
 
-def _cached_summary(reader: S2PGraphReader) -> dict[str, Any]:
-    now = time.monotonic()
-    key = _summary_cache_key(reader.store)
-    with _SUMMARY_CACHE_LOCK:
-        cached = _SUMMARY_CACHE.get(key)
-        if cached is not None:
-            timestamp, payload = cached
-            if now - timestamp <= SUMMARY_CACHE_TTL_SECONDS:
-                return dict(payload)
-
-        payload = _build_summary(reader)
-        _SUMMARY_CACHE[key] = (time.monotonic(), dict(payload))
-        return dict(payload)
-
-
 def _projected_theta_min(
     reader: S2PGraphReader,
     new_verified: int,
@@ -265,7 +239,10 @@ def what_if(
 
 @router.get("/summary", response_model=GenericResponse)
 def summary(request: Request) -> dict[str, Any]:
+    materialized = materialized_response(request, "performance_summary")
+    if materialized is not None:
+        return cast(dict[str, Any], materialized)
     try:
-        return _cached_summary(_graph_reader(request))
+        return cast(dict[str, Any], _build_summary(_graph_reader(request)))
     except GraphUnavailableError as exc:
         raise HTTPException(status_code=503, detail="S2P graph unavailable for performance") from exc

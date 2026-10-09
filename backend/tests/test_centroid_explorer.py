@@ -84,7 +84,7 @@ class ReadOnlyTrackingGraphStore(InMemoryGraphStore):
         if self._sealed:
             self.write_decision_calls += 1
             raise AssertionError("write_decision must not be called")
-        return super().write_decision(domain, category, action, confidence, factors, metadata)
+        return str(super().write_decision(domain, category, action, confidence, factors, metadata))
 
     def write_outcome(
         self,
@@ -510,3 +510,22 @@ def test_centroid_explorer_propagates_graph_unavailable_error():
 
     with pytest.raises(GraphUnavailableError):
         service.explain_decision("D-1")
+
+
+def test_centroid_explanation_marks_failed_p39_evidence():
+    class FailingStore(InMemoryGraphStore):
+        def read_entity_enrichment(self, **_kwargs):
+            raise RuntimeError("graph unavailable")
+
+    store = _seed_store(_decision())
+    failing_store = FailingStore(domain="s2p")
+    service = S2PCentroidExplorerService(
+        scorer=FakeScorer(), graph_store=failing_store,
+        reader=S2PGraphReader(store=store),
+    )
+
+    result = service.explain_decision("D-1")
+
+    assert result.p39_available is False
+    assert result.p39_evidence == {}
+    assert result.recommended_action == "auto_approve"

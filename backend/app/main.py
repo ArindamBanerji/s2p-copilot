@@ -1,4 +1,5 @@
 import os
+import asyncio
 import sqlite3
 import logging
 from contextvars import ContextVar
@@ -7,6 +8,10 @@ from threading import RLock
 from dataclasses import replace
 from typing import Any, Callable, ClassVar, cast
 from pathlib import Path
+from contextlib import suppress
+
+from app.services.response_materializer import materialized_response
+from app.services.s2p_materialization import create_s2p_materializer, conservation_payload
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -51,7 +56,10 @@ class _VLDKDecisionConnection:
 
 def _create_vld_k_store(path: Path, dimensions: int, *, profile: str | None = None) -> KUtilityStore:
     return KUtilityStore(
-        _VLDKDecisionConnection(path, profile=profile), dimensions, profile=profile
+        _VLDKDecisionConnection(path, profile=profile),
+        dimensions,
+        profile=profile,
+        domain="s2p",
     )
 
 
@@ -358,17 +366,8 @@ def _s2p_verified_count(_bound_self: Any = None) -> int:
 
 
 def _s2p_conservation_state() -> dict[str, Any]:
-    """Add the ordered verified outcomes required by the shared gate."""
-    payload: dict[str, Any] = dict(cached_conservation_state_provider(app.state))
-    getter = getattr(app.state.graph_store, "get_verified_decisions", None)
-    if callable(getter):
-        try:
-            outcomes = list(getter("s2p"))
-        except TypeError:
-            outcomes = list(getter())
-        payload["verified_outcomes"] = outcomes
-        payload["recent_outcomes"] = outcomes[-400:]
-    return payload
+    """Return counts plus ordered, real decisions required by the shared gate."""
+    return dict(cached_conservation_state_provider(app.state))
 
 
 SituationClassifier._budget_policy = app.state.investigation_budget_policy
@@ -476,13 +475,24 @@ if os.environ.get("AUTH_ENABLED", "false").strip().lower() == "true":
 
 app.include_router(learn_router)
 app.include_router(framework_router, prefix="/api")
-app.include_router(
-    create_conservation_router(
-        "s2p",
-        state_provider=_s2p_conservation_state,
-    ),
-    prefix="/api",
-)
+_conservation_router = create_conservation_router("s2p", state_provider=_s2p_conservation_state)
+# Keep the shared what-if contract, but own the display read path locally.
+_conservation_router.routes[:] = [route for route in _conservation_router.routes
+                                if getattr(route, "path", "") != "/conservation/status"]
+app.include_router(_conservation_router, prefix="/api")
+
+
+@app.get("/api/conservation/status")
+def s2p_conservation_status(request: Request) -> dict[str, Any]:
+    result = materialized_response(request, "conservation_status")
+    if result is not None:
+        return cast(dict[str, Any], result)
+    try:
+        return conservation_payload(_s2p_conservation_state())
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Graph store unavailable: {exc}") from exc
+
+
 app.include_router(
     create_measurement_state_router(
         "s2p",
@@ -568,11 +578,40 @@ app.include_router(create_tab_state_router(app.state.s2p_tab_state_cache))
 
 @app.on_event("startup")
 async def warm_s2p_tab_state_cache() -> None:
+    app.state.materializer = create_s2p_materializer(app.state)
+    try:
+        await asyncio.to_thread(app.state.materializer.refresh)
+    except Exception:
+        logger.exception("S2P response prewarm failed; live fallback remains available")
     audit.configure_graph_store(app.state.graph_store)
     _warm_s2p_learn_store_connections()
     warm_financial_snapshots(app.state.graph_store)
     warm_factor_snapshots(app.state.scorer)
     await app.state.s2p_tab_state_cache.warm_up()
+    app.state.materializer_task = asyncio.create_task(_s2p_refresh_loop())
+
+
+async def _s2p_refresh_loop() -> None:
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await asyncio.to_thread(app.state.materializer.refresh)
+        except Exception:
+            logger.exception("S2P background response refresh failed")
+
+
+@app.on_event("shutdown")
+async def stop_s2p_materializer() -> None:
+    task = getattr(app.state, "materializer_task", None)
+    if task is not None:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+    materializer = getattr(app.state, "materializer", None)
+    if materializer is not None:
+        materializer.invalidate()
+        await asyncio.to_thread(materializer.wait_idle)
+    app.state.materializer = None
 
 
 def _warm_s2p_learn_store_connections() -> None:

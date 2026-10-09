@@ -5,14 +5,17 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from copilot_sdk.scoring.investigation import EvidenceProvider
 
-try:
+if TYPE_CHECKING:
     from app.domains.s2p.config import S2PDomainConfig
-except ModuleNotFoundError:
-    from backend.app.domains.s2p.config import S2PDomainConfig
+else:
+    try:
+        from app.domains.s2p.config import S2PDomainConfig
+    except ModuleNotFoundError:
+        from backend.app.domains.s2p.config import S2PDomainConfig
 
 
 DATA_ROOT = Path(__file__).resolve().parents[3] / "data"
@@ -61,7 +64,7 @@ class S2PEvidenceProvider:
     def _invoice(self, invoice_id: str) -> dict[str, Any] | None:
         invoices = self.data_source.get("invoices", {})
         invoice = invoices.get(invoice_id)
-        return deepcopy(invoice) if isinstance(invoice, dict) else None
+        return cast(dict[str, Any], deepcopy(invoice)) if isinstance(invoice, dict) else None
 
     def _supplier(self, invoice: dict[str, Any]) -> dict[str, Any]:
         supplier_id = str(invoice.get("supplier_id") or "")
@@ -83,7 +86,7 @@ class S2PEvidenceProvider:
     def _showcase(self, invoice: dict[str, Any], key: str) -> dict[str, Any] | None:
         block = invoice.get("vld_evidence")
         if isinstance(block, dict) and isinstance(block.get(key), dict):
-            return deepcopy(block[key])
+            return cast(dict[str, Any], deepcopy(block[key]))
         return None
 
     def _supplier_history_evidence(
@@ -143,7 +146,8 @@ class S2PEvidenceProvider:
                 "contract_ref": contract.get("contract_ref"),
                 "clause": contract.get("clause"),
             }
-        factors = invoice.get("factors") if isinstance(invoice.get("factors"), dict) else {}
+        raw_factors = invoice.get("factors")
+        factors: dict[str, Any] = raw_factors if isinstance(raw_factors, dict) else {}
         if "match_status" in factors:
             return {"value": _clamp(factors["match_status"]), "confidence": 0.92, "source": "receipt_system"}
         return None
@@ -163,7 +167,8 @@ class S2PEvidenceProvider:
                 "benchmark_delta_pct": float(showcase.get("benchmark_delta_pct", 0.0) or 0.0),
                 "sample_size": int(showcase.get("sample_size", 0) or 0),
             }
-        factors = invoice.get("factors") if isinstance(invoice.get("factors"), dict) else {}
+        raw_factors = invoice.get("factors")
+        factors: dict[str, Any] = raw_factors if isinstance(raw_factors, dict) else {}
         if "amount_variance_ratio" in factors:
             return {
                 "value": _clamp(factors["amount_variance_ratio"]),
@@ -206,7 +211,8 @@ class S2PEvidenceProvider:
         supplier: dict[str, Any],
         contract: dict[str, Any],
     ) -> dict[str, Any] | None:
-        factors = invoice.get("factors") if isinstance(invoice.get("factors"), dict) else {}
+        raw_factors = invoice.get("factors")
+        factors: dict[str, Any] = raw_factors if isinstance(raw_factors, dict) else {}
         if "duplicate_score" not in factors:
             return None
         return {

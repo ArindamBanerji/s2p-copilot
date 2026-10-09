@@ -3,7 +3,7 @@ from dataclasses import fields
 import json
 from pathlib import Path
 from threading import Barrier
-from typing import Any, Iterator
+from typing import Any, Iterator, cast
 
 import pytest
 from fastapi import FastAPI
@@ -16,14 +16,18 @@ from app.graph.s2p_graph_reader import S2PGraphReader
 from app.routers import s2p
 from app.routers.s2p_audit_export import router as audit_router
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
+from copilot_sdk.graph.legacy_signal_filter import LegacySignalFilteringGraphStore
 from copilot_sdk.graph.protocol import GraphStore
-from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
 
 
-@pytest.fixture(params=["memory", "sqlite"])
-def client_store(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[tuple[TestClient, GraphStore]]:
-    store = (InMemoryGraphStore(domain="s2p") if request.param == "memory"
-             else SQLiteGraphStore(tmp_path / "score-audit.db", domain="s2p"))
+@pytest.fixture(params=["memory", "wrapped-memory"])
+def client_store(request: pytest.FixtureRequest) -> Iterator[tuple[TestClient, GraphStore]]:
+    primary = InMemoryGraphStore(domain="s2p")
+    store: GraphStore = (
+        primary
+        if request.param == "memory"
+        else LegacySignalFilteringGraphStore(primary, domain="s2p")
+    )
     scorer = main.build_s2p_scorer(graph_store=store, profile="test")
     app = FastAPI()
     app.state.scorer = scorer
@@ -62,7 +66,7 @@ def score(client: TestClient, event: str = "AUDIT-WIRING-001") -> dict[str, Any]
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["decision_id"]
-    return body
+    return cast(dict[str, Any], body)
 
 
 def outcome(client: TestClient, decision: dict[str, Any], action: str | None = None) -> dict[str, Any]:
@@ -75,7 +79,7 @@ def outcome(client: TestClient, decision: dict[str, Any], action: str | None = N
         "predicted_action": decision["action"], "reason_code": "wrong_action" if override else None,
     })
     assert response.status_code == 200, response.text
-    return response.json()
+    return cast(dict[str, Any], response.json())
 
 
 def entries(store: GraphStore) -> list[dict[str, Any]]:

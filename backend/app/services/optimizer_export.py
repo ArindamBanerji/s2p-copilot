@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 import json
 from typing import Any, cast
 
+from fastapi import HTTPException
+
 from app.domains.s2p.config import S2PDomainConfig
 from app.routers.s2p_explorer import _centroids_from_scorer, _read_dk_weights
 
@@ -28,6 +30,12 @@ SECTION_ALIASES = {
     "exception_likelihoods": "exception_likelihoods",
     "conservation_state": "conservation_state",
 }
+
+
+def _valid_numeric_tree(value: Any) -> bool:
+    if isinstance(value, list):
+        return bool(value) and all(_valid_numeric_tree(item) for item in value)
+    return isinstance(value, (int, float))
 
 
 class OptimizerExportService:
@@ -53,13 +61,19 @@ class OptimizerExportService:
             "consumer_compatibility": list(CONSUMER_COMPATIBILITY),
         }
         if "centroids" in selected:
-            payload["centroids"] = self._centroids(scorer)
+            centroids, centroids_available = self._centroids(scorer, return_status=True)
+            payload["centroids"] = centroids
+            payload["centroids_available"] = centroids_available
         if "dk_weights" in selected:
-            weights = self._dk_weights(scorer)
+            weights, dk_available = cast(
+                tuple[list[list[float]] | None, bool],
+                self._dk_weights(scorer, return_status=True),
+            )
             if weights is not None:
                 payload["dk_weights"] = weights
             else:
                 payload.setdefault("warnings", []).append("DK weights unavailable before trust-weight transition.")
+            payload["dk_available"] = dk_available
         profile_rows = profiles or []
         if "supplier_profiles" in selected:
             payload["supplier_profiles"] = profile_rows
@@ -136,26 +150,42 @@ class OptimizerExportService:
             raise ValueError(f"Invalid sections: {sorted(invalid)}. Valid: {sorted(VALID_SECTIONS)}")
         return selected
 
-    def _centroids(self, scorer: Any) -> list[list[list[float]]]:
+    def _centroids(
+        self, scorer: Any, *, return_status: bool = False,
+    ) -> list[list[list[float]]] | tuple[list[list[list[float]]], bool]:
         raw = self._raw_centroids(scorer)
-        if raw is None:
+        available = raw is not None
+        if raw is None or not _valid_numeric_tree(raw):
+            available = False
             raw = S2PDomainConfig.get_profile_centroids()
         if hasattr(raw, "tolist"):
             raw = raw.tolist()
-        return cast(list[list[list[float]]], self._round_nested(raw))
+        result = cast(list[list[list[float]]], self._round_nested(raw))
+        return (result, available) if return_status else result
 
     def _raw_centroids(self, scorer: Any) -> Any:
         if scorer is not None:
             try:
                 return _centroids_from_scorer(scorer)
-            except Exception:
+            except (HTTPException, OSError, RuntimeError, ValueError):
                 return None
         return None
 
-    def _dk_weights(self, scorer: Any) -> list[list[float]] | None:
-        flat = _read_dk_weights(scorer) if scorer is not None else None
+    def _dk_weights(
+        self, scorer: Any, *, return_status: bool = False,
+    ) -> list[list[float]] | tuple[list[list[float]] | None, bool] | None:
+        if scorer is not None and not any(
+            hasattr(scorer, name) for name in ("dk_weights", "get_dk_weights", "read_dk_weights")
+        ):
+            return (None, True) if return_status else None
+        try:
+            flat = _read_dk_weights(scorer) if scorer is not None else None
+        except (HTTPException, OSError, RuntimeError, ValueError):
+            return (None, False) if return_status else None
         if not flat:
-            return None
+            return (None, False) if return_status else None
+        if not isinstance(flat, list) or not all(isinstance(value, (int, float)) for value in flat):
+            return (None, False) if return_status else None
         flat = [round(float(value), 6) for value in flat]
         legacy_count = S2PDomainConfig.n_categories * (S2PDomainConfig.n_factors - 1)
         if S2PDomainConfig.n_factors == 8 and len(flat) == legacy_count:
@@ -165,14 +195,15 @@ class OptimizerExportService:
                 migrated.extend([*flat[index : index + row_width], 1.0])
             flat = migrated
         if len(flat) == S2PDomainConfig.n_categories * S2PDomainConfig.n_factors:
-            return [
+            result = [
                 flat[index : index + S2PDomainConfig.n_factors]
                 for index in range(0, len(flat), S2PDomainConfig.n_factors)
             ]
+            return (result, True) if return_status else result
         if len(flat) == S2PDomainConfig.n_factors:
-            return [list(flat) for _category in S2PDomainConfig.categories]
-        return None
-
+            result = [list(flat) for _category in S2PDomainConfig.categories]
+            return (result, True) if return_status else result
+        return (None, False) if return_status else None
     def _lead_time_distributions(self, profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [
             {
@@ -213,7 +244,13 @@ class OptimizerExportService:
         return {
             "centroid_count": centroid_count,
             "dk_count": dk_count,
-            "dk_status": "available" if dk_count > 0 else "pre-transition (omitted)",
+            "dk_status": (
+                "pre-transition (omitted)"
+                if export.get("dk_available", dk_count > 0) and dk_count == 0
+                else "available" if export.get("dk_available", dk_count > 0)
+                else "unavailable"
+            ),
+            "dk_available": bool(export.get("dk_available", dk_count > 0)),
             "total_parameters": centroid_count + dk_count,
         }
 

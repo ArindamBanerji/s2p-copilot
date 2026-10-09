@@ -1,21 +1,19 @@
-"""S2P queue and supplier previews from live graph decisions and scorer state."""
+"""S2P live decision queue and isolated demo supplier preview."""
 
 from __future__ import annotations
 
 import json
-import threading
-import time
 from uuid import uuid4
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
 from copilot_sdk.state.cached_static import cached_static
 
 from app.domains.s2p.config import S2PDomainConfig
-from app.graph.s2p_graph_reader import S2PGraphReader
+from app.services.response_materializer import materialized_response
 from app.models.responses import GenericResponse
-from app.services.s2p_preview_data import _mapping, _timestamp, _verified, read_decisions, supplier_profiles
+from app.services.s2p_preview_data import _mapping, _timestamp, _verified, demo_supplier_profiles, read_decisions
 from app.services.s2p_preview_simulation import _build_compounding_trajectory
 
 router = APIRouter(prefix="/api/s2p/preview", tags=["s2p-preview"])
@@ -23,12 +21,6 @@ router = APIRouter(prefix="/api/s2p/preview", tags=["s2p-preview"])
 ENGINE_VERSION = "v0.7.23"
 
 _PREVIEW_OBSERVATIONS_WRITTEN: set[str] = set()
-_SCORED_INVOICE_CACHE_TTL_SECONDS = 30.0
-_SCORED_INVOICE_CACHE_LOCK = threading.RLock()
-_SCORED_INVOICE_CACHE: dict[str, tuple[float, int, list[dict[str, Any]], int]] = {}
-_SUPPLIER_PROFILE_CACHE_TTL_SECONDS = 30.0
-_SUPPLIER_PROFILE_CACHE_LOCK = threading.RLock()
-_SUPPLIER_PROFILE_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 
 def _get_config_list(attr_name: str, method_name: str) -> list[str]:
@@ -179,6 +171,10 @@ def invalidate_preview_observation(invoice_id: str | None) -> None:
         _PREVIEW_OBSERVATIONS_WRITTEN.discard(str(invoice_id))
 
 
+def _invoice_id(row: dict[str, Any]) -> str:
+    return str(row.get("invoice_id") or row.get("source_invoice_id") or row.get("entity_id") or row["decision_id"])
+
+
 def _decision_invoice(row: dict[str, Any]) -> dict[str, Any]:
     names = row.get("factor_names") or _get_factor_list()
     vector = row.get("factor_vector") or []
@@ -189,7 +185,7 @@ def _decision_invoice(row: dict[str, Any]) -> dict[str, Any]:
     factors = {**dict(zip(names, vector)), **_mapping(row.get("factors"))}
     return {
         "decision_id": row["decision_id"],
-        "invoice_id": row.get("invoice_id") or row.get("source_invoice_id") or row.get("entity_id") or row["decision_id"],
+        "invoice_id": _invoice_id(row),
         "supplier_id": row.get("supplier_id") or "",
         "supplier_name": row.get("supplier_name") or row.get("supplier") or row.get("supplier_id") or "",
         "category": row["category"],
@@ -212,72 +208,34 @@ def _score_rows(request: Request, invoices: list[dict[str, Any]]) -> list[dict[s
     return [_score_invoice(invoice, scorer) for invoice in invoices]
 
 
-def _verified_cache_token(graph_store: Any) -> int:
-    try:
-        return int(S2PGraphReader(graph_store).count_verified())
-    except Exception:
-        return 0
-
-
-def _decision_cache_token(graph_store: Any) -> int:
-    try:
-        return int(S2PGraphReader(graph_store).count_decisions())
-    except Exception:
-        return 0
-
-
-def _scorer_state_token(scorer: Any) -> str:
-    if hasattr(scorer, "version"):
-        return str(getattr(scorer, "version", ENGINE_VERSION) or ENGINE_VERSION)
-    state = getattr(scorer, "__dict__", None)
-    if not isinstance(state, dict):
-        return ENGINE_VERSION
-    simple = {
-        str(key): value
-        for key, value in state.items()
-        if isinstance(value, (str, int, float, bool, type(None)))
-    }
-    return json.dumps(simple, sort_keys=True, default=str)
-
-
-def _scored_invoice_cache_key(scorer: Any, graph_store: Any) -> str:
-    scorer_type = type(scorer).__qualname__
-    scorer_version = _scorer_state_token(scorer)
-    verified_token = _verified_cache_token(graph_store)
-    return f"s2p:preview:scored-invoices:v1:{scorer_type}:{scorer_version}:v{verified_token}"
-
-
-def _cached_recent_scores(request: Request, n: int = 50) -> tuple[list[dict[str, Any]], int]:
-    now = time.monotonic()
-    scorer = _get_scorer(request)
-    graph_store = _get_graph_store(request, scorer)
-    key = _scored_invoice_cache_key(scorer, graph_store)
-    with _SCORED_INVOICE_CACHE_LOCK:
-        cached = _SCORED_INVOICE_CACHE.get(key)
-        if cached is not None:
-            created, cached_n, invoices, total = cached
-            if cached_n >= n and now - created <= _SCORED_INVOICE_CACHE_TTL_SECONDS:
-                return [dict(invoice) for invoice in invoices[:n]], total
-
-    pending = _pending_decisions(request)
-    recent = [_decision_invoice(row) for row in pending[:n]]
+def score_pending(decisions: list[dict[str, Any]], scorer: Any, n: int = 50) -> tuple[list[dict[str, Any]], int]:
+    pending = sorted((row for row in decisions if not _verified(row)),
+                     key=lambda row: (_timestamp(row), str(row["decision_id"])), reverse=True)
+    # Re-scoring creates decision history, not another invoice queue item.
+    # Keep the newest pending decision per invoice before limiting/ranking.
+    seen_invoice_ids: set[str] = set()
+    recent: list[dict[str, Any]] = []
+    for row in pending:
+        invoice_id = _invoice_id(row)
+        if invoice_id in seen_invoice_ids:
+            continue
+        seen_invoice_ids.add(invoice_id)
+        if len(recent) < n:
+            recent.append(_decision_invoice(row))
     invoices = sorted(
         [_score_invoice(invoice, scorer) for invoice in recent],
         key=lambda invoice: invoice["confidence"],
         reverse=True,
     )
-    with _SCORED_INVOICE_CACHE_LOCK:
-        _SCORED_INVOICE_CACHE[key] = (
-            time.monotonic(),
-            n,
-            [dict(invoice) for invoice in invoices],
-            len(pending),
-        )
-    return [dict(invoice) for invoice in invoices], len(pending)
+    return invoices, len(seen_invoice_ids)
 
 
 def _recent_scores(request: Request, n: int = 50) -> list[dict[str, Any]]:
-    invoices, _total = _cached_recent_scores(request, n)
+    cached = materialized_response(request, "preview_queue")
+    if cached is not None:
+        return cast(list[dict[str, Any]], cached["invoices"][:n])
+    scorer = _get_scorer(request)
+    invoices, _total = score_pending(read_decisions(_get_graph_store(request, scorer)), scorer, n)
     return invoices
 
 
@@ -302,41 +260,29 @@ def _clamp_limit(limit: int, minimum: int, maximum: int) -> int:
 
 def reset_preview_state() -> None:
     _PREVIEW_OBSERVATIONS_WRITTEN.clear()
-    with _SCORED_INVOICE_CACHE_LOCK:
-        _SCORED_INVOICE_CACHE.clear()
-    with _SUPPLIER_PROFILE_CACHE_LOCK:
-        _SUPPLIER_PROFILE_CACHE.clear()
-
-
-def _supplier_profile_cache_key(graph_store: Any) -> str:
-    verified_token = _verified_cache_token(graph_store)
-    decision_token = _decision_cache_token(graph_store)
-    return f"s2p:preview:supplier-profiles:v1:d{decision_token}:v{verified_token}"
-
-
-def _cached_supplier_profiles(request: Request) -> list[dict[str, Any]]:
-    scorer = _get_scorer(request)
-    graph_store = _get_graph_store(request, scorer)
-    key = _supplier_profile_cache_key(graph_store)
-    now = time.monotonic()
-    with _SUPPLIER_PROFILE_CACHE_LOCK:
-        cached = _SUPPLIER_PROFILE_CACHE.get(key)
-        if cached is not None:
-            created, profiles = cached
-            if now - created <= _SUPPLIER_PROFILE_CACHE_TTL_SECONDS:
-                return [dict(profile) for profile in profiles]
-    profiles = supplier_profiles(read_decisions(graph_store, with_outcomes=True))
-    with _SUPPLIER_PROFILE_CACHE_LOCK:
-        _SUPPLIER_PROFILE_CACHE[key] = (time.monotonic(), [dict(profile) for profile in profiles])
-    return [dict(profile) for profile in profiles]
 
 
 def _preview_queue_payload(request: Request, limit: int = 5) -> dict[str, Any]:
-    clamped_limit = _clamp_limit(limit, 1, 50)
-    invoices, total_pending = _cached_recent_scores(request, 50)
-    shown = invoices[:clamped_limit]
-    for invoice in shown:
+    payload = queue_read_payload(request, limit)
+    for invoice in payload["invoices"]:
         _write_preview_observation_once(request, invoice)
+    return cast(dict[str, Any], payload)
+
+
+def queue_read_payload(request: Request, limit: int = 5) -> dict[str, Any]:
+    payload = materialized_response(request, "preview_queue")
+    if payload is None:
+        scorer = _get_scorer(request)
+        invoices, total = score_pending(read_decisions(_get_graph_store(request, scorer)), scorer)
+        payload = queue_payload(invoices, total)
+    shown = payload["invoices"][:_clamp_limit(limit, 1, 50)]
+    payload.update(invoices=shown, exceptions=shown, showing=len(shown))
+    return cast(dict[str, Any], payload)
+
+
+def queue_payload(invoices: list[dict[str, Any]], total_pending: int) -> dict[str, Any]:
+    """Pure queue projection; observation writes remain in the request path."""
+    shown = invoices
     exceptions = shown
     auto_approve_count = sum(1 for invoice in invoices if invoice["scored_action"] == "auto_approve")
     confidence_avg = sum(invoice["confidence"] for invoice in invoices) / len(invoices) if invoices else 0.0
@@ -444,7 +390,16 @@ def preview_compounding() -> dict[str, Any]:
 
 @router.get("/suppliers", response_model=GenericResponse)
 def preview_suppliers(request: Request, limit: int | None = None) -> dict[str, Any]:
-    suppliers = _cached_supplier_profiles(request)
+    payload = materialized_response(request, "preview_suppliers")
+    if payload is None:
+        payload = suppliers_payload(demo_supplier_profiles())
+    suppliers = cast(list[dict[str, Any]], payload["suppliers"])
+    shown = suppliers if limit is None else suppliers[:_clamp_limit(limit, 1, len(suppliers))]
+    payload.update(suppliers=shown, showing=len(shown))
+    return cast(dict[str, Any], payload)
+
+
+def suppliers_payload(suppliers: list[dict[str, Any]], limit: int | None = None) -> dict[str, Any]:
     if limit is None:
         shown = suppliers
     else:
@@ -455,8 +410,8 @@ def preview_suppliers(request: Request, limit: int | None = None) -> dict[str, A
         "total": len(suppliers),
         "showing": len(shown),
         "suppliers": shown,
-        "source": "graph",
-        "cache": "scored_preview_cache",
+        "source": "fixture",
+        "provenance": "sample",
     }
 
 

@@ -1,7 +1,7 @@
 """S2P active graph cutover config and read-only status reporting.
 
 Phase A only validates cutover intent. It does not construct an AGE active
-store or change the authoritative SQLite runtime path.
+store or change the in-memory test/development runtime path.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ _GRAPH_CONFIG_ENV_KEYS = (
     "GRAPH_DOMAIN", "S2P_ACTIVE_GRAPH_BACKEND", "S2P_ACTIVE_AGE_DSN",
     "S2P_ACTIVE_AGE_GRAPH", "S2P_ACTIVE_AGE_DOMAIN",
     "S2P_ACTIVE_AGE_TEST_MODE", "S2P_SHADOW_AGE",
-    "S2P_SHARED_GRAPH_AUTHORIZED", "CI_ALLOW_SQLITE_FALLBACK",
+    "S2P_SHARED_GRAPH_AUTHORIZED",
 )
 
 
@@ -87,7 +87,7 @@ def _load_s2p_graph_config(env: Mapping[str, str] | None) -> GraphConfig:
         return GraphConfig.load("s2p", profile=profile)
     overrides: dict[str, Any] = {}
     if profile != "production" and "S2P_ACTIVE_GRAPH_BACKEND" not in env:
-        overrides["backend"] = "sqlite"
+        overrides["backend"] = "memory"
     if env.get("S2P_ACTIVE_GRAPH_BACKEND", "").strip().lower() == "age":
         if "S2P_ACTIVE_AGE_DOMAIN" in env and env["S2P_ACTIVE_AGE_DOMAIN"].strip() != "s2p":
             raise GraphConfigError("S2P_ACTIVE_AGE_DOMAIN must be 's2p' for S2P active graph")
@@ -122,7 +122,7 @@ def _active_warning(age_active: bool, graph_kind: str) -> str:
 
 @dataclass(frozen=True)
 class S2PActiveGraphConfig:
-    requested_backend: str = "sqlite"
+    requested_backend: str = "memory"
     dsn: str | None = None
     graph: str | None = None
     domain: str = "s2p"
@@ -138,14 +138,14 @@ class S2PActiveGraphConfig:
         except GraphConfigError as exc:
             message = str(exc)
             if message.startswith("invalid backend"):
-                message = "S2P_ACTIVE_GRAPH_BACKEND must be 'sqlite' or 'age'"
+                message = "S2P_ACTIVE_GRAPH_BACKEND must be 'memory' or 'age'"
             raise S2PActiveGraphConfigError(message) from exc
-        if graph_config.backend not in {"sqlite", "age"}:
+        if graph_config.backend not in {"memory", "age"}:
             raise S2PActiveGraphConfigError(
-                "S2P_ACTIVE_GRAPH_BACKEND must be 'sqlite' or 'age'"
+                "S2P_ACTIVE_GRAPH_BACKEND must be 'memory' or 'age'"
             )
         graph = graph_config.graph
-        if graph_config.backend == "sqlite" and "S2P_ACTIVE_AGE_GRAPH" not in source:
+        if graph_config.backend == "memory" and "S2P_ACTIVE_AGE_GRAPH" not in source:
             graph = None
         config = cls(
             requested_backend=graph_config.backend,
@@ -162,7 +162,7 @@ class S2PActiveGraphConfig:
         return config
 
     def validate(self, source: Mapping[str, str] | None = None) -> None:
-        if self.requested_backend == "sqlite":
+        if self.requested_backend == "memory":
             return
 
         source = source or {}
@@ -401,15 +401,15 @@ def build_s2p_graph_status(app_state: Any) -> dict[str, Any]:
     full_audit_memory_ready = False
 
     return {
-        "active_backend": "age" if age_active else "sqlite",
+        "active_backend": "age" if age_active else "memory",
         "requested_backend": config.requested_backend,
-        "sqlite_authoritative": not age_active,
+        "memory_authoritative": not age_active,
         "age_active": age_active,
         "shadow_enabled": shadow_summary["enabled"],
         "shadow_allowed": True,
         "active_graph_name": config.graph if requested_age else None,
         "age_graph_kind": graph_kind,
-        "graph_kind": "sqlite" if not requested_age else graph_kind,
+        "graph_kind": "memory" if not requested_age else graph_kind,
         "product_graph_allow_list": sorted(S2P_ALLOWED_PRODUCT_AGE_GRAPHS),
         "product_graph_allowed": product_graph_allowed,
         "product_cutover_implementation_ready": decision_outcome_cutover_ready,
@@ -426,11 +426,11 @@ def build_s2p_graph_status(app_state: Any) -> dict[str, Any]:
         "receipt_mapping_status": "excluded_first_cutover",
         "historical_visibility": "new_writes_only_history_not_migrated",
         "historical_visibility_warning": _HISTORICAL_VISIBILITY_WARNING,
-        "historical_sqlite_count_warning": _HISTORICAL_VISIBILITY_WARNING,
+        "historical_archive_warning": _HISTORICAL_VISIBILITY_WARNING,
         "rollback_instructions": [
-            "Unset S2P_ACTIVE_GRAPH_BACKEND or set it to sqlite.",
+            "Unset S2P_ACTIVE_GRAPH_BACKEND or set it to memory.",
             "Restart S2P.",
-            "Rollback routes new writes to SQLite; it does not reconcile AGE data.",
+            "Rollback routes new writes to memory; it does not reconcile AGE data.",
         ],
         "diagnostics_summary": {
             "shadow_status_counts": shadow_summary["status_counts"],

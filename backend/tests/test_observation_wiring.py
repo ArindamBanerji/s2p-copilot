@@ -16,7 +16,7 @@ from app.routers import s2p_preview
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 
-def _sqlite_count(store, table: str) -> int:
+def _memory_count(store, table: str) -> int:
     return {
         "observations": len(store._observations),
         "observation_factor_vectors": len(store._observation_factor_vectors),
@@ -72,7 +72,7 @@ def test_preview_queue_writes_observations_not_decisions_or_conservation(seed_pr
 
         before_decisions = scorer.graph_store.count_decisions("s2p")
         before_verified = scorer.graph_store.count_verified_decisions("s2p")
-        before_observations = _sqlite_count(scorer.graph_store, "observations")
+        before_observations = _memory_count(scorer.graph_store, "observations")
         before_conservation = client.get("/api/conservation/status").json()
 
         response = client.get("/api/s2p/preview/queue?limit=5")
@@ -87,7 +87,7 @@ def test_preview_queue_writes_observations_not_decisions_or_conservation(seed_pr
         assert scorer.graph_store.count_verified_decisions("s2p") == before_verified
         assert after_conservation["total_decisions"] == before_conservation["total_decisions"]
         assert after_conservation["verified_count"] == before_conservation["verified_count"]
-        assert _sqlite_count(scorer.graph_store, "observations") > before_observations
+        assert _memory_count(scorer.graph_store, "observations") > before_observations
 
         observations = _observation_rows(scorer.graph_store)
         vectors = _factor_vector_rows(scorer.graph_store)

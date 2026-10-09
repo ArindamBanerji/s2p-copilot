@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 import logging
 import os
 import re
-from typing import Any, Optional, Protocol
+from typing import Any, Literal, Optional, Protocol, cast, overload
 
 from app.domains.s2p.config import S2PDomainConfig
 
@@ -434,10 +434,17 @@ TaxRegulatoryComplianceFactor = TaxRegulatoryCompliance
 S2P_FACTOR_COMPUTERS = ALL_FACTORS
 
 
+@overload
+def compute_all_factors(invoice: dict[str, Any] | S2PEvent, context: dict[str, Any] | list[dict[str, Any]] | None = None, *, return_status: Literal[False] = False) -> dict[str, float]: ...
+
+@overload
+def compute_all_factors(invoice: dict[str, Any] | S2PEvent, context: dict[str, Any] | list[dict[str, Any]] | None = None, *, return_status: Literal[True]) -> tuple[dict[str, float], bool, list[str]]: ...
+
 def compute_all_factors(
     invoice: dict[str, Any] | S2PEvent,
     context: dict[str, Any] | list[dict[str, Any]] | None = None,
-) -> dict[str, float]:
+    *, return_status: bool = False,
+) -> dict[str, float] | tuple[dict[str, float], bool, list[str]]:
     """Compute all canonical S2P factors, never raising from individual factors."""
     invoice_dict = _as_invoice(invoice)
     if _production_profile() and context is None:
@@ -453,19 +460,21 @@ def compute_all_factors(
                 + ", ".join(missing)
             )
     values: dict[str, float] = {}
+    degraded_factors: list[str] = []
     for factor in ALL_FACTORS:
         try:
             value = factor.compute(invoice_dict, context)
-        except Exception as exc:
+        except RuntimeError as exc:
             log.warning("S2P factor %s failed: %s", factor.name, exc)
+            degraded_factors.append(factor.name)
             value = _fallback(invoice_dict, factor.name, 0.5)
         values[factor.name] = _clamp(value)
-    return values
+    return (values, not degraded_factors, degraded_factors) if return_status else values
 
 
 def compute_factor_vector(event: S2PEvent) -> list[float]:
     """Compute the canonical factor vector in S2PDomainConfig order."""
     if FACTOR_NAMES != S2PDomainConfig.factors:
         raise RuntimeError("S2P factor computer order does not match config")
-    factors = compute_all_factors(event)
-    return [factors[name] for name in S2PDomainConfig.factors]
+    factors = cast(dict[str, float], compute_all_factors(event))
+    return [float(factors[name]) for name in S2PDomainConfig.factors]

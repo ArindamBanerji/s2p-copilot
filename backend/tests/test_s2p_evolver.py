@@ -6,11 +6,11 @@ import pytest
 
 from copilot_sdk.evolution.graph_store import GraphVariantStore
 from copilot_sdk.evolution.variant_store import VariantSpec
-from copilot_sdk.graph.memory_store import InMemoryGraphStore
+from tests.ordered_evolution_store import OrderedEvolutionGraphStore
 
 
-class EvolverGraphStore(InMemoryGraphStore):
-    """AGE-shaped registration reads in write order for variant reconstruction."""
+class EvolverGraphStore(OrderedEvolutionGraphStore):
+    """Filtered evolution reads with deterministic registration and replay order."""
 
     def get_evolution_events(self, domain: str, **kwargs: object) -> list[dict]:
         event_type = kwargs.get("event_type")

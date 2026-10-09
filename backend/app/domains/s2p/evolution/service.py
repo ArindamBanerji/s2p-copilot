@@ -4,7 +4,7 @@ import json
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from copilot_sdk.evolution import (
     AutonomousPromotionGate,
@@ -29,7 +29,11 @@ class S2PEvolutionService:
         self.selector = ContextAwareSelector()
         self.gate = AutonomousPromotionGate(min_shadow_batches=3, min_win_rate=0.7)
         self.fixture_path = Path(fixture_path or os.environ.get("S2P_EVOLUTION_FIXTURE") or _default_fixture_path())
-        self.fixture = self._load_fixture(self.fixture_path)
+        loaded = cast(tuple[dict[str, Any], bool], self._load_fixture(
+            self.fixture_path, return_status=True,
+        ))
+        self.fixture = loaded[0]
+        self.evolution_available = loaded[1]
         self.variants = self._load_variants()
         self.shadow_results = self._load_shadow_results()
         self.promoted = deepcopy(self.fixture.get("promoted") or {})
@@ -86,7 +90,7 @@ class S2PEvolutionService:
         variant = self._variant(variant_id)
         result = self.runner.run_batch(rule, variant, decisions)
         self.shadow_results.setdefault(variant_id, []).append(deepcopy(result))
-        return result
+        return cast(dict[str, Any], result)
 
     def evaluate_promotion(self, template_name: str, variant_id: str) -> PromotionDecision:
         variant = self._variant(variant_id)
@@ -109,12 +113,18 @@ class S2PEvolutionService:
             "results": deepcopy(self.shadow_results),
         }
 
-    def _load_fixture(self, path: Path) -> dict[str, Any]:
+    def _load_fixture(
+        self, path: Path, *, return_status: bool = False,
+    ) -> dict[str, Any] | tuple[dict[str, Any], bool]:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return {}
-        return data if isinstance(data, dict) else {}
+            result: dict[str, Any] = {}
+            return (result, False) if return_status else result
+        if not isinstance(data, dict):
+            result = {}
+            return (result, False) if return_status else result
+        return (data, True) if return_status else cast(dict[str, Any], data)
 
     def _load_variants(self) -> list[dict[str, Any]]:
         fixture_variants = self.fixture.get("variants")

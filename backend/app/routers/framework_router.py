@@ -427,8 +427,10 @@ async def checkpoint_create(request: CheckpointCreateRequest):
 async def checkpoint_list():
     """List all checkpoints ordered by timestamp DESC."""
     from app.framework.checkpoint import CheckpointService
-    checkpoints = await CheckpointService.list_checkpoints(_get_graph_store())
-    return {"checkpoints": checkpoints}
+    checkpoints, data_available = await CheckpointService.list_checkpoints(
+        _get_graph_store(), return_status=True,
+    )
+    return {"checkpoints": checkpoints, "data_available": data_available}
 
 
 @router.post("/soc/checkpoint/rollback")
@@ -706,8 +708,14 @@ async def intervention_history(limit: int = Query(50, ge=1, le=500)):
         ctrl = _get_intervention_controls()
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    records = await ctrl.get_intervention_history(limit=limit)
-    return {"interventions": records, "count": len(records)}
+    records, data_available = await ctrl.get_intervention_history(
+        limit=limit, return_status=True,
+    )
+    return {
+        "interventions": records,
+        "count": len(records),
+        "data_available": data_available,
+    }
 
 
 # ============================================================================

@@ -33,11 +33,13 @@ def _sections(value: str | None) -> list[str] | None:
 def optimizer_export(request: Request, sections: str | None = None) -> dict[str, Any]:
     service = OptimizerExportService()
     try:
-        return service.export(
+        result = service.export(
             scorer=_scorer(request),
             profiles=_profiles(),
             sections=_sections(sections),
         )
+        result["profiles_available"] = accumulator.profiles_available
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

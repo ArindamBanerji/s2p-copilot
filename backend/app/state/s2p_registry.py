@@ -42,6 +42,10 @@ def create_s2p_tab_state_cache(app_state: Any) -> TabStateCache:
     graph_store = getattr(app_state, "graph_store", None)
 
     def conservation_payload() -> dict[str, Any]:
+        from app.services.response_materializer import materialized_response
+        result = materialized_response(request, "conservation_status")
+        if result is not None:
+            return cast(dict[str, Any], result)
         return cast(dict[str, Any], compute_conservation_status_payload(
             "s2p",
             s2p_router.cached_conservation_state_provider(app_state),
@@ -96,7 +100,7 @@ def create_s2p_tab_state_cache(app_state: Any) -> TabStateCache:
         cache,
         "preview-queue",
         "/api/s2p/preview/queue",
-        lambda: _call(s2p_preview.preview_queue, request),
+        lambda: s2p_preview.queue_read_payload(request),
         s2p_preview.preview_queue,
         tier="STANDARD",
         invalidated_by=("score", "learn", "reset"),

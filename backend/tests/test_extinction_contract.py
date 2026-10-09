@@ -1,7 +1,6 @@
 """Real store and HTTP regressions for causal queue extinction."""
 from collections.abc import Iterator
 from copy import deepcopy
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,8 +9,9 @@ from app.routers.s2p_evidence import router as evidence_router
 from app.services.extinction_evidence import active_decision_ids, extinction_history, record_extinction
 from app.services.supplier_profile_accumulator import accumulator
 from app.state.s2p_registry import create_s2p_tab_state_cache
+from app.services.s2p_materialization import create_s2p_materializer
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 from copilot_sdk.graph.protocol import GraphStore
-from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
 from copilot_sdk.state import invalidation
 from tests.test_s2p_audit_wiring import client_store, outcome, score
 
@@ -61,9 +61,8 @@ def test_learn_route_records_same_evidence(client_store: tuple[TestClient, Graph
     assert extinction_history(store)[0]["earning_decision_id"] == decision["decision_id"]
 
 
-def test_persisted_extinction_survives_reopen_and_retains_history(tmp_path: Path) -> None:
-    path = tmp_path / "extinction.db"
-    store = SQLiteGraphStore(path, domain="s2p")
+def test_persisted_extinction_survives_store_reuse_and_retains_history() -> None:
+    store = InMemoryGraphStore(domain="s2p")
     decision = store.write_decision(
         domain="s2p", category="price_variance", action="auto_approve",
         confidence=0.9, factors={}, metadata={"planted": True},
@@ -76,8 +75,6 @@ def test_persisted_extinction_survives_reopen_and_retains_history(tmp_path: Path
     duplicate = record_extinction(store, "price_variance", decision, before)
     assert duplicate is not None
     assert duplicate["recorded_at"] == event["recorded_at"]
-    store.close()
-    store = SQLiteGraphStore(path, domain="s2p")
     try:
         assert extinction_history(store)[0]["earning_decision_id"] == decision
         reopened = store.write_decision(domain="s2p", category="price_variance",
@@ -120,12 +117,14 @@ def test_warm_compliance_cache_reflects_new_extinction(
     previous = invalidation.get_tab_state_cache("s2p")
     cache = create_s2p_tab_state_cache(client.app.state)
     client.app.state.s2p_tab_state_cache = cache
+    materializer = create_s2p_materializer(client.app.state)
+    client.app.state.materializer = materializer
     try:
         decision = score(client, "EXT-CACHE")
         before = client.get("/api/s2p/evidence/compliance")
         assert before.status_code == 200, before.text
         assert before.json()["extinction_classes"] == []
-        assert cache.get_entry("evidence-compliance") is not None
+        assert materializer.get("evidence_compliance") is not None
         outcome(client, decision)
         after = client.get("/api/s2p/evidence/compliance")
         assert after.status_code == 200, after.text

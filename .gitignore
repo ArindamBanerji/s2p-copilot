@@ -18,3 +18,7 @@ backend/app/data/s2p.db
 backend/app/data/s2p.db
 *.sqlite3-wal
 *.sqlite3-shm
+
+.codex_tmp/
+backend/app/data/s2p.db-shm
+backend/app/data/s2p.db-wal

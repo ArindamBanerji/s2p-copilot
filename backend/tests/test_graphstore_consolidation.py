@@ -12,7 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.main import app, build_s2p_scorer  # noqa: E402
 from app.routers import s2p_data_helpers  # noqa: E402
 from app.routers.s2p_data_helpers import find_invoice  # noqa: E402
-from copilot_sdk.graph.sqlite_store import SQLiteGraphStore  # noqa: E402
+from copilot_sdk.graph.memory_store import InMemoryGraphStore  # noqa: E402
+from copilot_sdk.graph.production import GraphStoreWrapper  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,7 +60,8 @@ def test_s2p_uses_canonical_inmemory_graphstore_with_prefix() -> None:
     scorer = build_s2p_scorer()
     graph_store = scorer.graph_store
 
-    assert isinstance(graph_store, SQLiteGraphStore)
+    assert isinstance(graph_store, GraphStoreWrapper)
+    assert isinstance(graph_store.graph_primary, InMemoryGraphStore)
     decision_id = graph_store.write_decision(
         getattr(graph_store, "domain", "s2p"),
         category="price_variance",

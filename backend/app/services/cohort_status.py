@@ -79,7 +79,9 @@ class S2PCohortStatus(BaseCohortDayZeroState):
             else Path(__file__).resolve().parents[2] / "buyer_oracle_plumb_results.json"
         )
 
-    def _load_instrument(self) -> dict[str, Any]:
+    def _load_instrument(
+        self, *, return_status: bool = False,
+    ) -> dict[str, Any] | tuple[dict[str, Any], bool]:
         result = {
             "validated": False,
             "provenance": ORACLE_PROVENANCE,
@@ -87,18 +89,28 @@ class S2PCohortStatus(BaseCohortDayZeroState):
             "experiments": [],
         }
         if not self._oracle_artifact_path.exists():
-            return result
+            result["instrument_available"] = False
+            result["reason"] = "instrument_unavailable"
+            return (result, False) if return_status else result
         try:
             data = json.loads(self._oracle_artifact_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return result
+            result["instrument_available"] = False
+            result["reason"] = "instrument_unavailable"
+            return (result, False) if return_status else result
+        if not isinstance(data, dict):
+            result["instrument_available"] = True
+            result["reason"] = "validation_failed"
+            return (result, True) if return_status else result
         experiments = _extract_experiments(data)
         result["experiments"] = experiments
         explicit_validated = data.get("validated") if isinstance(data, dict) else False
         result["validated"] = bool(explicit_validated) or (
             bool(experiments) and all(bool(exp.get("pass")) for exp in experiments)
         )
-        return result
+        result["instrument_available"] = True
+        result["reason"] = "validation_failed" if not result["validated"] else "validated"
+        return (result, True) if return_status else result
 
     def _count_real_cohorts(self) -> dict[str, Any]:
         treatment_n, control_n = _count_arms(self._records_with_provenance(REAL_PROVENANCE))
@@ -145,18 +157,34 @@ class S2PCohortStatus(BaseCohortDayZeroState):
         )
 
     def _records_with_provenance(self, provenance: str) -> list[dict[str, Any]]:
+        records = self._read_decisions()
+        if isinstance(records, tuple):
+            records = records[0]
         return [
             record
-            for record in self._read_decisions()
+            for record in records
             if _record_provenance(record) == provenance
         ]
 
-    def _read_decisions(self) -> list[dict[str, Any]]:
+    def _read_decisions(
+        self, *, return_status: bool = False,
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], bool]:
         if self._decision_records is not None:
-            return [dict(record) for record in self._decision_records]
+            result = [dict(record) for record in self._decision_records]
+            return (result, True) if return_status else result
         if self._reader is None:
-            return []
-        return [dict(record) for record in self._reader.get_verified_decisions()]
+            result = []
+            return (result, False) if return_status else result
+        try:
+            rows = self._reader.get_verified_decisions()
+        except (OSError, RuntimeError):
+            result = []
+            return (result, False) if return_status else result
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            result = []
+            return (result, False) if return_status else result
+        result = [dict(record) for record in rows]
+        return (result, True) if return_status else result
 
 
 def _extract_experiments(data: Any) -> list[dict[str, Any]]:

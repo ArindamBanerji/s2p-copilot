@@ -115,16 +115,18 @@ def get_evolution_summary() -> dict[str, Any]:
     """Return SDK evolver summary with S2P domain context."""
     summary = dict(_require_evolver().get_summary())
     variants = summary.get("variants", [])
-    families = []
-    seen = set()
+    store_families: set[str] = set()
     if isinstance(variants, list):
         for variant in variants:
             if not isinstance(variant, dict):
                 continue
             family = variant.get("family")
-            if isinstance(family, str) and family not in seen:
-                seen.add(family)
-                families.append(family)
+            if isinstance(family, str):
+                store_families.add(family)
+    # Family presentation follows domain configuration, not graph read order.
+    canonical_families = dict.fromkeys(spec.family for spec in _INITIAL_VARIANTS)
+    families = [family for family in canonical_families if family in store_families]
+    families.extend(sorted(store_families.difference(canonical_families)))
     summary["domain"] = "s2p"
     summary["families"] = families
     return summary
@@ -234,4 +236,3 @@ def _proposal_value(dimension: EvolutionDimension) -> float:
 
 def _value_token(value: float) -> str:
     return str(value).replace(".", "p")
-

@@ -6,15 +6,16 @@ import json
 import math
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
 from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import find_invoice, load_invoices, load_suppliers
 from app.services.process_fusion import ProcessFusionCycle
+from app.services.response_materializer import materialized_response
 
 router = APIRouter(prefix="/api/s2p/insight", tags=["s2p-insight"])
 
@@ -139,14 +140,31 @@ def _numeric_factors(value: Any) -> dict[str, float]:
 
 
 @router.get("/fingerprint", response_model=GenericResponse)
-def fingerprint(invoice_id: str) -> dict[str, Any]:
-    invoice = find_invoice(invoice_id)
+def fingerprint(invoice_id: str, request: Request) -> dict[str, Any]:
+    materialized = materialized_response(request, "insight_fingerprint", item=invoice_id)
+    if materialized is not None:
+        return cast(dict[str, Any], materialized)
+    return cast(dict[str, Any], fingerprint_payload(find_invoice(invoice_id), invoice_id))
+
+
+def fingerprint_payload(invoice: dict[str, Any] | None, invoice_id: str) -> dict[str, Any]:
     if invoice is None:
         return {"error": f"Invoice {invoice_id} not found", "narrative": f"Invoice {invoice_id} was not found."}
-    try:
-        factors = compute_all_factors(invoice)
-    except Exception:
-        factors = _numeric_factors(invoice.get("factors"))
+    fingerprint_available = True
+    degraded_factors: list[str] = []
+    factor_result = compute_all_factors(invoice, return_status=True)
+    if (
+        not isinstance(factor_result, tuple)
+        or len(factor_result) != 3
+        or not isinstance(factor_result[0], dict)
+    ):
+        factors = {}
+        fingerprint_available = False
+        degraded_factors = list(S2PDomainConfig.factors)
+    else:
+        factors = cast(dict[str, float], factor_result[0])
+        fingerprint_available = bool(factor_result[1])
+        degraded_factors = list(factor_result[2])
     dominant_factor = max(factors, key=lambda name: factors[name]) if factors else None
     return {
         "invoice_id": invoice.get("invoice_id", invoice_id),
@@ -155,8 +173,11 @@ def fingerprint(invoice_id: str) -> dict[str, Any]:
         "dominant_factor": dominant_factor,
         "narrative": (
             f"Invoice {invoice.get('invoice_id', invoice_id)} fingerprinted for process and exception review. "
-            f"Dominant signal: {dominant_factor}."
+            f"Dominant signal: {dominant_factor}." if fingerprint_available
+            else "Fingerprint data unavailable because factor computation failed."
         ),
+        "fingerprint_available": fingerprint_available,
+        "degraded_factors": degraded_factors,
     }
 
 
@@ -171,14 +192,14 @@ def similar(invoice_id: str, limit: int = Query(5, ge=1, le=50)) -> dict[str, An
             "error": f"Invoice {invoice_id} not found",
             "narrative": f"No similar invoice review available because invoice {invoice_id} was not found.",
         }
-    base_factors = compute_all_factors(invoice)
+    base_factors = cast(dict[str, float], compute_all_factors(invoice))
     suppliers = {str(supplier.get("supplier_id")): supplier for supplier in _load_suppliers()}
     matches: list[dict[str, Any]] = []
     for candidate in _load_invoices():
         candidate_id = candidate.get("invoice_id") or candidate.get("event_id")
         if candidate_id == (invoice.get("invoice_id") or invoice_id):
             continue
-        candidate_factors = compute_all_factors(candidate)
+        candidate_factors = cast(dict[str, float], compute_all_factors(candidate))
         distance = math.sqrt(
             sum(
                 (base_factors[name] - candidate_factors[name]) ** 2
@@ -235,6 +256,20 @@ def process_context(invoice_id: str) -> dict[str, Any]:
 def cross_graph() -> dict[str, Any]:
     suppliers = _load_suppliers()
     celonis = _load_celonis()
+    celonis_available = (
+        isinstance(celonis, dict)
+        and bool(celonis)
+        and isinstance(celonis.get("activities"), list)
+    )
+    if not celonis_available:
+        return {
+            "insights": [], "count": 0, "bottleneck_duration": 0.0,
+            "bottleneck_activity": "", "cycle_state": "unavailable",
+            "resolution_improvement": 0.0, "provenance": "unavailable",
+            "provenance_note": "Celonis process data unavailable.",
+            "narrative": "Process data unavailable.",
+            "celonis_available": False,
+        }
     bottleneck = _bottleneck_activity(celonis)
     bottleneck_duration = _duration_hours(bottleneck)
     insights: list[dict[str, Any]] = []
@@ -287,6 +322,7 @@ def cross_graph() -> dict[str, Any]:
         "provenance": fusion["provenance"],
         "provenance_note": fusion.get("provenance_note"),
         "narrative": fusion["narrative"],
+        "celonis_available": True,
     }
 
 

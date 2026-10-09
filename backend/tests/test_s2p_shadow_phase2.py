@@ -335,7 +335,7 @@ def test_learn_shadow_success_uses_distinct_operation_name():
     assert event.parity["outcome_match"] is True
 
 
-def test_non_strict_score_shadow_failure_keeps_sqlite_response_and_redacts_error():
+def test_non_strict_score_shadow_failure_keeps_memory_response_and_redacts_error():
     store = TrackingShadowStore(fail_governed=True)
     shadow = _shadow_state(store, strict=False)
     _reset_app_state(shadow)
@@ -375,7 +375,7 @@ def test_strict_score_shadow_failure_logs_after_authoritative_write(caplog, monk
     assert "S2P side effect failed" in caplog.text
 
 
-def test_non_strict_outcome_shadow_failure_keeps_sqlite_response():
+def test_non_strict_outcome_shadow_failure_keeps_memory_response():
     store = TrackingShadowStore(fail_outcome=True)
     shadow = _shadow_state(store, strict=False)
     _reset_app_state(shadow)

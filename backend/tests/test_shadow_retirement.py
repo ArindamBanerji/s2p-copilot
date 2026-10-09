@@ -8,7 +8,6 @@ from app.s2p_shadow import (
 )
 from app.services.s2p_enrichment import S2PSupplierEnrichmentService
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
-from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
 from copilot_sdk.scoring.scorer import CompoundingScorer
 
 
@@ -68,8 +67,8 @@ def test_enrichment_store_identity() -> None:
     assert enrichment.graph_store is scorer.graph_store
 
 
-def test_s2p_test_profile_sqlite_still_works(tmp_path) -> None:
-    store = SQLiteGraphStore(tmp_path / "s2p.db", domain="s2p", decision_id_prefix="S2P-")
+def test_s2p_test_profile_memory_still_works() -> None:
+    store = InMemoryGraphStore(domain="s2p", decision_id_prefix="S2P-")
     scorer = build_s2p_scorer(graph_store=store, profile="test")
 
     assert scorer.graph_store is store

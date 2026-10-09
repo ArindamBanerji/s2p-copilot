@@ -38,7 +38,12 @@
       105,
       101
     ],
-    "provenance": "sample"
+    "provenance": "sample",
+    "source": "graph",
+    "lead_time": {
+      "contractual": 30,
+      "actual_q4": 35
+    }
   },
   {
     "supplier_id": "SUP-002",
@@ -79,7 +84,12 @@
       71,
       72
     ],
-    "provenance": "sample"
+    "provenance": "sample",
+    "source": "graph",
+    "lead_time": {
+      "contractual": 14,
+      "actual_q4": 16
+    }
   },
   {
     "supplier_id": "SUP-003",
@@ -120,7 +130,12 @@
       175,
       176
     ],
-    "provenance": "sample"
+    "provenance": "sample",
+    "source": "graph",
+    "lead_time": {
+      "contractual": 21,
+      "actual_q4": 19
+    }
   },
   {
     "supplier_id": "SUP-004",
@@ -161,7 +176,12 @@
       44,
       45
     ],
-    "provenance": "sample"
+    "provenance": "sample",
+    "source": "graph",
+    "lead_time": {
+      "contractual": 30,
+      "actual_q4": 28
+    }
   },
   {
     "supplier_id": "SUP-005",
@@ -202,7 +222,12 @@
       64,
       65
     ],
-    "provenance": "sample"
+    "provenance": "sample",
+    "source": "graph",
+    "lead_time": {
+      "contractual": 45,
+      "actual_q4": 52
+    }
   },
   {
     "supplier_id": "SUP-006",
@@ -243,7 +268,12 @@
       267,
       263
     ],
-    "provenance": "sample"
+    "provenance": "sample",
+    "source": "graph",
+    "lead_time": {
+      "contractual": 14,
+      "actual_q4": 13
+    }
   },
   {
     "supplier_id": "SUP-007",
@@ -284,7 +314,12 @@
       51,
       52
     ],
-    "provenance": "sample"
+    "provenance": "sample",
+    "source": "graph",
+    "lead_time": {
+      "contractual": 21,
+      "actual_q4": 24
+    }
   },
   {
     "supplier_id": "SUP-008",
@@ -325,7 +360,12 @@
       34,
       35
     ],
-    "provenance": "sample"
+    "provenance": "sample",
+    "source": "graph",
+    "lead_time": {
+      "contractual": 14,
+      "actual_q4": 14
+    }
   },
   {
     "supplier_id": "SUP-009",
@@ -366,7 +406,12 @@
       49,
       50
     ],
-    "provenance": "sample"
+    "provenance": "sample",
+    "source": "graph",
+    "lead_time": {
+      "contractual": 35,
+      "actual_q4": 41
+    }
   },
   {
     "supplier_id": "SUP-010",
@@ -407,6 +452,11 @@
       116,
       117
     ],
-    "provenance": "sample"
+    "provenance": "sample",
+    "source": "graph",
+    "lead_time": {
+      "contractual": 28,
+      "actual_q4": 25
+    }
   }
 ]

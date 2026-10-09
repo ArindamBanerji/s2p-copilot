@@ -3,7 +3,7 @@ import sys
 import hashlib
 import json
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from fastapi.testclient import TestClient
 import pytest
@@ -58,10 +58,10 @@ class LegacyAGEStore:
         self._audit_store.save_ledger(domain, entry_id, state)
 
     def get_ledger(self, domain: str, entry_id: str) -> dict[str, Any] | None:
-        return self._audit_store.get_ledger(domain, entry_id)
+        return cast(dict[str, Any] | None, self._audit_store.get_ledger(domain, entry_id))
 
     def list_ledgers(self, domain: str) -> list[dict[str, Any]]:
-        return self._audit_store.list_ledgers(domain)
+        return cast(list[dict[str, Any]], self._audit_store.list_ledgers(domain))
 
     def delete_ledger(self, domain: str, entry_id: str) -> None:
         self._audit_store.delete_ledger(domain, entry_id)
@@ -70,10 +70,10 @@ class LegacyAGEStore:
         self._audit_store.save_governance(domain, key, state)
 
     def get_governance(self, domain: str, key: str) -> dict[str, Any] | None:
-        return self._audit_store.get_governance(domain, key)
+        return cast(dict[str, Any] | None, self._audit_store.get_governance(domain, key))
 
     def list_governance(self, domain: str) -> list[dict[str, Any]]:
-        return self._audit_store.list_governance(domain)
+        return cast(list[dict[str, Any]], self._audit_store.list_governance(domain))
 
     def delete_governance(self, domain: str, key: str) -> None:
         self._audit_store.delete_governance(domain, key)
@@ -349,7 +349,7 @@ class ActiveAGETrackingStore(InMemoryGraphStore):
 
     @property
     def decisions(self) -> dict[str, dict[str, Any]]:
-        return self._decisions
+        return cast(dict[str, dict[str, Any]], self._decisions)
 
     @property
     def evidence_receipts(self) -> list[dict[str, Any]]:
@@ -387,11 +387,11 @@ class ActiveAGETrackingStore(InMemoryGraphStore):
         *,
         include_outcome: bool = False,
     ) -> dict[str, Any] | None:
-        return super().get_decision(
+        return cast(dict[str, Any] | None, super().get_decision(
             decision_id,
             domain or "s2p",
             include_outcome=include_outcome,
-        )
+        ))
 
     def write_outcome(
         self,
@@ -418,12 +418,12 @@ class ActiveAGETrackingStore(InMemoryGraphStore):
             source_route = args[5]
         if self.fail_evidence_receipt and source_route != "/api/s2p/score":
             raise RuntimeError("evidence receipt failure")
-        return super().append_evidence_receipt(*args, **kwargs)
+        return cast(tuple[int, str], super().append_evidence_receipt(*args, **kwargs))
 
     def enqueue_to_outbox(self, *args: Any, **kwargs: Any) -> int:
         if self.fail_outbox:
             raise RuntimeError("outbox failure")
-        return super().enqueue_to_outbox(*args, **kwargs)
+        return cast(int, super().enqueue_to_outbox(*args, **kwargs))
 
 
 def _active_config() -> S2PActiveGraphConfig:
@@ -488,7 +488,7 @@ def test_active_age_test_mode_constructs_store_with_factory():
 
     def factory(**kwargs: Any) -> ActiveAGETrackingStore:
         calls.append(dict(kwargs))
-        return store
+        return cast(ActiveAGETrackingStore, store)
 
     active = create_s2p_active_graph_store(_active_config(), store_factory=factory)
 
@@ -524,7 +524,7 @@ def test_score_route_uses_active_age_store_and_preserves_response_shape():
     assert verification["entries_checked"] == 1
     status = client.get("/api/s2p/graph/status").json()
     assert status["active_backend"] == "age"
-    assert status["sqlite_authoritative"] is False
+    assert status["memory_authoritative"] is False
     assert status["age_active"] is True
 
 
@@ -635,7 +635,7 @@ def test_preview_remains_read_only_under_active_age():
     assert store.governed_writes == 0
 
 
-def test_rollback_to_sqlite_after_active_age_test_mode():
+def test_rollback_to_memory_after_active_age_test_mode():
     active, store = _active_age_store()
     _reset_app_state(active_store=active, active_config=_active_config())
     client = TestClient(app)
@@ -645,16 +645,16 @@ def test_rollback_to_sqlite_after_active_age_test_mode():
 
     _reset_app_state()
     before = app.state.graph_store.count_decisions("s2p")
-    sqlite_response = client.post(
+    memory_response = client.post(
         "/api/s2p/score",
         json={**VALID_SCORE_REQUEST, "event_id": "S2P-CUTOVER-PHASE-B-ROLLBACK"},
     )
 
-    assert sqlite_response.status_code == 200
+    assert memory_response.status_code == 200
     assert app.state.graph_store.count_decisions("s2p") == before + 1
     status = client.get("/api/s2p/graph/status").json()
-    assert status["active_backend"] == "sqlite"
-    assert status["sqlite_authoritative"] is True
+    assert status["active_backend"] == "memory"
+    assert status["memory_authoritative"] is True
 
 
 def test_product_active_age_score_outcome_and_status_with_tracking_store():
@@ -693,7 +693,7 @@ def test_product_active_age_score_outcome_and_status_with_tracking_store():
     status = client.get("/api/s2p/graph/status").json()
     assert status["active_backend"] == "age"
     assert status["age_active"] is True
-    assert status["sqlite_authoritative"] is False
+    assert status["memory_authoritative"] is False
     assert status["age_graph_kind"] == "product"
     assert status["active_graph_name"] == "soc_graph"
     assert status["active_test_mode"] is False
@@ -787,17 +787,17 @@ def test_product_active_age_rollback_proves_no_hidden_reconciliation():
     assert store.get_decision(product_decision_id) is not None
 
     _reset_app_state()
-    before_sqlite = app.state.graph_store.count_decisions("s2p")
-    sqlite_response = client.post(
+    before_memory = app.state.graph_store.count_decisions("s2p")
+    memory_response = client.post(
         "/api/s2p/score",
         json={**VALID_SCORE_REQUEST, "event_id": "S2P-SQLITE-AFTER-PRODUCT-ROLLBACK"},
     )
 
-    assert sqlite_response.status_code == 200
-    assert app.state.graph_store.count_decisions("s2p") == before_sqlite + 1
+    assert memory_response.status_code == 200
+    assert app.state.graph_store.count_decisions("s2p") == before_memory + 1
     assert app.state.graph_store.get_decision(product_decision_id, domain="s2p") is None
     assert store.get_decision(product_decision_id) is not None
     status = client.get("/api/s2p/graph/status").json()
-    assert status["active_backend"] == "sqlite"
-    assert status["sqlite_authoritative"] is True
+    assert status["active_backend"] == "memory"
+    assert status["memory_authoritative"] is True
     assert status["age_active"] is False

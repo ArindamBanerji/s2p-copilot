@@ -110,7 +110,9 @@ class S2PInvoiceTraversalPattern:
         edges: list[TraversalEdge] = list(built.edges)
         evidence_chain: list[dict[str, Any]] = list(built.evidence_chain)
         warnings.extend(built.warnings)
-        receipts = _receipt_context(invoice_id, decision_id)
+        receipts, receipt_degraded_fields = _receipt_context(
+            invoice_id, decision_id, return_status=True,
+        )
         if receipts:
             evidence_chain.append({"type": "receipts", "count": len(receipts), "receipts": receipts})
 
@@ -131,6 +133,7 @@ class S2PInvoiceTraversalPattern:
                 "context_used": context_used,
                 "degraded": bool(warnings),
                 "p38_context_builder": True,
+                "degraded_fields": receipt_degraded_fields,
             },
         )
 
@@ -171,19 +174,22 @@ def _linked_decisions(reader: S2PGraphReader, invoice_id: Any) -> list[dict[str,
     return decisions
 
 
-def _receipt_context(invoice_id: Any, decision_id: Any) -> list[dict[str, Any]]:
+def _receipt_context(
+    invoice_id: Any, decision_id: Any, *, return_status: bool = False,
+) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], list[str]]:
     store = get_receipt_store()
     receipts: list[dict[str, Any]] = []
+    degraded_fields: list[str] = []
     if invoice_id:
         try:
             receipts.extend(store.get_for_invoice(str(invoice_id)))
         except Exception:
-            pass
+            degraded_fields.append("invoice_receipts")
     if decision_id:
         try:
             receipts.extend(store.get_for_decision(str(decision_id)))
         except Exception:
-            pass
+            degraded_fields.append("decision_receipts")
     seen: set[str] = set()
     unique: list[dict[str, Any]] = []
     for receipt in receipts:
@@ -191,7 +197,7 @@ def _receipt_context(invoice_id: Any, decision_id: Any) -> list[dict[str, Any]]:
         if marker not in seen:
             seen.add(marker)
             unique.append(receipt)
-    return unique
+    return (unique, degraded_fields) if return_status else unique
 
 
 def _flatten_decision(decision: dict[str, Any]) -> dict[str, Any]:

@@ -6,6 +6,10 @@ from collections import Counter, defaultdict
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any, cast
+from sqlite3 import OperationalError as SQLiteOperationalError
+
+from psycopg import InterfaceError, OperationalError
+from ci_platform.graph.age_graph_store import GraphUnavailableError as AGEGraphUnavailableError
 
 from copilot_sdk.graph.enrichment import (
     EnrichmentSourceSet,
@@ -16,7 +20,7 @@ from copilot_sdk.graph.enrichment import (
 from copilot_sdk.graph.protocol import GraphStore
 
 from app.routers.s2p_data_helpers import load_invoices, load_suppliers
-from app.graph.s2p_graph_reader import S2PGraphReader
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.services.lead_time import compute_lead_time_result
 
 DOMAIN = "s2p"
@@ -24,6 +28,10 @@ ENTITY_TYPE = "Supplier"
 NAMESPACE = "s2p_supplier_metrics"
 COMPUTATION_VERSION = "p39b_s2p_supplier_metrics_v1"
 TREND_MIN_DECISIONS = 6
+ENRICHMENT_READ_ERRORS = (
+    OSError, GraphUnavailableError, AGEGraphUnavailableError,
+    OperationalError, InterfaceError, SQLiteOperationalError,
+)
 
 
 class S2PSupplierEnrichmentService:
@@ -204,9 +212,11 @@ class S2PSupplierEnrichmentService:
         }
         return metrics, source_set
 
-    def read_supplier(self, supplier_id: str) -> dict[str, ProvenancedValue]:
+    def read_supplier(
+        self, supplier_id: str, *, return_status: bool = False,
+    ) -> dict[str, ProvenancedValue] | tuple[dict[str, ProvenancedValue] | None, bool]:
         if not isinstance(self.graph_store, GraphStore):
-            return {}
+            return (None, False) if return_status else {}
         try:
             result = self.graph_store.read_entity_enrichment(
                 domain=DOMAIN,
@@ -215,23 +225,36 @@ class S2PSupplierEnrichmentService:
                 namespace=NAMESPACE,
             )
         except Exception:
-            return {}
-        return result if isinstance(result, dict) else {}
+            return (None, False) if return_status else {}
+        metrics = result if isinstance(result, dict) else {}
+        return (metrics, True) if return_status else metrics
 
-    def list_suppliers(self, *, limit: int = 500) -> list[EntityEnrichmentRecord]:
+    def list_suppliers(
+        self, *, limit: int = 500, return_status: bool = False,
+    ) -> list[EntityEnrichmentRecord] | tuple[list[EntityEnrichmentRecord], bool]:
         if not isinstance(self.graph_store, GraphStore):
-            return []
+            return ([], False) if return_status else []
         try:
             rows = self.graph_store.list_entity_enrichments(
                 domain=DOMAIN, entity_type=ENTITY_TYPE, namespace=NAMESPACE, limit=limit
             )
-        except Exception:
-            return []
-        return [row for row in rows if isinstance(row, EntityEnrichmentRecord)]
+        except ENRICHMENT_READ_ERRORS:
+            return ([], False) if return_status else []
+        if not isinstance(rows, list) or not all(isinstance(row, EntityEnrichmentRecord) for row in rows):
+            return ([], False) if return_status else []
+        records = list(rows)
+        return (records, True) if return_status else records
 
-    def summary(self) -> list[dict[str, Any]]:
+    def summary(
+        self, *, return_status: bool = False,
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], bool]:
         by_supplier: dict[str, dict[str, ProvenancedValue]] = defaultdict(dict)
-        for record in self.list_suppliers():
+        records_result = self.list_suppliers(return_status=return_status)
+        if isinstance(records_result, tuple):
+            records, data_available = records_result
+        else:
+            records, data_available = records_result, True
+        for record in records:
             by_supplier[str(record.entity_id)][str(record.metric_name)] = record.value
         rows: list[dict[str, Any]] = [
             {"supplier_id": supplier_id, "metrics": self.serialize_values(metrics)}
@@ -241,14 +264,30 @@ class S2PSupplierEnrichmentService:
             key=lambda row: _numeric_value(row["metrics"].get("exception_rate")),
             reverse=True,
         )
-        return rows
+        return (rows, data_available) if return_status else rows
 
-    def alerts(self, *, threshold: float = 0.10) -> list[dict[str, Any]]:
+    def alerts(self, *, threshold: float = 0.10) -> list[dict[str, Any]] | None:
         alerts: list[dict[str, Any]] = []
-        for row in self.summary():
+        try:
+            summary_result = self.summary(return_status=True)
+        except ENRICHMENT_READ_ERRORS:
+            return None
+        if (
+            not isinstance(summary_result, tuple) or len(summary_result) != 2
+            or summary_result[1] is not True or not isinstance(summary_result[0], list)
+        ):
+            return None
+        rows = summary_result[0]
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("supplier_id"), str):
+                return None
+            if not isinstance(row.get("metrics"), dict):
+                return None
             metrics = row["metrics"]
             exception = metrics.get("exception_rate", {})
             trend = metrics.get("trend", {})
+            if not isinstance(exception, dict) or not isinstance(trend, dict):
+                return None
             exception_alert = (
                 exception.get("verified") is True
                 and exception.get("measured") is True

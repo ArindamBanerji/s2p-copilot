@@ -3,6 +3,7 @@ tests/test_s2p_preview.py - S2P v2 preview endpoint tests.
 """
 
 import os
+import json
 import pathlib
 import sys
 from types import SimpleNamespace
@@ -16,6 +17,7 @@ from fastapi.testclient import TestClient
 from app.domains.s2p.config import S2PDomainConfig
 from app.main import app, build_s2p_scorer
 from app.s2p_shadow import S2PShadowConfig, S2PShadowDiagnostics, S2PShadowState
+from app.services.s2p_preview_data import read_decisions, supplier_profiles
 
 client = TestClient(app)
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -35,7 +37,7 @@ def test_queue_returns_200():
     assert response.json()["status"] == "ok"
 
 
-def test_production_previews_read_graph_without_fixture_access(monkeypatch):
+def test_production_queue_reads_graph_without_fixture_access(monkeypatch):
     original_read = pathlib.Path.read_text
 
     def no_fixture_read(path, *args, **kwargs):
@@ -45,11 +47,10 @@ def test_production_previews_read_graph_without_fixture_access(monkeypatch):
 
     monkeypatch.setenv("S2P_PROFILE", "production")
     monkeypatch.setattr(pathlib.Path, "read_text", no_fixture_read)
-    for endpoint, total in (("queue", 50), ("suppliers", 10)):
-        response = client.get(f"/api/s2p/preview/{endpoint}")
-        assert response.status_code == 200
-        assert response.json()["total"] == total
-        assert response.json()["source"] == "graph"
+    response = client.get("/api/s2p/preview/queue")
+    assert response.status_code == 200
+    assert response.json()["total"] == 50
+    assert response.json()["source"] == "graph"
 
 
 def test_preview_follows_current_app_scorer(monkeypatch):
@@ -90,8 +91,52 @@ def test_queue_only_scores_latest_50_pending_decisions(preview_graph):
     assert old not in {row["decision_id"] for row in data["invoices"]}
 
 
-def test_suppliers_compute_outcomes_and_fulfilment_from_graph():
-    profile = client.get("/api/s2p/preview/suppliers").json()["suppliers"][0]
+def test_queue_returns_unique_invoice_ids_after_repeated_scoring(preview_graph, monkeypatch):
+    from app.services.s2p_materialization import create_s2p_materializer
+
+    monkeypatch.setattr(app.state, "materializer", None, raising=False)
+    invoice_id = _queue(50).json()["invoices"][0]["invoice_id"]
+    factors = {name: 0.6 for name in S2PDomainConfig.factors}
+    # More repeated scores than the queue window must not crowd out invoices.
+    for index in range(60):
+        identity_field = ("invoice_id", "source_invoice_id", "entity_id")[index % 3]
+        newest_id = preview_graph.write_decision(
+            "s2p", "price_variance", "auto_approve", 0.8, factors,
+            metadata={identity_field: invoice_id, "created_at": 1900000000 + index,
+                      "amount": 100 + index},
+        )
+    without_invoice_id = preview_graph.write_decision(
+        "s2p", "price_variance", "auto_approve", 0.8, factors,
+        metadata={"created_at": 1900001000},
+    )
+    stored_count = preview_graph.count_decisions("s2p")
+
+    for materialized in (False, True):
+        if materialized:
+            mat = create_s2p_materializer(app.state)
+            mat.refresh()
+            monkeypatch.setattr(app.state, "materializer", mat)
+        for limit in (5, 50):
+            response = _queue(limit)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total"] == 51  # 50 original invoices + decision-ID fallback.
+            assert data["scored_count"] == 50
+            assert data["showing"] == limit
+            for key in ("invoices", "exceptions"):
+                ids = [row["invoice_id"] for row in data[key]]
+                assert len(ids) == len(set(ids)) == limit
+            assert data["invoices"] == data["exceptions"]
+            if limit == 50:
+                retained = next(row for row in data["invoices"] if row["invoice_id"] == invoice_id)
+                assert retained["decision_id"] == newest_id
+                assert retained["amount"] == 159
+                assert without_invoice_id in {row["invoice_id"] for row in data["invoices"]}
+    assert preview_graph.count_decisions("s2p") == stored_count
+
+
+def test_suppliers_compute_outcomes_and_fulfilment_from_graph(preview_graph):
+    profile = supplier_profiles(read_decisions(preview_graph))[0]
     assert profile["total_invoices"] == 7
     assert profile["verified_invoices"] == 2
     assert profile["total_exceptions"] == 1
@@ -105,7 +150,7 @@ def test_suppliers_do_not_infer_otif_from_prediction_correctness(preview_graph):
     for outcome in preview_graph._outcomes.values():
         outcome["metadata"].pop("on_time")
         outcome["metadata"].pop("in_full")
-    profiles = client.get("/api/s2p/preview/suppliers").json()["suppliers"]
+    profiles = supplier_profiles(read_decisions(preview_graph))
     assert all(row["otif_score"] is None and row["otif_observations"] == 0 for row in profiles)
 
 
@@ -114,7 +159,7 @@ def test_supplier_rescore_preserves_verified_history(preview_graph):
                                  {name: 0.5 for name in S2PDomainConfig.factors},
                                  metadata={"supplier_id": "SUP-001", "invoice_id": "history-0-1",
                                            "amount": 100.0, "created_at": 1800000000})
-    profile = client.get("/api/s2p/preview/suppliers").json()["suppliers"][0]
+    profile = supplier_profiles(read_decisions(preview_graph))[0]
     assert profile["total_invoices"] == 7
     assert profile["verified_invoices"] == 2
     assert profile["exception_rate"] == 0.5
@@ -310,9 +355,59 @@ def test_suppliers_have_required_fields():
         assert key in supplier
 
 
-def test_suppliers_preserve_graph_names():
+def test_suppliers_preserve_fixture_names():
     suppliers = client.get("/api/s2p/preview/suppliers?limit=10").json()["suppliers"]
     assert any(supplier["supplier_name"] == "Aster Industrial Chemicals" for supplier in suppliers)
+
+
+@pytest.mark.parametrize("materialized", [False, True])
+def test_supplier_preview_is_isolated_from_stress_and_colliding_ids(preview_graph, monkeypatch, materialized):
+    from app.services.s2p_materialization import create_s2p_materializer
+
+    expected = json.loads((BACKEND_ROOT.parent / "data/s2p_demo_suppliers.json").read_text())
+    for supplier_id in ("STRESS-SUPPLIER", expected[0]["supplier_id"]):
+        preview_graph.write_decision(
+            "s2p", "price_variance", "auto_approve", 0.8, {},
+            metadata={"supplier_id": supplier_id, "supplier_name": "STRESS-SUPPLIER",
+                      "created_at": 1900000000, "origin": "jm_stress_test"},
+        )
+    before = preview_graph.get_all_decisions("s2p")
+    mat = create_s2p_materializer(app.state) if materialized else None
+    monkeypatch.setattr(app.state, "materializer", mat, raising=False)
+    if mat is not None:
+        mat.refresh()
+    response = client.get("/api/s2p/preview/suppliers")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "fixture"
+    assert payload["provenance"] == "sample"
+    assert payload["total"] == len(expected)
+    for actual, fixture in zip(payload["suppliers"], expected, strict=True):
+        assert all(actual[key] == value for key, value in fixture.items())
+        assert actual["supplier_name"] == fixture["name"]
+    if mat is not None:
+        mat.invalidate()
+        assert client.get("/api/s2p/preview/suppliers").json() == payload
+    assert preview_graph.get_all_decisions("s2p") == before
+
+
+def test_supplier_preview_never_reads_live_graph_on_cache_miss(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Demo supplier preview must not read the live store")
+
+    monkeypatch.setattr(app.state, "materializer", None, raising=False)
+    monkeypatch.setattr(app.state.graph_store, "get_all_decisions", forbidden)
+    monkeypatch.setattr(app.state.graph_store, "get_verified_decisions", forbidden)
+    assert client.get("/api/s2p/preview/suppliers").json()["source"] == "fixture"
+
+
+def test_supplier_fixture_failure_does_not_fall_back_to_stress_data(monkeypatch, tmp_path):
+    from app.services import s2p_preview_data
+
+    monkeypatch.setattr(app.state, "materializer", None, raising=False)
+    monkeypatch.setattr(s2p_preview_data, "_DEMO_SUPPLIERS_PATH", tmp_path / "missing.json")
+    with pytest.raises(FileNotFoundError):
+        client.get("/api/s2p/preview/suppliers")
 
 
 def test_config_returns_200():
@@ -494,7 +589,7 @@ def test_preview_queue_ranks_the_recent_graph_window(monkeypatch):
     assert scorer.calls == 50
 
 
-def test_preview_queue_does_not_write_sqlite_decisions():
+def test_preview_queue_does_not_write_graph_decisions():
     import app.routers.s2p_preview as preview_module
 
     original_scorer = app.state.scorer

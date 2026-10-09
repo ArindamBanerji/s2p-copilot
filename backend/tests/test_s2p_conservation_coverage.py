@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from types import SimpleNamespace
 
-from copilot_sdk.backend import conservation_utils
+import pytest
+from fastapi import Request
 
+from copilot_sdk.backend import conservation_utils
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
+
+from app.domains.s2p.config import S2PDomainConfig
 from app.routers import s2p
 
 
@@ -37,6 +43,19 @@ class _Store:
         assert n == 1
         return self.categories_with_data
 
+    def get_verified_decisions(self, domain: str) -> list[dict[str, object]]:
+        assert domain == "s2p"
+        # Return newest first to prove the S2P provider canonicalizes backend order.
+        return [
+            {
+                "decision_id": f"decision-{index:03d}",
+                "created_at": float(index),
+                "category": f"category-{index % max(self.categories_with_data, 1)}",
+                "is_correct": index < self.correct_count,
+            }
+            for index in reversed(range(self.verified_count))
+        ]
+
 
 def test_s2p_conservation_provider_preserves_category_coverage() -> None:
     payload = s2p._read_conservation_counts(_Store(3), "s2p")
@@ -52,8 +71,11 @@ def test_s2p_conservation_provider_clamps_coverage_to_domain() -> None:
     assert payload["categories_with_data"] == payload["categories_total"] == 5
 
 
-def _request_for_store(store: _Store) -> SimpleNamespace:
-    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(graph_store=store)))
+def _request_for_store(store: _Store | InMemoryGraphStore) -> Request:
+    return Request({
+        "type": "http",
+        "app": SimpleNamespace(state=SimpleNamespace(graph_store=store)),
+    })
 
 
 def _public_status_for_store(store: _Store) -> str:
@@ -74,6 +96,10 @@ def test_internal_and_public_conservation_agree_for_bootstrap_decisions() -> Non
     store = _Store(3, verified_count=7, correct_count=6, total_decisions=7)
     s2p._clear_score_conservation_status_cache()
 
+    state = s2p.cached_conservation_state_provider(SimpleNamespace(graph_store=store))
+    assert [row["created_at"] for row in state["verified_decisions"]] == list(
+        map(float, range(7))
+    )
     assert s2p._current_conservation_status(_request_for_store(store)) == _public_status_for_store(store)
 
 
@@ -84,26 +110,47 @@ def test_internal_and_public_conservation_agree_for_normal_volume() -> None:
     assert s2p._current_conservation_status(_request_for_store(store)) == _public_status_for_store(store)
 
 
-def test_internal_conservation_passes_category_coverage_to_engine(monkeypatch) -> None:
-    calls: list[dict[str, object]] = []
-
-    def capture_status(**kwargs: object) -> SimpleNamespace:
-        calls.append(kwargs)
-        return SimpleNamespace(
-            status="GREEN",
-            signal=1.0,
-            theta_min=0.5,
-            headroom=0.5,
-            passed=True,
+def test_internal_conservation_passes_category_coverage_to_engine(
+    memory_store: InMemoryGraphStore,
+) -> None:
+    categories = S2PDomainConfig.categories[:4]
+    seeded = [
+        (f"coverage-{index:03d}", 1_700_000_000.0 + index // 2,
+         categories[index % len(categories)], index < 11)
+        for index in range(12)
+    ]
+    # Reverse insertion and tied timestamps exercise both F-02 ordering keys.
+    for decision_id, created_at, category, correct in reversed(seeded):
+        memory_store.write_decision(
+            domain="s2p", category=category, action=S2PDomainConfig.actions[0],
+            confidence=0.9,
+            factors={name: 0.5 for name in S2PDomainConfig.factors},
+            metadata={"decision_id": decision_id, "created_at": created_at},
         )
-
-    monkeypatch.setattr(conservation_utils, "conservation_status", capture_status)
-    store = _Store(4, verified_count=12, correct_count=11, total_decisions=12)
+        memory_store.write_outcome(
+            decision_id, S2PDomainConfig.actions[0 if correct else 1], correct,
+            domain="s2p", outcome="confirmed" if correct else "overridden",
+        )
     s2p._clear_score_conservation_status_cache()
 
-    assert s2p._current_conservation_status(_request_for_store(store)) == "GREEN"
-    assert calls[-1]["categories_with_data"] == 4
-    assert calls[-1]["total_categories"] == 5
+    state = s2p.cached_conservation_state_provider(SimpleNamespace(graph_store=memory_store))
+    rows = state["verified_decisions"]
+    assert [(row["created_at"], row["decision_id"]) for row in rows] == [
+        (created_at, decision_id) for decision_id, created_at, _, _ in seeded
+    ]
+    expected_coverage = Counter(category for _, _, category, _ in seeded)
+    observed_coverage = Counter(row["category"] for row in rows)
+    assert {category: observed_coverage[category] for category in S2PDomainConfig.categories} == {
+        category: expected_coverage[category] for category in S2PDomainConfig.categories
+    }
+    payload = conservation_utils.compute_conservation_status_payload("s2p", state)
+    assert payload["verified_count"] == len(seeded)
+    assert payload["correct_count"] == sum(correct for _, _, _, correct in seeded)
+    assert payload["q"] == pytest.approx(payload["correct_count"] / len(seeded))
+    assert payload["categories_with_data"] == len(expected_coverage)
+    assert payload["categories_total"] == len(S2PDomainConfig.categories)
+    assert payload["alpha"] == pytest.approx(len(expected_coverage) / len(S2PDomainConfig.categories))
+    assert s2p._current_conservation_status(_request_for_store(memory_store)) == payload["status"] == "GREEN"
 
 
 def test_cold_start_status_keeps_learning_allowed() -> None:

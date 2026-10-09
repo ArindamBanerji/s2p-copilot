@@ -64,7 +64,6 @@ class S2PAutonomyManager:
     ) -> None:
         self.scorer = scorer
         self.ledger = ledger
-        data_path = Path(data_dir)
         selected_graph_store = graph_store or getattr(scorer, "graph_store", None)
         if not isinstance(selected_graph_store, GraphStore):
             raise RuntimeError("S2P autonomy requires the configured GraphStore")
@@ -74,7 +73,7 @@ class S2PAutonomyManager:
             store=GraphPromotionStore(selected_graph_store, "s2p"),
             conservation_provider=self.conservation,
         )
-        self.twin = FrozenTwin(FrozenTwinStore(data_path / "frozen_twins"))
+        self.twin = FrozenTwin(FrozenTwinStore(selected_graph_store, "s2p"))
         try:
             self.twin.load("s2p")
         except FileNotFoundError:

@@ -11,8 +11,25 @@ import os
 from types import SimpleNamespace
 
 import pytest
+from ci_platform.graph.age_graph_store import AGEGraphStore
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+
+class HealthAGEGraphStore(AGEGraphStore):
+    """Connection-free AGE-shaped store for the real readiness probe."""
+
+    def __init__(self, connected: bool) -> None:
+        self._connected = connected
+
+    @property
+    def production_ready(self) -> bool:
+        return True
+
+    def count_decisions(self, domain: str) -> int:
+        if not self._connected:
+            raise ConnectionError("AGE unavailable")
+        return 0
 
 
 def test_health_endpoint_reports_offline_graph():
@@ -38,9 +55,7 @@ def test_health_merges_shared_readiness_and_service_fields(monkeypatch, path, co
     monkeypatch.setattr(app.state, "graph_health_config", SimpleNamespace(
         backend="age", graph="soc_graph", dsn="test-only", source_keys=(),
     ))
-    monkeypatch.setattr(app.state, "graph_store", SimpleNamespace(
-        health_check=lambda: {"connected": connected},
-    ))
+    monkeypatch.setattr(app.state, "graph_store", HealthAGEGraphStore(connected))
     response = TestClient(app).get(path)
     body = response.json()
     assert response.status_code == (200 if connected else 503)

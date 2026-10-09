@@ -21,16 +21,20 @@ class CrossCopilotSignalConsumer:
     def __init__(self, signal_endpoint: str | None = None):
         self._endpoint = (signal_endpoint or os.environ.get("CROSS_COPILOT_SIGNAL_ENDPOINT") or DEFAULT_SIGNAL_ENDPOINT).rstrip("/")
 
-    def fetch_supplier_signals(self, supplier_name: str) -> list[dict[str, Any]]:
+    def fetch_supplier_signals(
+        self, supplier_name: str, *, return_status: bool = False,
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], bool]:
         """Fetch active supplier reliability signals without failing S2P scoring."""
 
         if not supplier_name:
-            return []
+            result: list[dict[str, Any]] = []
+            return (result, True) if return_status else result
         cache_key = (self._endpoint, str(supplier_name).strip().lower())
         now = time.time()
         with _OFFLINE_CACHE_LOCK:
             if _OFFLINE_CACHE.get(cache_key, 0.0) > now:
-                return []
+                result = []
+                return (result, False) if return_status else result
 
         try:
             encoded = quote(str(supplier_name), safe="")
@@ -40,15 +44,18 @@ class CrossCopilotSignalConsumer:
             )
             if resp.status_code != 200:
                 _cache_offline(cache_key)
-                return []
+                result = []
+                return (result, False) if return_status else result
             raw: Any = resp.json()
-        except Exception:
+        except (httpx.RequestError, TimeoutError, ConnectionError, OSError, ValueError):
             _cache_offline(cache_key)
-            return []
+            result = []
+            return (result, False) if return_status else result
         if not isinstance(raw, list):
-            return []
+            result = []
+            return (result, False) if return_status else result
         now = time.time()
-        return [
+        result = [
             dict(signal)
             for signal in raw
             if isinstance(signal, dict)
@@ -56,6 +63,7 @@ class CrossCopilotSignalConsumer:
             and _supplier_matches(signal, supplier_name)
             and not signal_expired(signal, now)
         ]
+        return (result, True) if return_status else result
 
 
 def _cache_offline_unlocked(cache_key: tuple[str, str]) -> None:

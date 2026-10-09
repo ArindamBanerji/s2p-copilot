@@ -113,7 +113,7 @@ def test_finite_amount_accepted() -> None:
 
 def test_conservation_provider_shape() -> None:
     payload = main._s2p_conservation_state()
-    assert isinstance(payload["verified_outcomes"], list)
+    assert isinstance(payload["verified_decisions"], list)
     assert isinstance(payload["recent_outcomes"], list)
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -38,14 +38,14 @@ def scorer(store: InMemoryGraphStore) -> Any:
 
 
 def _decision(store: InMemoryGraphStore, *, domain: str = DOMAIN) -> str:
-    return store.write_decision(
+    return cast(str, store.write_decision(
         domain=domain,
         category=S2PDomainConfig.categories[0],
         action=S2PDomainConfig.actions[0],
         confidence=0.9,
         factors=FACTORS,
         metadata={"factor_vector": list(FACTORS.values())},
-    )
+    ))
 
 
 class TestS2PJM:
@@ -133,21 +133,14 @@ class TestS2PJM:
         assert decision["domain"] == DOMAIN
 
     def test_graph_failure_is_not_silently_substituted(self) -> None:
-        from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
-
-        path = Path("s2p-jm-verification.sqlite3")
-        sqlite_store = SQLiteGraphStore(path, domain=DOMAIN)
+        memory_store = InMemoryGraphStore(domain=DOMAIN)
         try:
             with pytest.raises((TypeError, ValueError, RuntimeError)):
-                build_s2p_scorer(graph_store=sqlite_store, profile="production")
+                build_s2p_scorer(graph_store=memory_store, profile="production")
         finally:
-            sqlite_store.close()
-            for suffix in ("", "-wal", "-shm"):
-                candidate = Path(f"{path}{suffix}")
-                if candidate.exists():
-                    candidate.unlink()
+            memory_store.close()
 
-    def test_scoring_cycle_creates_no_sqlite_files(self, scorer: Any, tmp_path: Path) -> None:
+    def test_scoring_cycle_creates_no_local_graph_files(self, scorer: Any, tmp_path: Path) -> None:
         before = set(tmp_path.glob("*") )
         result = scorer.score(FACTORS, S2PDomainConfig.categories[0])
         scorer.learn(result.decision_id, result.action, context={"preseed": True}, persist_artifacts=False)

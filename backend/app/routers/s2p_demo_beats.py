@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, cast
+from typing import Any, Literal, cast, overload
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -41,17 +41,31 @@ def _manager(request: Request) -> S2PAutonomyManager:
     return manager
 
 
-def _rows(reader: S2PGraphReader | None, verified: bool = False) -> list[dict[str, Any]]:
+@overload
+def _rows(reader: S2PGraphReader | None, verified: bool = False, *, return_status: Literal[False] = False) -> list[dict[str, Any]]: ...
+
+@overload
+def _rows(reader: S2PGraphReader | None, verified: bool = False, *, return_status: Literal[True]) -> tuple[list[dict[str, Any]], bool]: ...
+
+def _rows(
+    reader: S2PGraphReader | None,
+    verified: bool = False,
+    *,
+    return_status: bool = False,
+) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], bool]:
     if reader is None:
-        return []
+        result: list[dict[str, Any]] = []
+        return (result, False) if return_status else result
     try:
         rows = reader.get_verified_decisions() if verified else reader.get_all_decisions()
-    except GraphUnavailableError:
-        # These are read-only presentation endpoints.  The graph enriches
-        # them with history, but scorer/config state remains sufficient for a
-        # truthful day-zero response when AGE is temporarily unavailable.
-        return []
-    return [row for row in rows if isinstance(row, dict)]
+    except (GraphUnavailableError, RuntimeError):
+        result = []
+        return (result, False) if return_status else result
+    if not isinstance(rows, list):
+        result = []
+        return (result, False) if return_status else result
+    result = [row for row in rows if isinstance(row, dict)]
+    return (result, True) if return_status else result
 
 
 def _factor_map(row: dict[str, Any]) -> dict[str, float] | None:
@@ -189,11 +203,12 @@ def frozen_twin(request: Request) -> dict[str, Any]:
     reader = _reader(request)
     manager = getattr(request.app.state, "s2p_autonomy", None)
     scorer = _scorer(request)
-    rows = _rows(reader)
+    rows, rows_available = _rows(reader, return_status=True)
     # Decision-only reads do not join Outcome fields on every store adapter.
     # Use the canonical verified join for ground truth, not a null filter on
     # the raw Decision collection (which silently compared zero decisions).
-    verified = _rows(reader, verified=True)
+    verified, verified_available = _rows(reader, verified=True, return_status=True)
+    data_available = rows_available and verified_available
     if not isinstance(manager, S2PAutonomyManager) or not manager.twin.is_frozen():
         current = _centroids(scorer)
         initial = np.asarray(S2PDomainConfig.get_profile_centroids(), dtype=float)
@@ -203,16 +218,18 @@ def frozen_twin(request: Request) -> dict[str, Any]:
             "current_decisions": len(rows),
             "compared_decisions": 0,
             "frozen_decisions_would_miss": [],
-            "delta_accuracy": None,
-            "delta_coverage": None,
-            "current_coverage": None,
-            "frozen_coverage": None,
-            "current_accuracy": None,
-            "frozen_accuracy": None,
+            "delta_accuracy": 0.0,
+            "delta_coverage": 0.0,
+            "current_coverage": 0.0,
+            "frozen_coverage": 0.0,
+            "current_accuracy": 0.0,
+            "frozen_accuracy": 0.0,
             "visual_diff": [],
             "evidence_tier": "T_S",
             "centroid_drift_from_config_baseline": drift,
-            "evidence_note": "Graph unavailable; comparison uses the live scorer and canonical S2P config baseline.",
+            "evidence_note": "Graph unavailable; comparison uses typed defaults.",
+            "reason": "graph_unavailable" if not data_available else "frozen_twin_unavailable",
+            "data_available": data_available,
             "comparison_points": [],
         }
         return _frozen_twin_contract(payload, source="live scorer and canonical S2P config baseline")
@@ -292,6 +309,7 @@ def frozen_twin(request: Request) -> dict[str, Any]:
             if provenance else "Comparison uses the persisted immutable S2P day-one twin and live verified decisions."
         ),
         "comparison_points": comparison_points,
+        "data_available": True,
     }
     return _frozen_twin_contract(payload, source="immutable demo re-freeze" if provenance else "persisted immutable S2P day-one twin and live verified decisions")
 
@@ -301,7 +319,7 @@ def frozen_twin_freeze(request: Request) -> dict[str, Any]:
     """Initialize the S2P day-zero twin; repeated calls remain idempotent."""
     manager = _manager(request)
     try:
-        return manager.freeze()
+        return cast(dict[str, Any], manager.freeze())
     except FileExistsError:
         status = manager.twin_status()
         return {**status, "frozen": True, "created": False}

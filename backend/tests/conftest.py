@@ -11,11 +11,15 @@ from typing import Any, Callable, Generator
 
 import pytest
 
-from copilot_sdk.testing.fixtures import age_available
+from copilot_sdk.testing import fixtures as sdk_test_fixtures
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
+from tests.ordered_evolution_store import OrderedEvolutionGraphStore
 
 
-class S2PTestGraphStore(InMemoryGraphStore):
+age_available = sdk_test_fixtures.age_available
+
+
+class S2PTestGraphStore(OrderedEvolutionGraphStore):
     """Complete unit-test GraphStore with AGE event filtering/order semantics."""
 
     def __init__(self, domain: str = "s2p") -> None:
@@ -28,9 +32,7 @@ class S2PTestGraphStore(InMemoryGraphStore):
         )
         if isinstance(event_type, str):
             events = [event for event in events if event.get("event_type") == event_type]
-        # Variant reconstruction consumes registration/status events in write
-        # order so the last status update wins. AGE's adapter preserves this
-        # order; keep the test store's contract identical.
+        # Strict timestamps let replay recover causal order from newest-first reads.
         return list(events)
 
 
@@ -70,37 +72,47 @@ def age_store() -> Generator[Any, None, None]:
 # that construction on an explicit local backend; tests that exercise active
 # AGE override these values with their own scoped environment setup.
 os.environ["S2P_PROFILE"] = "test"
-os.environ["GRAPH_BACKEND"] = "sqlite"
+os.environ["GRAPH_BACKEND"] = "memory"
 _ORIGINAL_GRAPH_DSN = os.environ.get("GRAPH_DSN", "")
 os.environ.pop("GRAPH_DSN", None)
 os.environ.pop("GRAPH_NAME", None)
-os.environ["S2P_ACTIVE_GRAPH_BACKEND"] = "sqlite"
+os.environ["S2P_ACTIVE_GRAPH_BACKEND"] = "memory"
 for _key in ("S2P_ACTIVE_AGE_DSN", "S2P_ACTIVE_AGE_GRAPH", "S2P_ACTIVE_AGE_DOMAIN"):
     os.environ.pop(_key, None)
 
 _config_path = Path(tempfile.gettempdir()) / "s2p_pytest_graph_config.toml"
 _config_path.write_text(
     """[defaults]
-backend = \"sqlite\"
-expected_backend = \"sqlite\"
+backend = \"memory\"
+expected_backend = \"memory\"
 dsn = \"\"
 graph = \"soc_graph\"
 
 [copilot.s2p]
 domain = \"s2p\"
-backend = \"sqlite\"
-expected_backend = \"sqlite\"
+backend = \"memory\"
+expected_backend = \"memory\"
 prefix = \"S2P-\"
 graph = \"soc_graph\"
 """,
     encoding="utf-8",
 )
 os.environ["GRAPH_CONFIG_PATH"] = str(_config_path)
-age_available.cache_clear()
+_probe_cache_clear = getattr(
+    getattr(sdk_test_fixtures, "_probe_age", None), "cache_clear", None
+)
+if callable(_probe_cache_clear):
+    _probe_cache_clear()
+else:
+    _legacy_cache_clear = getattr(age_available, "cache_clear", None)
+    if callable(_legacy_cache_clear):
+        _legacy_cache_clear()
 
 
 from app import s2p_graph_status as _s2p_graph_status
+from app.s2p_graph_status import S2PActiveGraphConfig
 from app.s2p_graph_status import create_s2p_active_graph_store as _original_active_factory
+from app.s2p_graph_status import initialize_s2p_active_graph_config as _original_active_initializer
 
 
 def _isolated_active_graph_store(config: Any, *, store_factory: Any = None) -> Any:
@@ -110,7 +122,36 @@ def _isolated_active_graph_store(config: Any, *, store_factory: Any = None) -> A
     return S2PTestGraphStore(domain="s2p")
 
 
-from app import main as _s2p_main
+def _isolated_active_graph_config(_env: Any = None) -> S2PActiveGraphConfig:
+    """Translate test-only memory configuration without changing production policy."""
+    return S2PActiveGraphConfig(requested_backend="memory", domain="s2p")
+
+
+# App construction occurs at import time. Install the test-only memory bootstrap
+# just for that import, then restore the production module functions immediately.
+setattr(
+    _s2p_graph_status,
+    "initialize_s2p_active_graph_config",
+    _isolated_active_graph_config,
+)
+setattr(
+    _s2p_graph_status,
+    "create_s2p_active_graph_store",
+    _isolated_active_graph_store,
+)
+try:
+    from app import main as _s2p_main
+finally:
+    setattr(
+        _s2p_graph_status,
+        "initialize_s2p_active_graph_config",
+        _original_active_initializer,
+    )
+    setattr(
+        _s2p_graph_status,
+        "create_s2p_active_graph_store",
+        _original_active_factory,
+    )
 from app.main import build_s2p_scorer as _original_build_factory
 
 
@@ -221,7 +262,7 @@ def s2p_age_test_env() -> Generator[S2PAgeTestEnvironment, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def isolated_age_compatible_evolver(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+def isolated_age_compatible_evolver() -> Generator[None, None, None]:
     """Give unit tests an explicit complete GraphStore, never a SQLite fallback."""
     from app.services import s2p_evolver
 
@@ -231,7 +272,8 @@ def isolated_age_compatible_evolver(monkeypatch: pytest.MonkeyPatch) -> Generato
     try:
         yield
     finally:
-        monkeypatch.setattr(s2p_evolver, "_s2p_evolver", previous)
+        # A teardown-time monkeypatch would reinstall the test instance on undo.
+        s2p_evolver._s2p_evolver = previous
 
 
 @pytest.fixture(autouse=True)

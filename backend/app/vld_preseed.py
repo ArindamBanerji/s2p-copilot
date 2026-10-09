@@ -5,12 +5,15 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-try:
+if TYPE_CHECKING:
     from app.domains.s2p.config import S2PDomainConfig
-except ModuleNotFoundError:
-    from backend.app.domains.s2p.config import S2PDomainConfig
+else:
+    try:
+        from app.domains.s2p.config import S2PDomainConfig
+    except ModuleNotFoundError:
+        from backend.app.domains.s2p.config import S2PDomainConfig
 
 SHOWCASE_FILE = "vld_s2p_showcase.json"
 

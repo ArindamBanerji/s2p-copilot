@@ -68,19 +68,20 @@ class SupplierProfileAccumulator:
 
     def __init__(self, fixture_path: str | None = None) -> None:
         self._fixture_profiles: dict[str, SupplierProfile] = {}
+        self.profiles_available = True
         self._events: dict[str, deque[SupplierEvent]] = defaultdict(lambda: deque(maxlen=TRAILING_WINDOW))
         self.skipped_missing_supplier_id = 0
         if fixture_path is not None:
-            self._load_fixtures(fixture_path)
+            self.profiles_available = self._load_fixtures(fixture_path)
 
-    def _load_fixtures(self, path: str) -> None:
+    def _load_fixtures(self, path: str) -> bool:
         fixture_path = Path(path)
         try:
             raw = json.loads(fixture_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            raw = []
+            return False
         if not isinstance(raw, list):
-            return
+            return False
         for row in raw:
             if not isinstance(row, dict):
                 continue
@@ -102,6 +103,7 @@ class SupplierProfileAccumulator:
                 quality_patterns=_quality_fixture(row),
                 source="fixture",
             )
+        return True
 
     def on_decision_verified(
         self,

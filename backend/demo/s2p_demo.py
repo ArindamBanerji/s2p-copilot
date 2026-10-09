@@ -9,7 +9,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 from copilot_sdk.scoring import CompoundingScorer
 
 from app.domains.s2p.config import S2PDomainConfig
@@ -218,7 +218,7 @@ SCENARIOS = [
 def build_demo_scorer() -> CompoundingScorer:
     return CompoundingScorer.from_preset(
         "s2p",
-        graph_store=SQLiteGraphStore(":memory:", domain="s2p", decision_id_prefix="S2P-DEMO-"),
+        graph_store=InMemoryGraphStore(domain="s2p", decision_id_prefix="S2P-DEMO-"),
         reward_function=S2PRewardFunction(),
     )
 

@@ -2,31 +2,46 @@
 from __future__ import annotations
 
 import json
-from threading import RLock
-from time import monotonic
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from app.graph.s2p_graph_reader import S2PGraphReader
 
 
-_DECISION_CACHE_TTL_SECONDS = 5.0
-_DECISION_CACHE_LOCK = RLock()
-_DECISION_CACHE: tuple[float, int, list[dict[str, Any]], list[dict[str, Any]]] | None = None
+_DEMO_SUPPLIERS_PATH = Path(__file__).resolve().parents[3] / "data" / "s2p_demo_suppliers.json"
 
 
-def _verified_rows(store: Any) -> list[dict[str, Any]]:
+def demo_supplier_profiles() -> list[dict[str, Any]]:
+    """Read the preview catalogue, isolated from scored/live supplier history.
+
+    Keep fixture provenance and fields intact. Missing or malformed fixtures
+    must surface as errors, never switch the preview to the live graph.
+    """
+    rows = json.loads(_DEMO_SUPPLIERS_PATH.read_text(encoding="utf-8"))
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("Demo supplier fixture must be a list of supplier objects")
+    return [{**row, **_preview_supplier(row)} for row in rows]
+
+
+def _verified_rows(
+    store: Any, *, return_status: bool = False,
+) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], bool]:
     try:
-        return [dict(row) for row in S2PGraphReader(store).get_verified_decisions()]
-    except Exception:
-        return []
+        rows = S2PGraphReader(store).get_verified_decisions()
+    except (OSError, RuntimeError):
+        result: list[dict[str, Any]] = []
+        return (result, False) if return_status else result
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        result = []
+        return (result, False) if return_status else result
+    result = [dict(row) for row in rows]
+    return (result, True) if return_status else result
 
 
 def clear_decision_cache() -> None:
-    global _DECISION_CACHE
-    with _DECISION_CACHE_LOCK:
-        _DECISION_CACHE = None
+    """Compatibility hook: decision history is no longer cached here."""
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -57,21 +72,14 @@ def _verified(row: dict[str, Any]) -> bool:
 
 
 def read_decisions(store: Any, *, with_outcomes: bool = False) -> list[dict[str, Any]]:
-    global _DECISION_CACHE
-    now = monotonic()
-    store_id = id(store)
-    with _DECISION_CACHE_LOCK:
-        cached = _DECISION_CACHE
-        if cached is not None and cached[1] == store_id and now - cached[0] <= _DECISION_CACHE_TTL_SECONDS:
-            rows = cached[2]
-            # Outcomes can change independently of the large decision scan;
-            # refresh this smaller read so queue items disappear immediately
-            # after a confirmation/override.
-            outcomes = _verified_rows(store)
-        else:
-            rows = [dict(row) for row in store.get_all_decisions(domain="s2p")]
-            outcomes = _verified_rows(store)
-            _DECISION_CACHE = (now, store_id, rows, outcomes)
+    verified = _verified_rows(store)
+    if isinstance(verified, tuple):
+        verified = verified[0]
+    return merge_decisions(store.get_all_decisions(domain="s2p"), verified)
+
+
+def merge_decisions(rows: list[dict[str, Any]], outcomes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize one shared history/outcome snapshot without additional IO."""
     outcome_by_id = {row.get("decision_id"): row for row in outcomes if row.get("decision_id") is not None}
     return [_decision_data({**row, **outcome_by_id.get(row.get("decision_id"), {})})
             for row in rows if row.get("domain", "s2p") == "s2p" and not row.get("archived")]

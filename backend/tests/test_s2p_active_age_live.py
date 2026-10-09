@@ -49,7 +49,7 @@ def _reset_app_with_live_active_age(s2p_age_test_env) -> S2PActiveAGEGraphStore:
     return active_store
 
 
-def _reset_app_with_sqlite() -> None:
+def _reset_app_with_memory() -> None:
     app.state.s2p_active_graph_config = S2PActiveGraphConfig.from_env({})
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
@@ -85,7 +85,7 @@ def test_live_active_age_score_test_mode_success(s2p_age_test_env):
     status = client.get("/api/s2p/graph/status").json()
     assert status["active_backend"] == "age"
     assert status["age_active"] is True
-    assert status["sqlite_authoritative"] is False
+    assert status["memory_authoritative"] is False
     assert "postgres:postgres@" not in str(status)
 
 
@@ -186,19 +186,19 @@ def test_live_active_age_preview_no_decision_write(s2p_age_test_env):
     assert active_store.count_decisions("s2p") == before
 
 
-def test_live_active_age_rollback_to_sqlite(s2p_age_test_env):
+def test_live_active_age_rollback_to_memory(s2p_age_test_env):
     active_store = _reset_app_with_live_active_age(s2p_age_test_env)
     client = TestClient(app)
     response = _score(client, "ROLLBACK-ACTIVE")
     assert response.status_code == 200
     assert active_store.get_decision(response.json()["decision_id"], domain="s2p") is not None
 
-    _reset_app_with_sqlite()
+    _reset_app_with_memory()
     before = app.state.graph_store.count_decisions("s2p")
-    sqlite_response = _score(client, "ROLLBACK-SQLITE")
+    memory_response = _score(client, "ROLLBACK-SQLITE")
 
-    assert sqlite_response.status_code == 200
+    assert memory_response.status_code == 200
     assert app.state.graph_store.count_decisions("s2p") == before + 1
     status = client.get("/api/s2p/graph/status").json()
-    assert status["active_backend"] == "sqlite"
-    assert status["sqlite_authoritative"] is True
+    assert status["active_backend"] == "memory"
+    assert status["memory_authoritative"] is True

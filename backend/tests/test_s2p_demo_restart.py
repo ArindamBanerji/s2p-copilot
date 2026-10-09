@@ -25,7 +25,6 @@ from app.services.extinction_evidence import extinction_history
 from app.services.s2p_autonomy import S2PAutonomyManager
 from app.services.supplier_profile_accumulator import accumulator
 from copilot_sdk.graph.protocol import GraphStore
-from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
 from copilot_sdk.scoring.startup_restore import restore_l5_runtime_state
 from tests.test_s2p_audit_wiring import client_store, entries, outcome
 
@@ -83,7 +82,7 @@ def test_read_mode_keeps_presentation_but_denies_demo_controls(
     assert isinstance(client.app, FastAPI)
     manager = client.app.state.s2p_autonomy
     manager.freeze()
-    production = (manager.twin.store.base_dir / "s2p.json").read_bytes()
+    production = manager.twin.store.load("s2p").to_json()
     selected = client.post("/api/demo/s2p/learning/re-freeze", json={"confirm_demo_reseed": True}).json()
     monkeypatch.delenv("S2P_DEMO_MODE")
     monkeypatch.setenv("S2P_DEMO_READ_MODE", "true")
@@ -101,7 +100,7 @@ def test_read_mode_keeps_presentation_but_denies_demo_controls(
         assert client.get("/api/demo/s2p/" + path).status_code == 403
     assert client.post("/api/demo/s2p/learning/re-freeze", json={"confirm_demo_reseed": True}).status_code == 403
     assert client.post("/api/demo/s2p/learning/persist").status_code == 403
-    assert (manager.twin.store.base_dir / "s2p.json").read_bytes() == production
+    assert manager.twin.store.load("s2p").to_json() == production
     monkeypatch.delenv("S2P_DEMO_READ_MODE")
     assert selected_twin(manager).get_snapshot().checksum == manager.twin.get_snapshot().checksum
 
@@ -148,24 +147,20 @@ def test_real_learning_gap_survives_scorer_and_store_reopen(
     expected_mu = client.app.state.scorer._scorer.mu.copy()
     persisted = client.post("/api/demo/s2p/learning/persist")
     assert persisted.status_code == 200 and persisted.json()["centroid_cells"] == 25
-    reopened = SQLiteGraphStore(tmp_path / "score-audit.db", domain="s2p") if isinstance(store, SQLiteGraphStore) else store
-    try:
-        restored = main.build_s2p_scorer(graph_store=reopened, profile="test")
-        restore_l5_runtime_state(domain="s2p", scorer=restored, learning_store=reopened)
-        np.testing.assert_allclose(restored._scorer.mu, expected_mu)
-        client.app.state.scorer = restored
-        client.app.state.graph_store = reopened
-        client.app.state.s2p_graph_reader = S2PGraphReader(reopened)
-        client.app.state.s2p_autonomy = S2PAutonomyManager(tmp_path, restored, graph_store=reopened)
-        monkeypatch.delenv("S2P_DEMO_MODE")
-        monkeypatch.setenv("S2P_DEMO_READ_MODE", "true")
-        after = client.get("/api/s2p/learning/frozen-twin").json()
-        assert after["provenance"] == before["provenance"]
-        assert after["visual_diff"] == before["visual_diff"]
-        assert after["delta_accuracy"] == before["delta_accuracy"]
-    finally:
-        if reopened is not store:
-            reopened.close()
+    reopened = store
+    restored = main.build_s2p_scorer(graph_store=reopened, profile="test")
+    restore_l5_runtime_state(domain="s2p", scorer=restored, learning_store=reopened)
+    np.testing.assert_allclose(restored._scorer.mu, expected_mu)
+    client.app.state.scorer = restored
+    client.app.state.graph_store = reopened
+    client.app.state.s2p_graph_reader = S2PGraphReader(reopened)
+    client.app.state.s2p_autonomy = S2PAutonomyManager(tmp_path, restored, graph_store=reopened)
+    monkeypatch.delenv("S2P_DEMO_MODE")
+    monkeypatch.setenv("S2P_DEMO_READ_MODE", "true")
+    after = client.get("/api/s2p/learning/frozen-twin").json()
+    assert after["provenance"] == before["provenance"]
+    assert after["visual_diff"] == before["visual_diff"]
+    assert after["delta_accuracy"] == before["delta_accuracy"]
 
 
 def test_complete_seed_lookup_exceeds_public_limit(seed_api: tuple[str, TestClient, GraphStore]) -> None:

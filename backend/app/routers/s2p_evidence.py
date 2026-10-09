@@ -6,7 +6,11 @@ from collections import Counter
 from datetime import datetime, timezone
 from threading import RLock
 from time import monotonic
-from typing import Any
+from typing import Any, cast
+from sqlite3 import OperationalError as SQLiteOperationalError
+
+from psycopg import InterfaceError, OperationalError
+from ci_platform.graph.age_graph_store import GraphUnavailableError as AGEGraphUnavailableError
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -16,6 +20,7 @@ from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
+from app.services.response_materializer import materialized_response
 from app.routers.s2p_data_helpers import load_invoices
 from app.services.receipt_store import get_receipt_store
 from app.services.extinction_evidence import extinction_history
@@ -25,6 +30,8 @@ from app.services.s2p_trust_explanations import format_trust_explanation
 from copilot_sdk.situation import SituationAnalyzer, SituationContext
 
 router = APIRouter(prefix="/api/s2p/evidence", tags=["s2p-evidence"])
+
+_GRAPH_CALL_FAILED = object()
 
 _load_invoices = load_invoices
 _evidence_engine = S2PEvidenceEngine()
@@ -65,7 +72,7 @@ def _store_situation_context(invoice_id: str | None, graph_store: Any | None, co
 def _invoice_by_id(invoice_id: str) -> dict[str, Any] | None:
     for invoice in _load_invoices():
         if invoice.get("invoice_id") == invoice_id or invoice.get("event_id") == invoice_id:
-            return invoice
+            return cast(dict[str, Any], invoice)
     return None
 
 
@@ -112,6 +119,14 @@ def _trust_explanation_payload(
     phase = _call_or_none(getattr(scorer, "get_category_phase", None), category)
     verified_count = _call_or_none(_scorer_method(scorer, "get_verified_count"))
     centroid = _call_or_none(getattr(scorer, "get_centroid", None), category, action)
+    graph_available = all(
+        value is not _GRAPH_CALL_FAILED
+        for value in (weights, phase, verified_count, centroid)
+    )
+    weights = None if weights is _GRAPH_CALL_FAILED else weights
+    phase = None if phase is _GRAPH_CALL_FAILED else phase
+    verified_count = None if verified_count is _GRAPH_CALL_FAILED else verified_count
+    centroid = None if centroid is _GRAPH_CALL_FAILED else centroid
     if centroid is None:
         centroid = (
             S2PDomainConfig.get_initial_centroids()
@@ -148,12 +163,14 @@ def _trust_explanation_payload(
             factor["dk_weight_provenance"] = dict(dk_weight_provenance)
     payload["provenance"] = factor_value_provenance
     payload["dk_weight_provenance"] = dk_weight_provenance
-    return payload
+    if not graph_available:
+        payload["graph_available"] = False
+    return cast(dict[str, Any], payload)
 
 
 def _category_index(category: str) -> int | None:
     try:
-        return S2PDomainConfig.get_category_index(category)
+        return cast(int, S2PDomainConfig.get_category_index(category))
     except (ValueError, AttributeError):
         return None
 
@@ -164,7 +181,7 @@ def _call_or_none(fn: Any, *args: Any) -> Any | None:
     try:
         return fn(*args)
     except Exception:
-        return None
+        return _GRAPH_CALL_FAILED
 
 
 def _scorer_method(scorer: Any, name: str) -> Any:
@@ -190,7 +207,7 @@ def _provenance(source: str, label: str) -> dict[str, Any]:
             "measured": False,
             "display_prefix": "integration pending",
         }
-    return {
+    response = {
         "source": source,
         "provenance_label": label,
         "provenance_tier": "context",
@@ -198,6 +215,7 @@ def _provenance(source: str, label: str) -> dict[str, Any]:
         "measured": False,
         "display_prefix": "░░ context",
     }
+    return response
 
 
 def _conservation_snapshot(request: Request) -> dict[str, Any]:
@@ -328,7 +346,7 @@ def receipts_for_decision(decision_id: str) -> dict[str, Any]:
 @router.get("/chain-integrity", response_model=GenericResponse)
 @cached_static("evidence-chain-integrity", copilot="s2p")
 def chain_integrity() -> dict[str, Any]:
-    return get_receipt_store().verify_chain()
+    return cast(dict[str, Any], get_receipt_store().verify_chain())
 
 
 @router.get("/audit-pack", response_model=GenericResponse)
@@ -426,7 +444,7 @@ def evidence_template(
         evidence_payload["missing_fields"].sort()
     template = evidence.template or ""
     rendered = evidence.text
-    return {
+    response = {
         "invoice_id": invoice.get("invoice_id") or invoice_id or "unknown",
         "invoice_found": invoice_found,
         "category": category,
@@ -440,6 +458,9 @@ def evidence_template(
         "trust_learning_message": trust_explanation["learning_message"],
         "situation_context": situation_context.to_dict(),
     }
+    if trust_explanation.get("graph_available") is False:
+        response["graph_available"] = False
+    return response
 
 
 @router.get("/rules", response_model=GenericResponse)
@@ -484,18 +505,40 @@ def rules() -> dict[str, Any]:
 
 
 @router.get("/compliance", response_model=GenericResponse)
-@cached_static("evidence-compliance", copilot="s2p")
 def compliance(request: Request) -> dict[str, Any]:
-    invoices = _load_invoices()
+    materialized = materialized_response(request, "evidence_compliance")
+    if materialized is not None:
+        return cast(dict[str, Any], materialized)
+    return cast(dict[str, Any], compliance_payload(_load_invoices(), _graph_store(request)))
+
+
+def compliance_payload(invoices: list[dict[str, Any]], graph_store: Any) -> dict[str, Any]:
     flagged: list[dict[str, Any]] = []
     compliant = 0
+    compliance_available = True
+    degraded_factors: list[str] = []
     for invoice in invoices:
-        try:
-            factors = compute_all_factors(invoice)
-        except Exception:
-            raw_factors = invoice.get("factors")
-            factors = dict(raw_factors) if isinstance(raw_factors, dict) else {}
-        tax_score = float(factors.get("tax_regulatory_compliance", 1.0))
+        factor_result = compute_all_factors(invoice, return_status=True)
+        if (
+            not isinstance(factor_result, tuple)
+            or len(factor_result) != 3
+            or not isinstance(factor_result[0], dict)
+        ):
+            compliance_available = False
+            degraded_factors.append("tax_regulatory_compliance")
+            factors = {}
+        else:
+            factors = cast(dict[str, float], factor_result[0])
+            factors_available = bool(factor_result[1])
+            factor_names = list(factor_result[2])
+            if not factors_available:
+                compliance_available = False
+                degraded_factors.extend(factor_names)
+        raw_tax_score = factors.get("tax_regulatory_compliance", 1.0)
+        tax_score = float(raw_tax_score) if isinstance(raw_tax_score, (int, float)) else 1.0
+        if not isinstance(raw_tax_score, (int, float)):
+            compliance_available = False
+            degraded_factors.append("tax_regulatory_compliance")
         is_compliant = tax_score < 0.3
         compliant += int(is_compliant)
         if not is_compliant:
@@ -534,15 +577,19 @@ def compliance(request: Request) -> dict[str, Any]:
                     "trend": "declining",
                 }
             )
-    graph_store = _graph_store(request)
     extinction_classes: list[dict[str, Any]] = []
+    extinction_available = False
     if graph_store is not None:
         try:
-            extinction_classes = extinction_history(graph_store)
-        except Exception:
+            history = extinction_history(graph_store)
+            if isinstance(history, list) and all(isinstance(row, dict) for row in history):
+                extinction_classes = history
+                extinction_available = True
+        except (OSError, GraphUnavailableError, AGEGraphUnavailableError,
+                OperationalError, InterfaceError, SQLiteOperationalError):
             # Invoice-derived compliance evidence remains valid if optional
             # extinction-history storage is unavailable.
-            extinction_classes = []
+            pass
     return {
         "total": total,
         "compliant": compliant,
@@ -553,9 +600,12 @@ def compliance(request: Request) -> dict[str, Any]:
         "extinction_classes": extinction_classes,
         "extinct_classes": extinction_classes,
         "queue_extinctions": extinction_classes,
+        "extinction_available": extinction_available,
         "invoice_class_trends": invoice_class_trends,
         "class_timeline": class_timeline,
         "evidence_tier": "T_S",
-        "extinction_source": "persisted_verified_outcome_transitions",
+        "extinction_source": "persisted_verified_outcome_transitions" if extinction_available else "",
         "extinction_note": "Historical queue-depletion events; not a claim of permanent class elimination.",
+        "compliance_available": compliance_available,
+        "degraded_factors": sorted(set(degraded_factors)),
     }

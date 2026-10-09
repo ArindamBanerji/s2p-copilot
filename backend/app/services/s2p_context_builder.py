@@ -234,6 +234,8 @@ class S2PContextBuilder:
         enrichment = self._supplier_enrichment(str(supplier_id))
         if enrichment:
             properties["enrichment"] = enrichment
+        elif enrichment is None:
+            result.metadata["enrichment_available"] = False
         node_id = str(supplier_id)
         result.nodes.append(
             TraversalNode(
@@ -258,9 +260,9 @@ class S2PContextBuilder:
             )
         return node_id
 
-    def _supplier_enrichment(self, supplier_id: str) -> dict[str, Any]:
+    def _supplier_enrichment(self, supplier_id: str) -> dict[str, Any] | None:
         if not isinstance(self.graph_store, GraphStore):
-            return {}
+            return None
         try:
             values = self.graph_store.read_entity_enrichment(
                 domain=S2P_ENRICHMENT_DOMAIN,
@@ -269,7 +271,7 @@ class S2PContextBuilder:
                 namespace=S2P_ENRICHMENT_NAMESPACE,
             )
         except Exception:
-            return {}
+            return None
         if not isinstance(values, dict):
             return {}
         return {

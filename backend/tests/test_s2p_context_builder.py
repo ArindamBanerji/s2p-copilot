@@ -441,3 +441,18 @@ def test_no_mutation_of_inputs():
     )
 
     assert context == before
+
+
+def test_supplier_enrichment_failure_is_marked_unavailable():
+    class FailingStore(InMemoryGraphStore):
+        def read_entity_enrichment(self, **_kwargs):
+            raise RuntimeError("graph unavailable")
+
+    result = S2PContextBuilder(graph_store=FailingStore(domain="s2p")).build_invoice_context(
+        invoice_id="S2P-INV-0001",
+        category="contract_gap",
+        decision_id=None,
+        context_data={"supplier_id": "SUP-001"},
+    )
+
+    assert result.metadata["enrichment_available"] is False

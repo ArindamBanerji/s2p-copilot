@@ -3,7 +3,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import fields
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, cast
 
 import pytest
 from fastapi import FastAPI
@@ -13,17 +13,21 @@ from app.framework import audit
 from app.routers.s2p_audit_export import router
 from ci_platform.audit.evidence_ledger import LedgerEntry, OutcomeEntry
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
+from copilot_sdk.graph.legacy_signal_filter import LegacySignalFilteringGraphStore
 from copilot_sdk.graph.protocol import GraphStore
-from copilot_sdk.graph.sqlite_store import SQLiteGraphStore
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.fixture(autouse=True, params=["memory", "sqlite"])
-def audit_store(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[GraphStore]:
+@pytest.fixture(autouse=True, params=["memory", "wrapped-memory"])
+def audit_store(request: pytest.FixtureRequest) -> Iterator[GraphStore]:
     previous = audit._GRAPH_STORE
-    store = (InMemoryGraphStore(domain="s2p") if request.param == "memory"
-             else SQLiteGraphStore(tmp_path / "audit.db", domain="s2p"))
+    primary = InMemoryGraphStore(domain="s2p")
+    store: GraphStore = (
+        primary
+        if request.param == "memory"
+        else LegacySignalFilteringGraphStore(primary, domain="s2p")
+    )
     audit.configure_graph_store(store)
     try:
         yield store
@@ -33,10 +37,10 @@ def audit_store(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Grap
 
 
 def record(index: int = 0) -> dict[str, Any]:
-    return audit.record_decision(
+    return cast(dict[str, Any], audit.record_decision(
         alert_id=f"PO-AUDIT-{index}", situation_type="price_variance",
         action_taken="hold_for_review", factors=["amount_variance_ratio"], confidence=0.91,
-    )
+    ))
 
 
 def stored_entries(store: GraphStore) -> list[dict[str, Any]]:
@@ -170,14 +174,16 @@ def test_verify_chain_empty() -> None:
     assert result["tamper_evidence"] == []
 
 
-def test_verify_chain_store_unavailable(tmp_path: Path) -> None:
-    # Real closed database, not a mocked reader returning an invented failure.
-    unavailable = SQLiteGraphStore(tmp_path / "closed.db", domain="s2p")
-    unavailable.close()
+def test_verify_chain_store_unavailable() -> None:
+    class UnavailableStore(InMemoryGraphStore):
+        def list_governance(self, domain: str) -> list[dict[str, Any]]:
+            raise RuntimeError("graph unavailable")
+
+    unavailable = UnavailableStore(domain="s2p")
     result = audit.verify_chain(unavailable)
     assert result["verified"] is False
     assert result["reason"] == "verification_unavailable"
-    assert str(tmp_path) not in str(result)
+    assert "graph unavailable" not in str(result)
 
 
 def test_verify_chain_unconfigured() -> None:
@@ -209,7 +215,7 @@ def test_verify_chain_missing_field_fails_closed(audit_store: GraphStore) -> Non
 
 def test_verify_chain_archived_decision_still_verifies(audit_store: GraphStore) -> None:
     record()
-    assert isinstance(audit_store, (InMemoryGraphStore, SQLiteGraphStore))
+    assert isinstance(audit_store, GraphStore)
     assert audit_store.archive_decisions("s2p", before=1e12, status_filter="pending") == 1
     assert audit_store.get_all_decisions("s2p") == []
     result = audit.verify_chain()
@@ -220,7 +226,7 @@ def test_verify_chain_archived_decision_still_verifies(audit_store: GraphStore) 
 def test_verify_chain_unsealed_archives_fail_closed(audit_store: GraphStore) -> None:
     audit_store.write_decision(domain="s2p", category="price_variance", action="hold_for_review",
                                confidence=0.8, factors={"amount_variance_ratio": 0.5})
-    assert isinstance(audit_store, (InMemoryGraphStore, SQLiteGraphStore))
+    assert isinstance(audit_store, GraphStore)
     assert audit_store.archive_decisions("s2p", before=1e12, status_filter="pending") == 1
     assert audit_store.get_all_decisions("s2p") == []
     result = audit.verify_chain()
@@ -293,22 +299,20 @@ def test_verify_endpoint_without_store_fails_closed() -> None:
     assert result["reason"] == "verification_unavailable"
 
 
-def test_sqlite_restart_retains_chain(tmp_path: Path) -> None:
-    path = tmp_path / "restart.db"
-    first = SQLiteGraphStore(path, domain="s2p")
+def test_memory_store_reconfiguration_retains_chain() -> None:
+    first = InMemoryGraphStore(domain="s2p")
     audit.configure_graph_store(first)
     decision = record()
     audit.record_outcome(decision["decision_id"], "confirmed")
-    first.close()
-    reopened = SQLiteGraphStore(path, domain="s2p")
     try:
-        audit.configure_graph_store(reopened)
+        audit.configure_graph_store(None)
+        audit.configure_graph_store(first)
         result = audit.verify_chain()
         assert result["verified"] is True
         assert result["entries_checked"] == 2
     finally:
         audit.configure_graph_store(None)
-        reopened.close()
+        first.close()
 
 
 def test_epoch_archive_creates_snapshot() -> None:

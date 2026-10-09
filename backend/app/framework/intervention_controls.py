@@ -411,6 +411,7 @@ class InterventionControls:
     async def get_current_state(self) -> Dict:
         """Return current state of all controls."""
         last_intervention = None
+        graph_available = True
         try:
             rows = await self.db.run_query(
                 """MATCH (i:Intervention)
@@ -426,6 +427,7 @@ class InterventionControls:
                     "reason":       node.get("reason"),
                 }
         except Exception as exc:
+            graph_available = False
             log.warning(
                 "[INTERVENTION] get_current_state last_intervention query failed: %s", exc
             )
@@ -442,9 +444,12 @@ class InterventionControls:
             ),
             "conservation":             self.conservation_state_machine.current_state(),
             "last_intervention":       last_intervention,
+            "graph_available":         graph_available,
         }
 
-    async def get_intervention_history(self, limit: int = 50) -> List[Dict]:
+    async def get_intervention_history(
+        self, limit: int = 50, *, return_status: bool = False,
+    ) -> List[Dict] | tuple[List[Dict], bool]:
         """Return intervention audit log from AGE."""
         try:
             rows = await self.db.run_query(
@@ -462,7 +467,7 @@ class InterventionControls:
             )
         except Exception as exc:
             log.warning("[INTERVENTION] get_intervention_history failed: %s", exc)
-            return []
+            return ([], False) if return_status else []
 
         records = []
         for r in rows:
@@ -481,7 +486,7 @@ class InterventionControls:
                 "timestamp":    str(r.get("timestamp") or ""),
                 "details":      details,
             })
-        return records
+        return (records, True) if return_status else records
 
     # ------------------------------------------------------------------
     # Internal
@@ -497,6 +502,7 @@ class InterventionControls:
         """Write an Intervention node to AGE and return the record dict."""
         intervention_id = str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc).isoformat()
+        audit_persisted = True
         try:
             await self.db.run_query(
                 """CREATE (i:Intervention {
@@ -517,6 +523,7 @@ class InterventionControls:
                 },
             )
         except Exception as exc:
+            audit_persisted = False
             log.error("[INTERVENTION] _log_intervention write failed: %s", exc)
 
         return {
@@ -526,4 +533,5 @@ class InterventionControls:
             "reason":       reason,
             "timestamp":    timestamp,
             "details":      details,
+            "audit_persisted": audit_persisted,
         }

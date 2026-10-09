@@ -613,3 +613,320 @@ No specs or backend source files changed during this verification run.
 S2P-03: Added `action_category` to the score response. `refer_to_specialist` maps to `HOLD`; auto approval maps to `APPROVE`; compliance/leakage escalation maps to `ESCALATE`; unknown actions map to `REVIEW`. The SDK spec now asserts `action_category == HOLD` for the container story.
 S2P-05: Verified warmup scheduling uses the real `/api/learn` outcome commit for the first ten decisions, including `format_compliance`, then excludes `format_compliance` from subsequent decisions so the class can produce a persisted verified extinction transition.
 Tests: +6 action-category tests. S2P BE: 2,024 passed, 0 failed. Mypy clean. Live preseed/spec verification requires a restart to load the new router; the currently running process returned no `action_category`, and the bounded preseed was stopped after the local API became nonresponsive.
+## SS-16 (Sep 26, 2026)
+
+Findings fixed: P1-143, P1-144, P1-145, P2-052, P2-053
+Files modified: [app/routers/s2p.py, app/models/responses.py, app/models/outcome_receipt.py, tests/test_s2p_score_endpoint.py, tests/test_graph_links.py]
+Fix patterns: Added explicit graph context availability and typed degraded enrichment metadata; preserved scored action, factor computation, conservation gates, and authoritative outcome writes. Conservation receipt snapshots now carry availability provenance. Advisory invoice links return explicit persistence status and learn responses expose invoice link failures.
+Tests added: 3
+Test counts after:
+- S2P BE: 2,105 passed, 2 unrelated scaffold health failures
+- SDK root: interrupted after reaching 51% with no reported failures (the suite did not complete)
+mypy: no issues in s2p.py; command reports 6 pre-existing diagnostics in vld_preseed.py and evidence_provider.py
+## SS-17 (Sep 26, 2026)
+
+Findings fixed: P1-135, P1-136, P1-137, P1-139, P1-140, P2-048
+Files modified: [app/framework/checkpoint.py, app/framework/intervention_controls.py, app/routers/framework_router.py, app/routers/s2p_audit_export.py, tests/test_intervention_controls.py, tests/test_s2p_audit_export.py]
+Fix patterns: Added explicit availability flags for failed graph-backed reads while preserving typed empty response values and happy-path shapes. Audit exports now preserve empty typed sections with availability indicators. Intervention actions remain successful in memory and report audit_persisted=false when durable audit writes fail.
+Tests added: 5
+Test counts after:
+- S2P BE: 2,110 passed, 2 unrelated scaffold health failures
+- SDK root: interrupted at 24% with no reported failures (suite did not complete)
+mypy: Success, no issues found in 3 source files
+
+## SS-18 (Sep 27, 2026)
+
+Findings fixed: P1-141, P1-142, P1-146, P1-147, P1-148, P1-149, P1-150
+Files modified: [app/routers/s2p_evidence.py, app/routers/s2p_situation.py, app/routers/s2p_enrichment.py, app/services/centroid_explorer.py, app/services/s2p_context_builder.py, app/services/s2p_enrichment.py, app/services/s2p_situation_pattern.py, tests/test_s2p_evidence.py, tests/test_s2p_situation_pattern.py, tests/test_centroid_explorer.py, tests/test_s2p_context_builder.py, tests/test_s2p_enrichment.py]
+Fix patterns: Added explicit graph/data availability status for failed reads while preserving legitimate empty results, typed defaults, and successful response shapes. Degraded enrichment, P39 evidence, supplier reads, situation context, evidence counters, and receipt traversal now expose failure indicators without changing scoring or authoritative behavior.
+Tests added: 5
+Test counts after:
+- S2P BE: 2,116 passed, 2 unrelated scaffold health failures
+- SDK root: 3,770 passed, 1 unrelated generated TypeScript currency failure
+mypy: 22 pre-existing diagnostics remain outside SS-18 logic; no diagnostics remain in the changed SS-18 type paths
+
+## DIAG-S2P — Full diagnostic sweep — 2026-09-27T12:57:06-07:00
+
+### Backend pytest
+- Passed: 2116
+- Failed: 2
+- Skipped: 0
+- Failures:
+  1. `tests/test_scaffold.py::test_health_merges_shared_readiness_and_service_fields[True-/health]` — expected HTTP 200 for mocked `connected=True`, received 503.
+  2. `tests/test_scaffold.py::test_health_merges_shared_readiness_and_service_fields[True-/api/health]` — expected HTTP 200 for mocked `connected=True`, received 503.
+- Warnings: 4242
+- Collection errors: none
+
+### S2P frontend typecheck
+- Result: pass
+- Errors: none
+- Location: `copilot-sdk/apps/s2p/frontend/`
+
+### Mypy
+- Result: fail
+- Errors:
+  1. `app/vld_preseed.py:13` — `S2PDomainConfig` already defined (possibly by an import) [no-redef].
+  2. `app/evidence_provider.py:15` — `S2PDomainConfig` already defined (possibly by an import) [no-redef].
+  3. `app/evidence_provider.py:86` — returning Any from function declared to return `dict[str, Any] | None`.
+  4. `app/evidence_provider.py:147` — unsupported right operand type for `in`.
+  5. `app/evidence_provider.py:148` — value is not indexable.
+  6. `app/evidence_provider.py:167` — unsupported right operand type for `in`.
+  7. `app/evidence_provider.py:169` — value is not indexable.
+  8. `app/evidence_provider.py:210` — unsupported right operand type for `in`.
+  9. `app/evidence_provider.py:213` — value is not indexable.
+  10. `app/domains/s2p/reward.py:78` — returning Any from function declared to return `float`.
+  11. `tests/test_intervention_controls.py:40` — missing type annotation for `CATEGORY_CONFIDENCE_THRESHOLDS`.
+  12. `tests/test_intervention_controls.py:41` — missing type annotation for `FROZEN_CATEGORIES`.
+  13. `tests/test_intervention_controls.py:42` — missing type annotation for `FORCE_REVIEW_CATEGORIES`.
+  14. `app/routers/s2p_performance.py:244` — returning Any from function declared to return `dict[str, Any]`.
+  15. `app/routers/s2p_insight.py:146` — returning Any from function declared to return `dict[str, Any]`.
+  16. `app/services/s2p_materialization.py:25` — returning Any from function declared to return `list[dict[str, Any]]`.
+  17. `app/services/s2p_materialization.py:28` — returning Any from function declared to return `list[dict[str, Any]]`.
+  18. `app/services/s2p_materialization.py:100` — returning Any from function declared to return `list[dict[str, Any]]`.
+  19. `app/routers/s2p_preview.py:236` — returning Any from function declared to return `list[dict[str, Any]]`.
+  20. `app/routers/s2p_preview.py:280` — returning Any from function declared to return `dict[str, Any]`.
+  21. `app/routers/s2p_preview.py:399` — returning Any from function declared to return `dict[str, Any]`.
+  22. `app/routers/s2p_evidence.py:507` — returning Any from function declared to return `dict[str, Any]`.
+  23. `app/routers/s2p.py:2965` — Item `None` has no attribute `get`.
+  24. `app/main.py:412` — incompatible `GraphProposalStore` argument where `ProposalStore` is expected.
+  25. `app/main.py:495` — returning Any from function declared to return `dict[str, Any]`.
+  26. `tests/test_s2p_situation_pattern.py:47` — returning Any from function declared to return `str`.
+  27. `tests/test_centroid_explorer.py:87` — returning Any from function declared to return `str`.
+  28. `tests/test_s2p_evidence.py:42` — incompatible `SimpleNamespace` argument where `Request` is expected.
+  29. `tests/test_s2p_evidence.py:224` — returning Any from function declared to return `dict[Any, Any]`.
+
+### Summary
+- Total backend failures: 2
+- Total typecheck failures: 0
+- Total mypy errors: 29
+- Known pre-existing: the two scaffold health failures are the same failures recorded in SS-16 through SS-18; the core application mypy diagnostics overlap the pre-existing diagnostics recorded in SS-18, including `vld_preseed.py`, `evidence_provider.py`, and unrelated imported modules.
+- Potentially new: test-file mypy diagnostics in `tests/test_intervention_controls.py`, `tests/test_s2p_situation_pattern.py`, `tests/test_centroid_explorer.py`, and `tests/test_s2p_evidence.py` were surfaced because this sweep included SS test files; no code was changed during this diagnostic run.
+
+## FIX-S2P — Post-diagnostic fixes — 2026-09-27T14:12:00-07:00
+
+### Mock graph store cleanup
+- Category A (test mocks replaced): 1 — tests/test_scaffold.py; replaced the graph SimpleNamespace with a connection-free AGE-shaped store that exercises the real count_decisions readiness probe.
+- Category B (production mocks removed): 0 — no production graph-store mocks or fallbacks were found.
+- Category C (kept): 10 — tests/conftest.py, tests/test_graph_links.py, tests/test_l5_conservation_s2p_hook.py, tests/test_l5_dk_s2p_hook.py, tests/test_l5_full_flow_s2p.py, tests/test_proposal.py, tests/test_response_materializer.py, tests/test_s2p_audit_export.py, tests/test_s2p_preview.py, tests/test_s2p_score_endpoint.py; these are real InMemoryGraphStore subclasses, method-level failure doubles, or read/write guard doubles. Other scan hits were non-graph SimpleNamespace test scaffolding.
+
+### Scaffold health tests
+- Result: fixed
+- Root cause: the old double exposed health_check(), but canonical readiness performs count_decisions() and requires an AGE-backed store with graph soc_graph. The replacement supplies that contract and raises ConnectionError for the unavailable branch.
+
+### Mypy
+- Errors fixed: 29/29
+- Remaining: 0 repository diagnostics. The requested strict app-wide command also reported one external psycopg/_cmodule.py inline-config diagnostic; app-wide verification with third-party imports skipped passed for all 138 application files.
+
+### Full validation
+- Backend pytest: 2118/0/0 passed/failed/skipped; 4242 warnings
+- Mypy: repository pass; 138 app files clean with --follow-imports=skip
+- Regressions: none; focused scaffold tests 7 passed and affected tests 76 passed
+
+## ASTRA-SWEEP-S2P — Review of SS-16→SS-18 + FIX-S2P — 2026-09-27 21:58:30 UTC
+
+### Findings
+
+- P1: 2 — F01: advisory link reads can abort committed learning/audit completion; F02: degraded audit export removes existing factor-analysis fields, including the factor-name array.
+- P2: 5 — F03: enrichment alerts hide graph outage; F04: conservation snapshot falsely reports availability; F05: compliance hides extinction-history outage; F06: failed DK reads appear as normal learning state; F07: score degraded-fields list omits other caught enrichment failures.
+- P3: 1 — F08: proposal-store type incompatibility suppressed with cast(Any).
+- F05/F06 and F07's underlying catches are inherited remnants in reviewed files; the report distinguishes these from introduced regressions and incomplete SS propagation.
+- Scope correction: actual SS-16/17/18 file/finding lists differ from the prompt. Earlier C5 persistence fixes were also checked. The old contextual reward bridge is already removed; S2P category names and required-factor abstention remain intact.
+- No application code, tests, or configuration changed during this review.
+
+### Validation
+
+- Backend pytest: 2118/0/0 passed/failed/skipped; 4242 warnings; 439.45s; no collection errors. Matches baseline.
+- Mypy: FAIL for the exact requested command; one known external psycopg/_cmodule.py:1 diagnostic: disable_error_code: Invalid error code(s): import-not-found [misc]. No application diagnostics reported; 138 source files checked.
+- Supplemental mypy with --follow-imports=skip: PASS, 138 application files.
+- Validation regressions: none relative to the recorded FIX-S2P results.
+
+### Verdict: FINDINGS — details above
+
+Permanent report: [docs/astra_sweep_s2p_report.md](../../docs/astra_sweep_s2p_report.md).
+
+== FIX-ASTRA-S2P-A ==
+Date: 2026-09-28
+
+F01 (P1, advisory link read abort): FIXED
+  Guard added: 3 post-commit sites
+  Exception types: GRAPH_CONNECTION_ERRORS + (GraphUnavailableError,)
+  invoice_link_available flag: added
+
+F02 (P1, audit export nested field removal): FIXED
+  Functions fixed: _factor_analysis, _export_payload
+  Fields preserved: factor_names, factor_averages, fingerprint
+  fingerprint_available flag: added
+
+F04 (P2, conservation snapshot false availability): FIXED
+  Pattern: all-reads-must-succeed
+  Sites fixed: 1 (_receipt_conservation_snapshot; _current_conservation_status now preserves UNKNOWN for unavailable/malformed state)
+
+F07 (P2, degraded-fields omission): FIXED
+  Functions fixed: score enrichment branches for _should_auto_approve and compute_threshold_decision
+  Fields appended: auto_approve, threshold_decision
+
+Tests added: 16
+Files changed: backend/app/routers/s2p.py, backend/app/routers/s2p_audit_export.py, backend/tests/test_graph_links.py, backend/tests/test_s2p_audit_export.py, backend/tests/test_s2p_score_endpoint.py, backend/docs/session_state.md
+
+Validation:
+  Baseline: 2118 passed, 0 failed, 0 skipped (recorded FIX-S2P baseline)
+  Final: 2210 passed, 0 skipped
+  Mypy: PASS
+  git diff --check: PASS
+  Scope check: PASS (this run changed only the two allowed production files, their tests, and this session record)
+
+== FIX-ASTRA-S2P-B ==
+Date: 2026-09-28
+
+F03 (P2, enrichment alerts hide outage): FIXED
+  Change: service alerts() now passes return_status=True to summary(); unavailable/malformed reads return None internally.
+  alerts_available flag: added at HTTP boundary alongside alerts=[], total_alerts=0 and the existing numeric threshold.
+  Service construction is inside the guard; programming errors propagate.
+
+F05 (P2, compliance hides extinction outage): FIXED
+  extinction_available flag: added; all three extinction array aliases retain [] on failure.
+  extinction_source is empty on unavailable reads; successful empty history remains available.
+  Pre-existing remnant.
+
+F06 (P2, DK reads as learning state): FIXED
+  Sites fixed: three logical helper/service/explanation sites in centroid_explorer plus the situation read caller (four original references); both readers share read_dk_weights().
+  dk_status values: learning/unavailable/available. The existing success label is available, not the prompt's suggested ready.
+  Exception handlers narrowed: yes, to concrete graph/connection/database failures; TypeError, ValueError, AttributeError and KeyError propagate.
+  Successful getter returning None remains internal cold start (learning, dk_available=True). Missing/non-callable getter, malformed data and infrastructure failures are unavailable.
+  Internal optional DK weights remain None; serialized numeric DK weights use 0.0 with separate availability/status fields.
+  Pre-existing remnant.
+
+F08 (P3, proposal-store type mismatch): FIXED
+  cast(Any) removed: yes, from CompoundingLedger construction in main.py.
+  Resolution: Option B, local ProposalReadStore protocol for list_recent(), get_outcome() and count(); both real GraphProposalStore and SQLite ProposalStore satisfy it.
+  Store construction and runtime behavior are unchanged.
+
+Tests added: 78 parametrized cases in 20 test functions; existing enrichment success/failure tests updated in the same step.
+Files changed by this task:
+- backend/app/services/s2p_enrichment.py
+- backend/app/routers/s2p_enrichment.py
+- backend/app/routers/s2p_evidence.py
+- backend/app/services/centroid_explorer.py
+- backend/app/routers/s2p_situation.py
+- backend/app/main.py
+- backend/app/services/compounding_ledger.py
+- backend/tests/test_astra_s2p_b.py
+- backend/tests/test_s2p_enrichment.py
+- backend/docs/session_state.md
+
+Discovery / prompt verification:
+- SS-16, SS-17, SS-18 and FIX-S2P were present and read; no FIX-ASTRA-S2P-A entry was present at pre-check. The concurrent A run appended its completion entry before this final record; its 16 added cases match the observed count difference. The context bridge had already been removed before FIX-S2P.
+- Actual alert/summary functions are in services/s2p_enrichment.py; the HTTP model/handler is in routers/s2p_enrichment.py, requiring both files.
+- Centroid explorer and compounding ledger are service modules, not router modules. These are the prompt's permitted layout corrections.
+- summary(return_status=True) returns a (rows, available) tuple. Existing DK success status and frontend support for unavailable were verified.
+- Concrete infrastructure errors: OSError (including connection/timeout), both S2P and AGE GraphUnavailableError classes, psycopg OperationalError/InterfaceError and sqlite3 OperationalError.
+- Full test inventory and caller/field audit: .codex_tmp/fix_astra_s2p_b_discovery.md, fix_astra_s2p_b_test_files.txt and fix_astra_s2p_b_blast_radius.txt.
+- Existing internal cold-start None assertions remain unchanged. No new fixture classes/functions, dependencies, SOC imports or scoring/learning changes.
+
+Validation:
+  Baseline: 2115 passed, 3 failed, 0 skipped (2118 collected; 4242 warnings).
+  Baseline caveat: concurrent S2P-A edits changed s2p.py while pytest was running, causing source-inspection failures in test_rule72_enforcement.py::test_s2p_production_uses_domain_bound_graph_facade (transient indentation parse error), test_s2p_entity_migration.py::test_link_off_response_path (shifted inspected function) and test_s2p_registry.py::test_mutation_handlers_locked (missing handlers in inspected source). All three passed in subsequent full validation; this task did not edit those files.
+  Final: 2212 passed, 0 failed, 0 skipped; 4430 warnings; 317.64s. Final source/test hash check showed no concurrent drift.
+  Mypy: PASS for each of the seven production and two test files, using root pyproject.toml, --follow-imports=skip --no-error-summary. Supplemental proposal-service/protocol interface check also passed.
+  Configuration note: an initial check using backend/pyproject.toml surfaced four existing strict Any-return diagnostics in s2p_evidence.py; all requested root-config checks pass.
+  git diff --check: PASS (only existing LF/CRLF conversion warnings).
+  Scope check: PASS for task-attributable changes, using the original 303-file source/test snapshot. The working tree also includes prior SS/FIX changes and concurrent S2P-A edits in routers/s2p.py, routers/s2p_audit_export.py, tests/test_graph_links.py, tests/test_s2p_audit_export.py and tests/test_s2p_score_endpoint.py; those five files were not modified by this task.
+  Full test count grew from 2118 collected to 2212: 78 cases added here and 16 from concurrent work. No test removals or final regressions.
+
+Targeted and caller validation:
+- F03 alert tests: 24 passed; F05 compliance/extinction tests: 28 passed.
+- F06 focused centroid/situation tests: 158 passed; F08/proposal/ledger group: 142 passed.
+- Diff-driven caller audit (grouped selectors covering the changed functions and their recorded consumers): enrichment 153 passed; compliance/extinction 66; centroid/DK 140; situation 93; ledger/proposal interface 28.
+- After the final missing-reader correction, the combined centroid/DK/situation caller audit passed 230 tests.
+- Random unchanged-file sampling: all three passed again after final full validation: test_seed_quarantine.py 4 passed, test_evolver_conservation.py 4 passed, test_l5_full_flow_s2p.py 1 passed.
+- Final full log: .codex_tmp/fix_astra_s2p_b_full_final.txt. Per-group audits, sample results and mypy logs use the same prefix in .codex_tmp/.
+
+== VERIFY-ASTRA-S2P ==
+Date: 2026-09-28
+
+F01 (P1, advisory link read abort): FAIL
+  Evidence: Production behavior is correct: _read_advisory_invoice_links catches only S2P infrastructure errors, normalizes exception/None/malformed results to ([], False, True), and all three callers invoke it after _learn_with_scorer has committed. Exception-path endpoint tests return HTTP 200 with learning_applied=true, invoice_links=[], and invoice_link_available=false; the normal outcome path returns populated links with availability true. The required None-return regression exists only at helper level and does not assert HTTP status or learning fields, so the specified endpoint-level test matrix is incomplete.
+  Sites guarded: 3/3
+F02 (P1, audit export nested fields): PASS
+  Evidence: _empty_factor_analysis preserves fingerprint={}, factor_names=[], factor_averages={}, and fingerprint_available=false. _factor_analysis uses that shape for infrastructure exceptions, None, and malformed values; _export_payload independently initializes and validates the same typed shape. Success populates all fields and sets availability true. Targeted result: 127 passed.
+F04 (P2, conservation snapshot availability): PASS
+  Evidence: _receipt_conservation_snapshot tracks state_available and count_available independently, uses logical AND, and resets state/verified_count to UNKNOWN/0 after either partial failure. Exception, None/malformed, both-failed, and all-success paths are covered. Targeted result: 85 passed.
+F07 (P2, degraded-fields omission): PASS
+  Evidence: The score caller appends auto_approve and threshold_decision on both infrastructure exceptions and non-dict returns; both names flow into ScoreResponse.degraded_fields. Independent exception, combined None, and all-success cases pass. Targeted result: 96 passed.
+F03 (P2, enrichment alerts): PASS
+  Evidence: S2PSupplierEnrichmentService.alerts calls summary(return_status=True), rejects unavailable/malformed status, and the HTTP boundary emits alerts=[], total_alerts=0, alerts_available=false. A genuinely empty available graph emits the same typed empties with availability true; populated alerts remain available. Targeted result: 35 passed.
+F05 (P2, compliance/extinction): PASS
+  Evidence: compliance_payload initializes all three extinction aliases to [], sets extinction_available only for a well-typed successful list (including an empty list), clears extinction_source when unavailable, and catches only explicit OS/graph/database errors. Exception, None/malformed, empty, and populated cases pass. Targeted result: 66 passed.
+F06 (P2, DK reads): PASS
+  Evidence: read_dk_weights centralizes the original reads and catches only DK_READ_ERRORS. Infrastructure failure and malformed data produce dk_status=unavailable/dk_available=false; a successful None is learning/true; valid weights are available/true. Centroid service, explanation serialization, and situation response are covered; serialized dk_weight defaults to 0.0. Sites fixed: 4/4. Targeted result: 198 passed.
+F08 (P3, proposal-store type): PASS
+  Evidence: No cast(Any, proposal_store) remains. CompoundingLedger accepts the structural ProposalReadStore protocol (list_recent, get_outcome, count), satisfied by graph and SQLite stores. Mypy passes for main.py and services/compounding_ledger.py.
+
+Structural audits:
+  C-1 (no None at HTTP): FAIL -- s2p_audit_export.py:141 returns {"first": None, "last": None} and _export_payload exposes it as summary.date_range at line 325. s2p.py also retains Optional response fields with None defaults at lines 2304-2317.
+  C-5 (no new fixtures): FAIL -- no new Fake/Stub class declaration was added, but the new backend/tests/test_astra_s2p_b.py imports and uses unittest.mock.Mock (line 5 and throughout), outside the permitted existing-conftest/MagicMock/AsyncMock patterns.
+  C-6 (both failure modes): PASS -- 11/11 guards checked in production code; every requested guard handles infrastructure exceptions plus None/malformed or legitimate-empty returns as applicable.
+  C-7 (narrow exceptions): PASS -- every A/B-added guard uses S2P_INFRASTRUCTURE_ERRORS, ENRICHMENT_READ_ERRORS, DK_READ_ERRORS, or an explicit OS/graph/database tuple. Broad Exception handlers remain only in unrelated pre-existing guards.
+  Old behavior equivalence: PASS -- successful existing fields retain their values/types; availability fields are additive; no A/B graph/audit writes, side effects, endpoints, or route changes were introduced.
+
+Scope check: FAIL (no FIX-ASTRA-S2P-A/B commits exist in git log; HEAD remains d876a20, so d876a20..HEAD is empty while the uncommitted worktree contains 24 changed production files, including prior SS/FIX work outside A/B scope. Task-attributable records are internally consistent after correcting centroid_explorer.py, compounding_ledger.py, and s2p_enrichment.py to their actual services/ locations, but the required commit-based scope isolation cannot be established.)
+
+Validation:
+  S2P BE: 2212 passed, 0 skipped
+  Mypy: PASS (8 files checked; actual service paths used for centroid_explorer and compounding_ledger)
+  git diff --check: PASS
+
+Overall verdict: FAIL
+Gaps (if any): P1 verification gap -- F01 lacks the required endpoint-level successful-learn + None advisory-read test with HTTP/learning/type assertions. Structural -- C-1 still exposes None at HTTP boundaries; C-5 introduces disallowed Mock test doubles; scope cannot be proven because neither fixer produced an identifiable commit and the shared worktree contains unrelated production changes. Runtime and type validation otherwise pass with no test-count decrease.
+
+== FIX-ASTRA-S2P-FIXER ==
+Date: 2026-09-28
+
+Fix 1 (F01 None-return regression):
+  Tests added: 2 parametrized endpoint cases
+  Endpoints covered: /api/learn, /api/s2p/outcome
+  Result: PASS
+
+Fix 2 (C-1 None at HTTP boundary):
+  s2p_audit_export.py: date_range {"first": None, "last": None} -> {"first": "", "last": ""}; response-bound conservation values now use override_rate=0.0, theta_min=0.0, and q=0; CSV boolean normalization uses False.
+  s2p.py ScoreResponse: proposal_id="", process_context={}, active_variant={}, auto_approve={}, novelty_score=0.0, threshold_decision={}, gate="", conservation_status="", evidence_tier="", learning_applied=False, reason="", action_name="", action_category="", reasoning="", context={}.
+  Availability flags added: proposal_id_available, process_context_available, active_variant_available, auto_approve_available, novelty_score_available, threshold_decision_available, reason_available.
+  Null-check test: PASS
+  Result: PASS
+
+Fix 3 (C-5 Mock -> MagicMock):
+  File: test_astra_s2p_b.py
+  Substitutions: 17
+  Result: PASS
+
+Validation:
+  Full backend: 2215 passed, 0 skipped
+  Mypy: 2 files PASS
+  git diff --check: PASS (only pre-existing LF/CRLF conversion warnings)
+  Scope: PASS for the two permitted production files and required tests. test_novelty.py was additionally updated because its existing assertion required the rejected novelty_score=null response; it now verifies the typed 0.0 default and novelty_score_available=false contract. No other production files were changed by this fixer.
+  Blast-radius: 72 files, 1115 tests, all PASS
+  Sampling: 3 files, 33 tests, all PASS (test_pydantic_v2.py, test_governance.py, test_framework_discipline.py)
+
+Baseline: 2212 -> 2215
+
+== P2-DIAG-S2P ==
+Date: 2026-09-28
+Baseline: 2215 passed, 0 skipped
+Report: backend/docs/p2_diagnostic_report.md
+
+New findings: 17 P2, 5 P3, 3 P4
+Files scanned: 109
+Known excluded: 8 (F01 through F08)
+Status: COMPLETE
+
+== S2P-FIX-ALL ==
+Date: 2026-09-28
+Baseline: 2215 passed
+Exit: 2250 passed
+
+Fixed: S2P-P2-N01, S2P-P2-N02, S2P-P2-N03, S2P-P2-N04, S2P-P2-N05, S2P-P2-N06, S2P-P2-N07, S2P-P2-N08, S2P-P2-N09, S2P-P2-N10, S2P-P2-N11, S2P-P2-N12, S2P-P2-N13, S2P-P2-N14, S2P-P2-N15, S2P-P2-N16, S2P-P2-N17, F07
+Skipped: F03, F04, F05, F06 — already implemented and verified in the current tree; their existing implementations were retained
+New tests: 35
+Status: COMPLETE
+
+Validation: mypy clean on all changed production and new test files; 0 banned patterns; full backend suite 2250 passed, 0 failed, 0 skipped.

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
 from copilot_sdk.situation import SituationAnalyzer, SituationContext, TraversalEdge, TraversalNode
 
 from app.services.s2p_situation_pattern import S2PInvoiceTraversalPattern
+from app.routers.s2p_situation import _entity_context_available
 
 
 class TrackingStore(InMemoryGraphStore):
@@ -42,7 +44,7 @@ class TrackingStore(InMemoryGraphStore):
         if self._sealed:
             self.write_calls += 1
             raise AssertionError("traversal pattern must not write decisions")
-        return super().write_decision(domain, category, action, confidence, factors, metadata)
+        return str(super().write_decision(domain, category, action, confidence, factors, metadata))
 
     def write_outcome(
         self,
@@ -56,7 +58,7 @@ class TrackingStore(InMemoryGraphStore):
 
 
 class CentroidScorerStub:
-    def get_centroid(self, category: str, action: str):
+    def get_centroid(self, category: str, action: str) -> list[float]:
         return [0.5] * 7
 
 
@@ -338,3 +340,38 @@ def test_s2p_pattern_keeps_degraded_warning_for_missing_context() -> None:
 
     assert context.warnings
     assert context.metadata["degraded"] is True
+
+
+def test_s2p_pattern_reports_failed_receipt_context(monkeypatch) -> None:
+    class FailingReceipts:
+        def get_for_invoice(self, _invoice_id):
+            raise RuntimeError("receipt graph unavailable")
+
+        def get_for_decision(self, _decision_id):
+            raise RuntimeError("receipt graph unavailable")
+
+    monkeypatch.setattr(
+        "app.services.s2p_situation_pattern.get_receipt_store",
+        lambda: FailingReceipts(),
+    )
+    context = S2PInvoiceTraversalPattern().traverse(
+        _intent(invoice_id="S2P-INV-0001", decision_id="D-1")
+    )
+
+    assert set(context.metadata["degraded_fields"]) == {"invoice_receipts", "decision_receipts"}
+
+
+def test_entity_context_distinguishes_empty_from_graph_failure():
+    class EmptyReader:
+        def query_direct_context(self, _entity_id, *, limit):
+            return []
+
+    class FailingReader:
+        def query_direct_context(self, _entity_id, *, limit):
+            raise RuntimeError("graph unavailable")
+
+    empty = asyncio.run(_entity_context_available(EmptyReader(), "INV-1", return_status=True))
+    failed = asyncio.run(_entity_context_available(FailingReader(), "INV-1", return_status=True))
+
+    assert empty == (False, True)
+    assert failed == (False, False)

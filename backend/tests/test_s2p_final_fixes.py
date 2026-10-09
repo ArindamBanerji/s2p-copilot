@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from fastapi import Depends
+from fastapi import Depends, FastAPI
 
 from app.routers.s2p_demo_control import router, selected_twin, budget_candidates
 from app.routers.s2p_demo_beats import router as beats_router
@@ -28,6 +28,12 @@ CONTAINER = {"event_id": "S2P-DEMO-CONTAINER-01", "category": "contract_gap", "a
              "supplier_id": "SUP-CONTAINER-001", "context": {"working_capital": 14200, "demurrage": 1200, "days_at_port": 3}}
 
 
+def _app(client: TestClient) -> FastAPI:
+    app = client.app
+    assert isinstance(app, FastAPI)
+    return app
+
+
 @pytest.fixture(autouse=True)
 def isolate_telemetry() -> Iterator[None]:
     events, skipped = deepcopy(accumulator._events), accumulator.skipped_missing_supplier_id
@@ -42,9 +48,9 @@ def demo(client_store: tuple[TestClient, GraphStore], tmp_path: Path,
          monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, GraphStore]:
     monkeypatch.setenv("S2P_DEMO_MODE", "true")
     client, store = client_store
-    client.app.state.s2p_autonomy = S2PAutonomyManager(tmp_path, client.app.state.scorer, graph_store=store)
+    _app(client).state.s2p_autonomy = S2PAutonomyManager(tmp_path, _app(client).state.scorer, graph_store=store)
     for mounted in (router, beats_router, evidence_router):
-        client.app.include_router(mounted)
+        _app(client).include_router(mounted)
     return client, store
 
 
@@ -73,14 +79,14 @@ def test_day_zero_is_disposable_even_with_warm_history(demo: tuple[TestClient, G
     client, store = demo
     prior = score(client)
     outcome(client, prior)
-    before = np.asarray(client.app.state.scorer._scorer.mu).copy()
+    before = np.asarray(_app(client).state.scorer._scorer.mu).copy()
     body = client.post("/api/s2p/score", json={**COPPER, "event_id": "PW-DAY-ZERO-001"}).json()
     assert body["prior_verified_count"] == 0 and body["persistent"] is False
     assert 0 < body["confidence"] <= 1 and len(body["probabilities"]) == 5
     assert len(body["factor_vector"]) == 8 and body["decision_id"] is None
     assert store.count_decisions("s2p") == store.count_verified("s2p") == 1
     assert len(entries(store)) == 2
-    np.testing.assert_array_equal(before, client.app.state.scorer._scorer.mu)
+    np.testing.assert_array_equal(before, _app(client).state.scorer._scorer.mu)
 
 
 def test_day_zero_requires_explicit_mode(demo: tuple[TestClient, GraphStore], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -149,18 +155,17 @@ def test_candidates_guard_and_category_validation(demo: tuple[TestClient, GraphS
 
 def test_refreeze_archives_without_replacing_production(demo: tuple[TestClient, GraphStore]) -> None:
     client, _ = demo
-    manager = client.app.state.s2p_autonomy
+    manager = _app(client).state.s2p_autonomy
     manager.freeze()
-    path = manager.twin.store.base_dir / "s2p.json"
-    original = path.read_bytes()
+    original = manager.twin.store.load("s2p").to_json()
     response = client.post("/api/demo/s2p/learning/re-freeze", json={"confirm_demo_reseed": True})
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["provenance"]["origin"] == "demo_reseed"
     assert body["provenance"]["archived_previous"] is True
-    archive = manager.twin.store.base_dir / "demo-archive" / (body["provenance"]["archive_id"] + ".json")
-    assert json.loads(archive.read_text()) == json.loads(original)
-    assert path.read_bytes() == original
+    archive = manager.twin.store.graph_store.get_evolution("s2p", "frozen_twin_archive:" + body["provenance"]["archive_id"])
+    assert archive["snapshot"] == json.loads(original)
+    assert manager.twin.store.load("s2p").to_json() == original
     assert selected_twin(manager).get_snapshot().checksum == body["checksum"]
     assert client.get("/api/s2p/learning/frozen-twin").json()["provenance"] == body["provenance"]
     with pytest.raises(FileExistsError):
@@ -178,11 +183,11 @@ def test_refreeze_requires_mode_confirmation_and_initial_snapshot(demo: tuple[Te
 
 def test_post_freeze_review_produces_measured_accuracy_gap(demo: tuple[TestClient, GraphStore]) -> None:
     client, _ = demo
-    manager = client.app.state.s2p_autonomy
+    manager = _app(client).state.s2p_autonomy
     # Real positive history before the real override; no gate mocking.
     for index in range(30):
         category = S2PDomainConfig.categories[index % 5]
-        factors = budget_candidates(client.app.state.scorer, category)["easy"]["factors"]
+        factors = budget_candidates(_app(client).state.scorer, category)["easy"]["factors"]
         decision = client.post("/api/s2p/score", json={**COPPER, "event_id": f"REVIEW-WARM-{index}",
             "category": category, "supplier_id": "REVIEW-WARM", **factors,
             "supplier_risk_rating": 1 - factors["supplier_exception_history"]}).json()
@@ -204,7 +209,7 @@ def test_post_freeze_review_produces_measured_accuracy_gap(demo: tuple[TestClien
 
 def test_demo_selection_reloads_and_disable_restores_production(demo: tuple[TestClient, GraphStore], monkeypatch: pytest.MonkeyPatch) -> None:
     client, _ = demo
-    manager = client.app.state.s2p_autonomy
+    manager = _app(client).state.s2p_autonomy
     manager.freeze()
     production = manager.twin.get_snapshot().checksum
     first = client.post("/api/demo/s2p/learning/re-freeze", json={"confirm_demo_reseed": True}).json()
@@ -217,7 +222,7 @@ def test_demo_selection_reloads_and_disable_restores_production(demo: tuple[Test
 
 def test_scored_boundary_ids_reach_actual_budget_policy(demo: tuple[TestClient, GraphStore], monkeypatch: pytest.MonkeyPatch) -> None:
     client, store = demo
-    scorer = client.app.state.scorer
+    scorer = _app(client).state.scorer
     # Populate genuine persisted outcomes, with no classifier/gate doubles.
     for index in range(30):
         decision = store.write_decision(domain="s2p", category=S2PDomainConfig.categories[index % 5],
@@ -227,7 +232,7 @@ def test_scored_boundary_ids_reach_actual_budget_policy(demo: tuple[TestClient, 
     policy = AdaptiveBudgetPolicy(safety_lambda=0.0)
     monkeypatch.setattr(classifier, "_budget_policy", policy)
     monkeypatch.setattr(classifier, "_verified_count_provider", scorer.get_verified_count)
-    client.app.include_router(create_investigation_router(
+    _app(client).include_router(create_investigation_router(
         scorer_provider=lambda: scorer,
         evidence_provider_factory=lambda decision_id: S2PEvidenceProvider({}, decision_id),
         classifier=classifier, factor_names=list(S2PDomainConfig.factors), default_budget=2,

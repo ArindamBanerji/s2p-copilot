@@ -9,11 +9,14 @@ from typing import Any
 _DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 
 
-def load_json(name: str, default: Any) -> Any:
+def load_json(
+    name: str, default: Any, *, return_status: bool = False,
+) -> Any | tuple[Any, bool]:
     try:
-        return json.loads((_DATA_DIR / name).read_text(encoding="utf-8"))
+        data = json.loads((_DATA_DIR / name).read_text(encoding="utf-8"))
+        return (data, True) if return_status else data
     except (OSError, json.JSONDecodeError):
-        return default
+        return (default, False) if return_status else default
 
 
 def load_invoices() -> list[dict[str, Any]]:

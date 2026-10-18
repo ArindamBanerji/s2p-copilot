@@ -14,8 +14,10 @@ from app.domains.s2p.factors import compute_all_factors
 from app.graph.s2p_graph_reader import S2PGraphReader
 from app.models.responses import CollectionResponse, GenericResponse
 from app.routers.s2p_data_helpers import load_invoices, load_suppliers
+from app.services.response_materializer import materialized_response
 from app.services.supplier_intelligence import SupplierIntelligenceComposer
 from app.services.supplier_profile_accumulator import SupplierProfile, accumulator
+from app.services.supplier_profile_provider import build_profiles_from_store
 
 router = APIRouter(prefix="/api/s2p/suppliers", tags=["s2p-suppliers"])
 
@@ -27,7 +29,7 @@ def _supplier_invoices(supplier_id: str) -> list[dict[str, Any]]:
 def _find_supplier(supplier_id: str) -> dict[str, Any]:
     for supplier in load_suppliers():
         if supplier.get("supplier_id") == supplier_id:
-            return supplier
+            return cast(dict[str, Any], supplier)
     raise HTTPException(status_code=404, detail=f"Supplier {supplier_id} not found")
 
 
@@ -137,6 +139,35 @@ def _profile_detail(profile: SupplierProfile) -> dict[str, Any]:
     }
 
 
+def _empty_profile(supplier_id: str) -> dict[str, Any]:
+    return {
+        "supplier_id": supplier_id,
+        "supplier_name": "",
+        "exception_rate": 0.0,
+        "exception_rate_trend": None,
+        "otif": None,
+        "otif_by_quarter": {},
+        "avg_lead_time_days": None,
+        "lead_time_by_quarter": {},
+        "invoice_count": 0,
+        "last_invoice_date": None,
+        "pricing_trend": None,
+        "categories": [],
+        "last_updated": None,
+        "source": "computed",
+        "name": "",
+        "otif_score": 0.0,
+        "category_distribution": [],
+        "trend_direction": "stable",
+        "otif_trend": [],
+        "exception_trend": [],
+        "recent_invoices": [],
+        "behavioral_cluster": "Unknown",
+        "risk_level": "unknown",
+        "intelligence": {},
+    }
+
+
 def _graph_store_from_request(request: Request) -> Any | None:
     graph_store = getattr(request.app.state, "graph_store", None)
     if graph_store is not None:
@@ -211,13 +242,19 @@ def _pearson(xs: list[float], ys: list[float]) -> float:
 
 @router.get("", response_model=CollectionResponse)
 @router.get("/", response_model=CollectionResponse)
-def suppliers() -> dict[str, Any]:
-    rows = [_profile_summary(profile) for profile in accumulator.get_all_profiles()]
+def suppliers(request: Request) -> dict[str, Any]:
+    rows = materialized_response(request, "supplier_profiles", item="profiles")
+    if not isinstance(rows, list):
+        store = _graph_store_from_request(request)
+        rows = build_profiles_from_store(store) if store is not None else []
+    has_graph = any(row.get("provenance") == "graph" for row in rows)
     return {
         "suppliers": rows,
         "total": len(rows),
-        "source": "accumulator_with_fixture_fallback",
-        "profiles_available": accumulator.profiles_available,
+        "count": len(rows),
+        "source": "graph" if has_graph else "sample_fallback",
+        "provenance": "graph_with_sample_fallback" if has_graph else "sample_fallback",
+        "profiles_available": bool(rows),
     }
 
 
@@ -375,7 +412,7 @@ def supplier_correlations() -> dict[str, Any]:
 def profile(supplier_id: str, request: Request) -> dict[str, Any]:
     supplier_profile = accumulator.get_profile(supplier_id)
     if supplier_profile is None:
-        raise HTTPException(status_code=404, detail=f"Supplier {supplier_id} not found")
+        return _empty_profile(supplier_id)
     response = _profile_detail(supplier_profile)
     response["intelligence"] = SupplierIntelligenceComposer(
         graph_store=_graph_store_from_request(request),
@@ -389,14 +426,25 @@ def profile(supplier_id: str, request: Request) -> dict[str, Any]:
 def supplier_history(supplier_id: str, limit: int = 200) -> dict[str, Any]:
     supplier_profile = accumulator.get_profile(supplier_id)
     if supplier_profile is None:
-        raise HTTPException(status_code=404, detail=f"Supplier {supplier_id} not found")
+        return {"events": [], "total": 0}
     events = accumulator.get_supplier_history(supplier_id, limit)
     return {"events": events, "total": len(events)}
 
 
 @router.get("/{supplier_id}/heatmap", response_model=GenericResponse)
 def heatmap(supplier_id: str) -> dict[str, Any]:
-    _find_supplier(supplier_id)
+    supplier = next(
+        (row for row in load_suppliers() if row.get("supplier_id") == supplier_id),
+        None,
+    )
+    if supplier is None:
+        return {
+            "supplier_id": supplier_id,
+            "cells": [],
+            "categories": [],
+            "factors": [],
+            "invoice_count": 0,
+        }
     invoices = _supplier_invoices(supplier_id)
     by_category: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for invoice in invoices:
@@ -429,6 +477,10 @@ def heatmap(supplier_id: str) -> dict[str, Any]:
     ]
     return {
         "supplier_id": supplier_id,
+        "cells": [
+            {"day": index + 1, "hour": 12, "count": 1}
+            for index, _invoice in enumerate(invoices)
+        ],
         "categories": categories,
         "factors": factor_rows,
         "invoice_count": len(invoices),

@@ -1,0 +1,116 @@
+........................................................................ [  3%]
+........................................................................ [  6%]
+........................................................................ [  9%]
+........................................................................ [ 12%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 22%]
+........................................................................ [ 25%]
+........................................................................ [ 28%]
+........................................................................ [ 31%]
+........................................................................ [ 34%]
+........................................................................ [ 37%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 47%]
+........................................................................ [ 50%]
+........................................................................ [ 53%]
+........................................................................ [ 56%]
+........................................................................ [ 60%]
+........................................................................ [ 63%]
+........................................................................ [ 66%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 82%]
+........................................................................ [ 85%]
+........................................................................ [ 88%]
+........................................................................ [ 91%]
+........................................................................ [ 94%]
+........................................................................ [ 97%]
+...............................................                          [100%]
+============================== warnings summary ===============================
+app\main.py:584
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\s2p-copilot\backend\app\main.py:584: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+..\..\..\..\proj-envs\python_expts_venv\Lib\site-packages\fastapi\applications.py:4495
+..\..\..\..\proj-envs\python_expts_venv\Lib\site-packages\fastapi\applications.py:4495
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\proj-envs\python_expts_venv\Lib\site-packages\fastapi\applications.py:4495: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)
+
+app\main.py:608
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\s2p-copilot\backend\app\main.py:608: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+..\..\..\..\proj-envs\python_expts_venv\Lib\site-packages\pytest_freezegun.py:17: 4558 warnings
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\proj-envs\python_expts_venv\Lib\site-packages\pytest_freezegun.py:17: DeprecationWarning: distutils Version classes are deprecated. Use packaging.version instead.
+    if LooseVersion(pytest.__version__) < LooseVersion('3.6.0'):
+
+tests/test_centroid_explorer.py: 7 warnings
+tests/test_context_bridge_removed.py: 1 warning
+tests/test_domain_isolation.py: 2 warnings
+tests/test_evidence_graph_query.py: 3 warnings
+tests/test_explorer.py: 17 warnings
+tests/test_factor_ranking.py: 15 warnings
+tests/test_financial_impact.py: 14 warnings
+tests/test_financial_router.py: 13 warnings
+tests/test_graphstore_consolidation.py: 3 warnings
+tests/test_l5_conservation_s2p_hook.py: 1 warning
+tests/test_l5_startup_s2p.py: 1 warning
+tests/test_learn_conservation_guard.py: 5 warnings
+tests/test_novelty.py: 27 warnings
+tests/test_optimizer_export.py: 9 warnings
+tests/test_outcome_receipt.py: 76 warnings
+tests/test_pydantic_responses.py: 1 warning
+tests/test_receipt_audit_fields.py: 22 warnings
+tests/test_rule_vs_reasoning.py: 1 warning
+tests/test_s2p_active_age_live.py: 1 warning
+tests/test_s2p_active_age_phase_b.py: 26 warnings
+tests/test_s2p_audit_export.py: 7 warnings
+tests/test_s2p_auto_approve.py: 20 warnings
+tests/test_s2p_auto_approve_gate.py: 34 warnings
+tests/test_s2p_core_router.py: 12 warnings
+tests/test_s2p_demo.py: 4 warnings
+tests/test_s2p_explorer_router.py: 13 warnings
+tests/test_s2p_graph_status_phase_a.py: 50 warnings
+tests/test_s2p_iks.py: 5 warnings
+tests/test_s2p_outcome.py: 8 warnings
+tests/test_s2p_performance.py: 13 warnings
+tests/test_s2p_preset_and_invoice_link.py: 5 warnings
+tests/test_s2p_preview.py: 2 warnings
+tests/test_s2p_product_like_phase_c2.py: 22 warnings
+tests/test_s2p_score_endpoint.py: 34 warnings
+tests/test_s2p_scorer.py: 3 warnings
+tests/test_s2p_shadow_phase1.py: 1 warning
+tests/test_s2p_shadow_phase2.py: 32 warnings
+tests/test_s2p_worked_example.py: 5 warnings
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\s2p-copilot\backend\app\main.py:259: DeprecationWarning: db_path has no effect with memory backend
+    selected_graph_store = create_graph_store(
+
+tests/test_s2p_demo_restart.py::test_complete_seed_lookup_exceeds_public_limit[memory]
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\proj-envs\python_expts_venv\Lib\site-packages\websockets\legacy\__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+tests/test_s2p_demo_restart.py::test_complete_seed_lookup_exceeds_public_limit[memory]
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\proj-envs\python_expts_venv\Lib\site-packages\uvicorn\protocols\websockets\websockets_impl.py:17: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
+    from websockets.server import WebSocketServerProtocol
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2279 passed, 5079 warnings in 259.22s (0:04:19)

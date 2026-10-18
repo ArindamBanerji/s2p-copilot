@@ -10,7 +10,8 @@ from copilot_sdk.config.tenant import current_tenant_id
 
 from app.graph.s2p_graph_reader import S2PGraphReader
 from app.services.response_materializer import ResponseMaterializer
-from app.services.s2p_preview_data import demo_supplier_profiles, merge_decisions
+from app.services.s2p_preview_data import merge_decisions
+from app.services.supplier_profile_provider import build_profiles, preview_profiles
 
 
 class SnapshotStore:
@@ -77,10 +78,12 @@ def create_s2p_materializer(app_state: Any) -> ResponseMaterializer:
     # Local imports avoid router/main import cycles.
     from app.routers.s2p import _read_conservation_counts
     from app.routers.s2p_data_helpers import load_invoices
-    from app.routers.s2p_evidence import compliance_payload
+    from app.routers.s2p_evidence import _audit_pack_payload, compliance_payload
+    from app.routers.s2p_governance import SCREENING_RECEIPT_LIMIT, _screening_payload
     from app.routers.s2p_insight import fingerprint_payload
     from app.routers.s2p_performance import _build_summary
     from app.routers.s2p_preview import queue_payload, score_pending, suppliers_payload
+    from app.services.receipt_store import get_receipt_store
 
     # A startup snapshot must never be returned for another tenant or a
     # replacement store/scorer. Those contexts retain the live fallback.
@@ -111,6 +114,16 @@ def create_s2p_materializer(app_state: Any) -> ResponseMaterializer:
         state = _conservation_state_from_rows(counts, s["verified"])
         return cast(dict[str, Any], conservation_payload(state))
 
+    def supplier_profiles(shared: dict[str, Any]) -> list[dict[str, Any]]:
+        s = inputs(shared)
+        if "normalized_supplier_profiles" not in s:
+            s["normalized_supplier_profiles"] = build_profiles(s["normalized"])
+        return cast(list[dict[str, Any]], s["normalized_supplier_profiles"])
+
+    def supplier_profile_snapshot(shared: dict[str, Any]) -> dict[str, Any]:
+        profiles = supplier_profiles(shared)
+        return {"profiles": profiles, "count": len(profiles), "status": "ready"}
+
     def fingerprints(shared: dict[str, Any]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for invoice in invoices(shared):
@@ -120,16 +133,71 @@ def create_s2p_materializer(app_state: Any) -> ResponseMaterializer:
                     result[str(identity)] = fingerprint_payload(invoice, str(identity))
         return result
 
+    def conservation_snapshots(shared: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        payload = conservation(shared)
+        verified_count = int(payload.get("verified_count") or 0)
+        correct_count = int(payload.get("correct_count") or 0)
+        total_decisions = len(cast(list[dict[str, Any]], shared["decisions"]))
+        status = str(payload.get("status") or "UNKNOWN")
+        return (
+            {
+                "status": status,
+                "verified_count": verified_count,
+                "correct_count": correct_count,
+                "total_decisions": total_decisions,
+            },
+            {
+                "state": status,
+                "verified_count": verified_count,
+                "correct_count": correct_count,
+                "total_decisions": total_decisions,
+            },
+        )
+
+    def receipt_snapshot(shared: dict[str, Any]) -> dict[str, Any]:
+        if "receipt_snapshot" not in shared:
+            store = get_receipt_store()
+            shared["receipt_snapshot"] = {
+                "receipts": store.get_chain(limit=SCREENING_RECEIPT_LIMIT),
+                "chain": store.verify_chain(),
+                "stats": store.stats,
+            }
+        return cast(dict[str, Any], shared["receipt_snapshot"])
+
+    def audit_pack(shared: dict[str, Any]) -> dict[str, Any]:
+        snapshot = receipt_snapshot(shared)
+        evidence_conservation, _ = conservation_snapshots(shared)
+        receipts = cast(list[dict[str, Any]], snapshot["receipts"])[-100:]
+        return _audit_pack_payload(
+            receipts,
+            cast(dict[str, Any], snapshot["stats"]),
+            cast(dict[str, Any], snapshot["chain"]),
+            evidence_conservation,
+        )
+
+    def governance_screening(shared: dict[str, Any]) -> dict[str, Any]:
+        snapshot = receipt_snapshot(shared)
+        _, governance_conservation = conservation_snapshots(shared)
+        return _screening_payload(
+            cast(list[dict[str, Any]], snapshot["receipts"]),
+            cast(dict[str, Any], snapshot["chain"]),
+            cast(dict[str, Any], snapshot["stats"]),
+            governance_conservation,
+        )
+
     return ResponseMaterializer(
         "s2p", lambda: app_state.graph_store,
         {
             "preview_queue": queue,
-            "preview_suppliers": lambda s: suppliers_payload(demo_supplier_profiles()),
+            "supplier_profiles": supplier_profile_snapshot,
+            "preview_suppliers": lambda s: suppliers_payload(preview_profiles(supplier_profiles(s))),
             "performance_summary": lambda s: _build_summary(S2PGraphReader(inputs(s)["view"])),
+            "audit_pack": audit_pack,
+            "governance_compliance_screening": governance_screening,
             "conservation_status": conservation,
             "evidence_compliance": lambda s: compliance_payload(invoices(s), inputs(s)["view"]),
             "insight_fingerprint": fingerprints,
-        }, ttl=30.0, available=lambda: (
+        }, ttl=60.0, available=lambda: (
             app_state.graph_store is store and app_state.scorer is scorer
             and current_tenant_id() == tenant
         ),

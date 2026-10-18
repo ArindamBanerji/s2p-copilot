@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -39,14 +39,14 @@ def optimizer_export(request: Request, sections: str | None = None) -> dict[str,
             sections=_sections(sections),
         )
         result["profiles_available"] = accumulator.profiles_available
-        return result
+        return cast(dict[str, Any], result)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/schema", response_model=GenericResponse)
 def optimizer_schema() -> dict[str, Any]:
-    return OptimizerExportService().schema_definition()
+    return cast(dict[str, Any], OptimizerExportService().schema_definition())
 
 
 @router.get("/validate", response_model=GenericResponse)

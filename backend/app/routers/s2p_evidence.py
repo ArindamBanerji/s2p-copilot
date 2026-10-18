@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
 from datetime import datetime, timezone
 from threading import RLock
@@ -17,7 +18,7 @@ from fastapi import APIRouter, HTTPException, Request
 from copilot_sdk.state.cached_static import cached_static
 
 from app.domains.s2p.config import S2PDomainConfig
-from app.domains.s2p.factors import compute_all_factors
+from app.domains.s2p.factors import FACTOR_NAMES, compute_all_factors
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
 from app.services.response_materializer import materialized_response
@@ -31,6 +32,7 @@ from copilot_sdk.situation import SituationAnalyzer, SituationContext
 
 router = APIRouter(prefix="/api/s2p/evidence", tags=["s2p-evidence"])
 
+AUDIT_PACK_TIMEOUT_SECONDS = 4.0
 _GRAPH_CALL_FAILED = object()
 
 _load_invoices = load_invoices
@@ -349,24 +351,61 @@ def chain_integrity() -> dict[str, Any]:
     return cast(dict[str, Any], get_receipt_store().verify_chain())
 
 
-@router.get("/audit-pack", response_model=GenericResponse)
-def audit_pack(request: Request, limit: int = 100) -> dict[str, Any]:
+def _audit_pack_sync(request: Request, limit: int = 100) -> dict[str, Any]:
     try:
+        if limit == 100:
+            materialized = materialized_response(request, "audit_pack")
+            if materialized is not None:
+                return cast(dict[str, Any], materialized)
         store = get_receipt_store()
         receipts_payload = store.get_chain(limit=limit)
         stats = store.stats
-        return {
-            "export_timestamp": datetime.now(timezone.utc).isoformat(),
-            "receipt_count": stats["total_receipts"],
-            "chain_integrity": store.verify_chain(),
-            "conservation_state": _conservation_snapshot(request),
-            "override_distribution": _override_distribution(receipts_payload),
-            "override_count": stats["overrides"],
-            "confirm_count": stats["confirms"],
-            "receipts": receipts_payload,
-        }
+        return _audit_pack_payload(
+            receipts_payload,
+            stats,
+            store.verify_chain(),
+            _conservation_snapshot(request),
+        )
     except GraphUnavailableError as exc:
         raise HTTPException(status_code=503, detail="S2P graph unavailable for evidence") from exc
+
+
+@router.get("/audit-pack", response_model=GenericResponse)
+async def audit_pack(request: Request, limit: int = 100) -> dict[str, Any]:
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(_audit_pack_sync, request, limit),
+            timeout=AUDIT_PACK_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="S2P graph unavailable for evidence",
+        ) from exc
+    except GraphUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"S2P graph unavailable for evidence: {exc}",
+        ) from exc
+
+
+def _audit_pack_payload(
+    receipts_payload: list[dict[str, Any]],
+    stats: dict[str, Any],
+    chain_integrity: dict[str, Any],
+    conservation_state: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the audit response from snapshots already read by the caller."""
+    return {
+        "export_timestamp": datetime.now(timezone.utc).isoformat(),
+        "receipt_count": stats["total_receipts"],
+        "chain_integrity": chain_integrity,
+        "conservation_state": conservation_state,
+        "override_distribution": _override_distribution(receipts_payload),
+        "override_count": stats["overrides"],
+        "confirm_count": stats["confirms"],
+        "receipts": receipts_payload,
+    }
 
 
 @router.get("/template", response_model=GenericResponse)
@@ -466,6 +505,10 @@ def evidence_template(
 @router.get("/rules", response_model=GenericResponse)
 @cached_static("evidence-rules", copilot="s2p")
 def rules() -> dict[str, Any]:
+    return _rules_payload()
+
+
+def _rules_payload() -> dict[str, Any]:
     ruleset = [
         {
             "rule_id": "S2P-RULE-EXCEPTION-CLUSTER",
@@ -504,6 +547,48 @@ def rules() -> dict[str, Any]:
     }
 
 
+@router.get("/rule-lifecycle", response_model=GenericResponse)
+def rule_lifecycle() -> dict[str, Any]:
+    ruleset = cast(list[dict[str, Any]], _rules_payload()["rules"])
+    stage_names = ("proposed", "shadow", "promoted", "rejected")
+    stages = [
+        {
+            "stage": stage,
+            "count": sum(rule.get("state") == stage for rule in ruleset),
+        }
+        for stage in stage_names
+    ]
+    active_rules = [
+        rule for rule in ruleset if rule.get("state") in {"shadow", "promoted"}
+    ]
+    promotions = [
+        {
+            "rule_id": rule.get("rule_id"),
+            "name": rule.get("name"),
+            "stage": "promoted",
+        }
+        for rule in ruleset
+        if rule.get("state") == "promoted"
+    ]
+    ledger = [
+        {
+            "rule_id": rule.get("rule_id"),
+            "stage": rule.get("state"),
+            "action": rule.get("action"),
+            "factor": rule.get("factor"),
+        }
+        for rule in ruleset
+    ]
+    return {
+        "rules": ruleset,
+        "stages": stages,
+        "active_rules": active_rules,
+        "promotions": promotions,
+        "evolution_ledger": ledger,
+        "source": "seeded_evolution_data",
+    }
+
+
 @router.get("/compliance", response_model=GenericResponse)
 def compliance(request: Request) -> dict[str, Any]:
     materialized = materialized_response(request, "evidence_compliance")
@@ -518,7 +603,10 @@ def compliance_payload(invoices: list[dict[str, Any]], graph_store: Any) -> dict
     compliance_available = True
     degraded_factors: list[str] = []
     for invoice in invoices:
-        factor_result = compute_all_factors(invoice, return_status=True)
+        try:
+            factor_result = compute_all_factors(invoice, return_status=True)
+        except (ValueError, RuntimeError):
+            factor_result = ({}, False, list(FACTOR_NAMES))
         if (
             not isinstance(factor_result, tuple)
             or len(factor_result) != 3

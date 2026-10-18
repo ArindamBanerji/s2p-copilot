@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from copilot_sdk.config import resolve_profile
 
 from app.domains.s2p.factors import compute_all_factors
@@ -192,7 +192,13 @@ def impact(period: str = Query("annual", pattern="^(monthly|quarterly|annual)$")
 def leakage() -> dict[str, Any]:
     flagged: list[dict[str, Any]] = []
     for invoice in load_invoices():
-        factors = compute_all_factors(invoice)
+        try:
+            factors = compute_all_factors(invoice)
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="S2P factor context unavailable",
+            ) from exc
         variance = float(factors.get("amount_variance_ratio", 0.0))
         correlation = float(factors.get("commodity_index_correlation", 1.0))
         if variance > 0.15 and correlation < 0.5:

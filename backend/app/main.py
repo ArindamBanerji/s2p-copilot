@@ -1,5 +1,7 @@
 import os
+import sys
 import asyncio
+import dataclasses
 import sqlite3
 import logging
 from contextvars import ContextVar
@@ -9,6 +11,10 @@ from dataclasses import replace
 from typing import Any, Callable, ClassVar, cast
 from pathlib import Path
 from contextlib import suppress
+
+SDK_ROOT = Path(__file__).resolve().parents[3] / "copilot-sdk"
+if str(SDK_ROOT) not in sys.path:
+    sys.path.insert(0, str(SDK_ROOT))
 
 from app.services.response_materializer import materialized_response
 from app.services.s2p_materialization import create_s2p_materializer, conservation_payload
@@ -40,8 +46,10 @@ from copilot_sdk.scoring.situation_classifier import SituationAssessment
 from copilot_sdk.scoring.budget_policy import AdaptiveBudgetPolicy
 from copilot_sdk.scoring.startup_restore import restore_l5_runtime_state
 from copilot_sdk.state import create_invalidation_header_middleware, create_tab_state_router
+from scripts.seed_all_decisions import auto_seed_domain_if_empty
 from app.services.budget_persistence import PersistentBudgetPolicy
 
+DOMAIN = "s2p"
 DATA_DIR = Path(os.environ.get("CI_DATA_DIR", Path(__file__).parent / "data")).expanduser().resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
@@ -151,6 +159,7 @@ from app.routers.s2p_audit_export import router as s2p_audit_export_router
 from app.framework import audit
 from app.routers.framework_router import configure_graph_store, router as framework_router
 from app.routers.s2p_auto_approve import router as s2p_auto_approve_router
+from app.routers.s2p_budget import create_budget_allocation_router
 from app.routers.s2p_clustering import router as s2p_clustering_router
 from app.routers.compliance_router import router as s2p_compliance_router
 from app.routers.centroid_router import router as s2p_centroid_router
@@ -196,6 +205,23 @@ from app.s2p_graph_status import (
 from app.s2p_shadow import initialize_s2p_shadow_state
 from app.state import S2P_MUTATION_PATHS, create_s2p_tab_state_cache
 from app.vld_preseed import seed_vld_s2p_showcase
+
+
+def _json_safe(obj: Any) -> Any:
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return _json_safe(dataclasses.asdict(obj))
+    if isinstance(obj, dict):
+        return {key: _json_safe(value) for key, value in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(value) for value in obj]
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        value = float(obj)
+        return value if np.isfinite(value) else None
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    return obj
 
 
 DEFAULT_CORS_ORIGINS = (
@@ -488,9 +514,43 @@ def s2p_conservation_status(request: Request) -> dict[str, Any]:
     if result is not None:
         return cast(dict[str, Any], result)
     try:
-        return conservation_payload(_s2p_conservation_state())
+        return cast(dict[str, Any], conservation_payload(_s2p_conservation_state()))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Graph store unavailable: {exc}") from exc
+
+
+@app.get("/api/fingerprint")
+def s2p_fingerprint(request: Request) -> dict[str, Any]:
+    result = materialized_response(request, "fingerprint")
+    if result is not None:
+        return cast(dict[str, Any], result)
+    try:
+        scorer = request.app.state.scorer
+        raw = scorer.fingerprint(persist=False)
+        payload = cast(dict[str, Any], _json_safe(raw))
+        payload["engine"] = "s2p"
+        return payload
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail=f"Scorer unavailable: {exc}"
+        ) from exc
+
+
+@app.get("/api/trajectory")
+def s2p_trajectory(request: Request) -> dict[str, Any]:
+    result = materialized_response(request, "trajectory")
+    if result is not None:
+        return cast(dict[str, Any], result)
+    try:
+        scorer = request.app.state.scorer
+        raw = scorer.trajectory()
+        payload = cast(dict[str, Any], _json_safe(raw))
+        payload["engine"] = "s2p"
+        return payload
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail=f"Scorer unavailable: {exc}"
+        ) from exc
 
 
 app.include_router(
@@ -531,6 +591,7 @@ app.include_router(
     dependencies=[Depends(investigation_budget_context)],
 )
 app.include_router(s2p_router)
+app.include_router(create_budget_allocation_router())
 app.include_router(create_proposal_router(app.state.proposal_service))
 app.include_router(create_ledger_router(app.state.compounding_ledger))
 app.include_router(create_s2p_autonomy_router(app.state.s2p_autonomy))
@@ -578,6 +639,10 @@ app.include_router(create_tab_state_router(app.state.s2p_tab_state_cache))
 
 @app.on_event("startup")
 async def warm_s2p_tab_state_cache() -> None:
+    if os.environ.get("DEMO_NO_RESEED") == "1":
+        print("DEMO_NO_RESEED=1: skipping bundle restore and fixture seeding")
+    elif app.state.s2p_active_graph_config.requested_backend == "age":
+        auto_seed_domain_if_empty(DOMAIN, app.state.graph_store)
     app.state.materializer = create_s2p_materializer(app.state)
     try:
         await asyncio.to_thread(app.state.materializer.refresh)

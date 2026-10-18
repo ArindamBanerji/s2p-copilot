@@ -245,12 +245,13 @@ def test_endpoint_returns_200_with_valid_decision_id() -> None:
     assert response.json()["decision_id"] == decision_id
 
 
-def test_endpoint_returns_404_for_unknown_decision_id() -> None:
+def test_endpoint_returns_default_for_unknown_decision_id() -> None:
     store, _decision_id = _store("price_variance")
 
     response = _client(store).get("/api/s2p/situation/UNKNOWN")
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json()["context_chain"] == []
 
 
 def test_endpoint_returns_503_when_graph_store_unavailable() -> None:

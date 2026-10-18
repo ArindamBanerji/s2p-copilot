@@ -16,7 +16,7 @@ def test_g036_production_rejects_pvg_fixture_json(monkeypatch: pytest.MonkeyPatc
     assert s2p_pvg._load_candidate_json(path, {"available": False}) == {"available": False}
 
 
-def test_g036_production_queue_queries_graph_and_supplier_preview_is_explicit_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_g036_production_queue_and_supplier_preview_query_graph(monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi.testclient import TestClient
 
     monkeypatch.setenv("S2P_PROFILE", "production")
@@ -26,8 +26,8 @@ def test_g036_production_queue_queries_graph_and_supplier_preview_is_explicit_fi
     assert response.json()["total"] == 0
     suppliers = TestClient(app).get("/api/s2p/preview/suppliers")
     assert suppliers.status_code == 200
-    assert suppliers.json()["source"] == "fixture"
-    assert suppliers.json()["provenance"] == "sample"
+    assert suppliers.json()["source"] == "sample_fallback"
+    assert suppliers.json()["provenance"] == "sample_fallback"
     assert suppliers.json()["total"] == 10
 
 

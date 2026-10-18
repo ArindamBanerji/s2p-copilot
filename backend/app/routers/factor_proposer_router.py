@@ -42,7 +42,10 @@ def factor_recommendations(request: Request) -> dict[str, Any]:
 @router.post("/propose", response_model=GenericResponse)
 def propose_factor(payload: FactorProposalRequest, request: Request) -> dict[str, Any]:
     try:
-        return _proposer(request).propose_replacement(payload.factor, payload.candidates)
+        return cast(
+            dict[str, Any],
+            _proposer(request).propose_replacement(payload.factor, payload.candidates),
+        )
     except GraphUnavailableError as exc:
         raise HTTPException(status_code=503, detail="S2P graph unavailable for factor analysis") from exc
     except KeyError as exc:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -60,10 +60,13 @@ class EvaluateRequest(BaseModel):
 @cached_static("auto-approve-status", copilot="s2p")
 def auto_approve_status(request: Request) -> dict[str, Any]:
     conservation_status = _current_conservation_status(request)
-    return gate.status_by_category(
-        graph_store=_graph_store(request),
-        reader=_graph_reader(request),
-        conservation_status=conservation_status,
+    return cast(
+        dict[str, Any],
+        gate.status_by_category(
+            graph_store=_graph_store(request),
+            reader=_graph_reader(request),
+            conservation_status=conservation_status,
+        ),
     )
 
 
@@ -123,14 +126,17 @@ def auto_approve_audit() -> dict[str, Any]:
 @serialize_mutation("s2p", event="score")
 def evaluate_auto_approve(request: EvaluateRequest, http_request: Request) -> dict[str, Any]:
     conservation_status = _current_conservation_status(http_request)
-    return gate.evaluate(
-        category=request.category,
-        confidence=request.confidence,
-        recommended_action=request.recommended_action,
-        decision_id=request.decision_id,
-        invoice_id=request.invoice_id,
-        supplier_id=request.supplier_id,
-        graph_store=_graph_store(http_request),
-        reader=_graph_reader(http_request),
-        conservation_status=conservation_status,
+    return cast(
+        dict[str, Any],
+        gate.evaluate(
+            category=request.category,
+            confidence=request.confidence,
+            recommended_action=request.recommended_action,
+            decision_id=request.decision_id,
+            invoice_id=request.invoice_id,
+            supplier_id=request.supplier_id,
+            graph_store=_graph_store(http_request),
+            reader=_graph_reader(http_request),
+            conservation_status=conservation_status,
+        ),
     )

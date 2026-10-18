@@ -362,7 +362,7 @@ def _score_process_context_with_signal(
 ) -> dict | None:
     process_context = invoice_process_context(_graph_store_from_request(http_request), invoice_id)
     if signal is None:
-        return process_context
+        return cast(dict[Any, Any] | None, process_context)
     output = dict(process_context or {})
     output["cross_copilot_signal"] = signal
     return cast(dict[str, Any], output)

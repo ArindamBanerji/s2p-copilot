@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException
 
@@ -281,7 +281,10 @@ def impact_summary() -> dict[str, Any]:
 @router.post("/simulate", response_model=GenericResponse)
 def simulate_disruption(scenario: dict[str, Any]) -> dict[str, Any]:
     profiles = accumulator.get_all_profiles()
-    return DisruptionSimulator(profiles=profiles if profiles else None).simulate(scenario)
+    return cast(
+        dict[str, Any],
+        DisruptionSimulator(profiles=profiles if profiles else None).simulate(scenario),
+    )
 
 
 @router.post("/batch-simulate", response_model=GenericResponse)

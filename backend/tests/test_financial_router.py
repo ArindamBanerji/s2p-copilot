@@ -296,10 +296,10 @@ def test_financial_impact_invalid_category_returns_allowed_categories(monkeypatc
 
     response = client.get("/api/s2p/financial-impact/not_a_category")
 
-    assert response.status_code == 404
-    detail = response.json()["detail"]
-    assert "allowed_categories" in detail
-    assert detail["allowed_categories"] == list(S2PDomainConfig.categories)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_decisions"] == 0
+    assert payload["allowed_categories"] == list(S2PDomainConfig.categories)
 
 
 def test_financial_impact_endpoints_have_response_models():

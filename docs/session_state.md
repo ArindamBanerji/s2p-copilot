@@ -398,3 +398,139 @@ Test results (3 consecutive full-suite runs, `python -m pytest tests/ -q --timeo
 - **4 previously flaky tests: ALL PASS across 3 runs. Acceptance: PASS** (zero failures among the four targets; the full suite retains the seven known Track-2 failures).
 
 S2P-MIGRATE v4 | 2026-10-07 | files_deleted: none | files_changed: none | files_created: backend/tests/test_s2p_retired_backend_guards.py | baseline: 2,248 passed / 7 failed / 0 errors -> 2,254 passed / 7 failed / 0 errors | delta: +6 passed, same failures | mypy: FAIL (exact full-app command blocked by pre-existing installed psycopg/_cmodule.py invalid error-code diagnostic; changed test file PASS and full app PASS with --follow-imports=skip)
+
+## compliance-500-fix
+- Changed: s2p_evidence.py (`compliance_payload` try/except); imported `FACTOR_NAMES`; added endpoint regression coverage in `test_p2_fix_s2p_routers.py`.
+- Tests: 2,255 passed, 0 skipped, 7 failed. All seven failures are the previously documented Track-2 cases in `test_s2p_track2_graph_reader_and_factors.py`; the new compliance regression passed both focused and full-suite runs. Focused file: 14 passed.
+- mypy: exact requested command reports one pre-existing installed-package issue in `psycopg/_cmodule.py:1` (`disable_error_code: Invalid error code(s): import-not-found`). The changed router is clean with `--follow-imports=skip`.
+
+## S2P STUB FIX DESIGN INVESTIGATION (2026-10-11)
+- Status: COMPLETE — read-only implementation design written to `docs/stub_fix_design.md`; no application or test code changed.
+- Starting point: latest stable session baseline was 2,255 passed and 7 known Track-2 failures, with no setup errors.
+- `/api/s2p/preview/queue`: live pending graph decisions are re-scored; sparse stored metadata causes 60 duplicated nulls, and neutral stored/fallback vectors are multiplied across two list aliases and three factor representations. Fix requires canonical factor normalization, provenance, and explicit unavailable/abstain behavior.
+- `/api/s2p/preview/suppliers`: the route is fixture-only and ignores the materializer's graph snapshot; its 30 nulls are missing `region`, `otif`, and `financial_health_trend` aliases. A live-plus-labeled-fixture projection conflicts with existing tests that require strict fixture isolation.
+- `/api/s2p/suppliers`: the route reads a process-local accumulator that is not hydrated from GraphStore; fixture fields are only partially loaded and runtime events are not replayed after restart. Use a shared stateless graph-backed supplier profile provider with fixture/master fallback.
+- Preseed finding: S2P preseed checks the missing root `/api/trajectory` before its score/learn loop, so that failed invocation wrote zero decisions. Current live counts came from other flows.
+- Blockers: preview fixture-isolation contract; pending decisions have no ground truth; sparse historical PO/date/OTIF/lead-time/payment data; seven-factor invoice fixture versus the current eight-factor schema; undefined fixture-baseline plus live-count merge rule.
+## S2P-A — Queue neutral factor fix
+- Date: 2026-10-11T21:05:35-07:00
+- Files changed: backend/app/routers/s2p_preview.py, backend/app/services/invoice_enricher.py
+- Tests added: backend/tests/test_queue_neutral_fix.py (6 tests)
+- Compatibility assertion updated: backend/tests/test_s2p_preview.py now recognizes fixture-backed pending rows as labeled sample records with valid ground truth.
+- Behavior: missing factors are omitted from factor maps/vectors and reported through `factor_availability`/`unavailable_factors`; absent optional fields are omitted and reported through `unavailable_fields`; matching sample IDs are enriched without overwriting graph values.
+- Baseline before: 2,255 passed, 7 failed (pre-existing Track-2 graph-reader failures)
+- New baseline: 2,261 passed, 7 failed (same pre-existing Track-2 failures; +6 passed, no new failures)
+- Focused tests: 6 passed; preview regression: 58 passed
+- mypy: changed sources/tests clean with `--follow-imports=skip`; the requested command reaches an existing third-party `psycopg/_cmodule.py` invalid `disable_error_code` diagnostic.
+- Status: COMPLETE
+
+## S2P-B — Supplier profile provider + endpoint fixes
+- Files created: backend/app/services/supplier_profile_provider.py
+- Files changed: backend/app/routers/s2p_suppliers.py, backend/app/routers/s2p_preview.py, backend/app/services/s2p_materialization.py
+- Tests added: backend/tests/test_supplier_provider.py (11 tests)
+- Tests updated: backend/tests/test_s2p_preview.py, backend/tests/test_s2p_suppliers.py, backend/tests/test_phase_06b_fixture_guards.py
+- Behavior: both supplier endpoints use one verified-GraphStore provider and normalization layer; live fields take precedence, fixture values are labeled `sample_fallback`, live invoice counts replace rather than add to fixture baselines, unavailable fields are explicit, preview remains restricted to the 10 canonical fixture IDs, and the full portfolio includes runtime-only suppliers.
+- Pre-check baseline: 2,261 passed, 7 known Track-2 failures
+- New baseline: 2,272 passed, 7 known Track-2 failures (same failure set; +11 passed, no new failures)
+- Focused verification: 111 affected tests passed; provider/preview/materializer subset 74 passed
+- Mypy: changed sources and new tests pass with `--follow-imports=skip`; the literal requested source command still stops at the pre-existing installed `psycopg/_cmodule.py` invalid error-code diagnostic.
+- Status: COMPLETE
+
+## E6 Preview Timeout Fix (cached_response) — DESIGN GATE STOPPED
+- Date: 2026-10-12
+- Starting baseline: 2,272 passed and 7 known Track-2 failures (from the latest recorded S2P backend baseline).
+- Verified: `ResponseMaterializer.get_or_refresh()` calls `refresh(if_stale=True)`, whose loop runs every registered computation; `get()` is non-blocking and never triggers refresh; `materialized_response()` uses the blocking `get_or_refresh()` path.
+- Discrepancy: `create_s2p_materializer()` currently registers seven computations, not the six stated by the task: `preview_queue`, `supplier_profiles`, `preview_suppliers`, `performance_summary`, `conservation_status`, `evidence_compliance`, and `insight_fingerprint`.
+- Status: STOPPED before code changes, as required by the mandatory design-verification gate. No files were changed.
+
+## E6 Preview Timeout Fix (cached_response) — PRE-CHECK STOPPED
+- Date: 2026-10-12
+- Root cause gate: PASS. `get_or_refresh()` triggers a refresh over all seven registered computations; `get()` never triggers a refresh; `materialized_response()` is the blocking wrapper.
+- Actual materializer keys: `preview_queue`, `supplier_profiles`, `preview_suppliers`, `performance_summary`, `conservation_status`, `evidence_compliance`, `insight_fingerprint` (7).
+- Pre-check: queue and recent-score fallbacks PASS. `cached_response` has no existing name collision.
+- Discrepancy: `preview_suppliers()` no longer falls back to the specified `suppliers_payload(demo_supplier_profiles())`; it calls `build_profiles_from_store(_get_graph_store(...))` and then `suppliers_payload(preview_profiles(profiles))`.
+- Status: STOPPED before code changes because the mandatory fallback pre-check did not match the stated contract. No application files were changed.
+
+## E6 Preview Timeout Fix (v3)
+
+Date: 2026-10-12
+Prompt: codex_e6_preview_timeout_fix_v3.md
+
+Changes made:
+- Added `cached_response()` to `backend/app/services/response_materializer.py`; it reads with non-blocking `mat.get()`.
+- Switched `_recent_scores`, `queue_read_payload`, and `preview_suppliers` in `backend/app/routers/s2p_preview.py` from `materialized_response()` to `cached_response()`.
+- Other modules continue to import `materialized_response()`.
+
+Design confirmation:
+- `get()` is non-blocking; `get_or_refresh()` performs a full registered-computation refresh; `materialized_response()` uses `get_or_refresh()`.
+- The current materializer has seven registered computations. `preview_suppliers` currently falls back to its graph-backed profile provider rather than the older fixture helper; this prompt instructed the scoped call-site substitution to proceed.
+
+Test results: 2,278 passed, 1 failed in 226.75s. The only failure is `tests/test_response_materializer.py::test_all_six_payloads_prewarm_without_observation_writes_and_keep_live_shapes`: its old `(reads, verified_reads) == (2, 2)` accounting assertion observes `(3, 3)` after the intended cold-cache queue fallback performs one live read before the materialized performance endpoint refreshes. The task restricted changes to the two application files, so the stale test assertion was not edited.
+Mypy: `Success: no issues found in 1 source file` for both changed files.
+
+Files changed:
+- `backend/app/services/response_materializer.py` (added `cached_response`)
+- `backend/app/routers/s2p_preview.py` (import + 3 call sites)
+
+## E6 Fixer v2: Second Materializer Assertion (line 177)
+
+Date: 2026-10-12
+Prompt: codex_e6_fixer_v2.md
+
+Change: Updated the second read-count assertion in `test_all_six_payloads_prewarm_without_observation_writes_and_keep_live_shapes` from `(2, 2)` to `(3, 3)`. Same root cause as v1: after invalidation, `cached_response()` returns `None`, and preview/queue takes its live fallback before the performance endpoint triggers the materializer refresh. Both post-invalidation assertions now expect `(3, 3)`.
+
+Test results: focused `tests/test_response_materializer.py` — 6 passed. Full backend suite — 2,279 passed, 0 failed in 168.75s.
+
+=== FIX-S2P-TIMEOUTS (parallel with R5) ===
+Date: 2026-10-14 22:07:59 -07:00
+Findings investigated: 3 (audit-pack timeout, compliance-screening timeout, performance/summary intermittent timeout)
+Note: twin/drift 409 confirmed by-design, not a bug
+Files changed: backend/app/routers/s2p_evidence.py, backend/app/routers/s2p_governance.py, backend/app/services/s2p_materialization.py, backend/tests/test_s2p_timeout_regressions.py, docs/session_state.md
+Root cause per finding:
+  F1 audit-pack: The receipt store was already a singleton, but each request still scanned/verified the receipt chain through both `stats` and `verify_chain`, then performed two additional conservation graph reads.
+  F2 compliance-screening: `_check_receipt_compliance` performs no graph I/O, but the handler converted and checked as many as 10,000 receipts, verified the full chain, recomputed receipt stats, and read conservation state.
+  F3 performance/summary: `performance_summary` was already registered and startup-prewarmed. Its 30-second TTL exactly matched the 30-second background refresh interval, leaving an expiry race that sent requests through a synchronous full refresh.
+Fix per finding: F1 and F2 now use precomputed materializer payloads built from one shared receipt and conservation snapshot; the live compliance fallback scans at most 500 receipts. F3 uses a 60-second materializer TTL while retaining the 30-second background refresh cadence, so normal reads remain warm.
+Tests: 2,283 passed (baseline: 2,279)
+Mypy: pass for all changed application files (`--no-site-packages`; installed mypy 1.4.1 rejects a newer `psycopg` inline error code before analyzing project code)
+Merge note: Different repo from R5 and TAB-INVENTORY-P2. Safe to merge.
+
+## E6-TIMEOUT-CHECK
+
+- Date: 2026-10-15
+- Verdict: SHIPPED
+- `cached_response()` call site count in `backend/app/routers/s2p_preview.py`: 3
+- Remaining direct `mat.get()` or `ResponseMaterializer.get()` calls in `backend/app/routers/s2p_preview.py`: none
+
+PHASE3-S2P (Spark+medium): pvg/leakage 503 on factor error, 3 endpoints async+deadline (4s). +4 tests. [2026-10-16T02:54:01-07:00]
+
+=== S2P-FINGERPRINT-TRAJECTORY ===
+date: 2026-10-16
+model: spark+medium
+scope: Add /api/fingerprint and /api/trajectory to S2P backend
+files changed: app/main.py, tests/test_fingerprint_trajectory.py
+tests added: 8 (T1-T8)
+self-verify: CHECK-01 through CHECK-10: PASS (CHECK-08 task delta clean; unrelated pre-existing worktree changes retained)
+layer-1: L1-1 through L1-6: PASS (exact mypy command blocked only by the pre-existing installed psycopg invalid error-code diagnostic; app/main.py passes with --no-site-packages)
+suite: 2294 passed, 1 skipped (new file: 8 passed)
+next: none (structural fix complete)
+
+## FIX-S2P-404s (2026-10-17)
+- Result: FAIL
+- Endpoints added: 9 (situation, process-context, 3x centroid, financial-impact, supplier profile/history/heatmap)
+- Tests: S2P BE 2303 passed, 1 skipped (prompt baseline 280, expected 289; current branch collects 2304)
+- New tests: 9 (1 per endpoint, behavioral), 9 passed
+- mypy: clean (`app/main.py` and `app/routers/`)
+- Smoke: 3/9 PASS; situation, 3x centroid, financial-impact returned 404 and supplier heatmap returned 500 from the stale server on port 8002
+- Sampling gate: 3/3 PASS using the current equivalent files (`test_s2p_score_endpoint.py`, `test_s2p_preview.py`, `test_s2p_conservation_threshold.py`)
+- EXIT gate: FAIL (not run because the mandatory self-check required stopping after the smoke failure and pre-existing unrelated backend changes prevented a clean scoped diff)
+
+S2P REVIEW-FIX (3 endpoints) — 2026-10-17
+Fingerprint: ROOT CAUSE=`compute_all_factors` raised `ValueError` because the live `S2P-INV-0001` record lacked `environmental_risk`, FIX=return degraded JSON from available numeric factors and explicit factor status; unknown invoices return HTTP 200 JSON defaults, SMOKE=PASS
+Decision-explorer: ROOT CAUSE=no route definition existed in the mounted insight router, FIX=added a graph-backed decision summary with categories, accuracy, and recent decisions, SMOKE=PASS
+Rule-lifecycle: ROOT CAUSE=no route definition existed in the mounted evidence router, FIX=added lifecycle data derived from the existing seeded rules with stages, active rules, promotions, and evolution ledger entries, SMOKE=PASS
+Tests: 2307 passed, 0 failed (1 skipped)
+Regression: 6/6 existing endpoints still passing
+Scorecard: 9/9 total endpoints passing
+Files changed: backend/app/routers/s2p_insight.py, backend/app/routers/s2p_evidence.py, backend/tests/test_s2p_review_fix_endpoints.py, docs/session_state.md
+Blast radius: CLEAN for this task; no main.py change, and implementation changes are limited to two mounted routers plus focused tests. Pre-existing unrelated worktree changes were retained.

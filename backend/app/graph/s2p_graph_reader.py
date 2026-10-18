@@ -149,14 +149,32 @@ class S2PGraphReader:
         shared generic API and must retain its existing semantics.
         """
         store: Any = self.store
-        for _ in range(2):
+        visited: set[int] = set()
+        # Production wraps the AGE adapter for active-graph ownership and
+        # legacy-signal filtering. Follow the wrapper chain until we reach
+        # the concrete query runner rather than assuming a fixed depth.
+        while id(store) not in visited:
+            visited.add(id(store))
+            if callable(getattr(store, "_run_query", None)):
+                return store
             inner = getattr(store, "_store", None)
             if inner is None:
                 break
             store = inner
-        if not callable(getattr(store, "_run_query", None)):
-            raise GraphUnavailableError("S2P AGE store does not expose directed query support")
-        return store
+        raise GraphUnavailableError("S2P AGE store does not expose directed query support")
+
+    def uses_remote_age_store(self) -> bool:
+        """Whether this reader is backed by the remote AGE implementation."""
+        store: Any = self.store
+        visited: set[int] = set()
+        while id(store) not in visited:
+            visited.add(id(store))
+            if type(store).__module__.startswith("ci_platform.graph.age_"):
+                return True
+            store = getattr(store, "_store", None)
+            if store is None:
+                return False
+        return False
 
     @staticmethod
     def _normalize_vertex(store: Any, row: dict[str, Any], key: str) -> dict[str, Any]:

@@ -62,7 +62,8 @@ def test_list_suppliers_returns_non_empty_suppliers():
     data = response.json()
     assert data["suppliers"]
     assert data["total"] == len(data["suppliers"])
-    assert data["source"] == "accumulator_with_fixture_fallback"
+    assert data["source"] == "sample_fallback"
+    assert data["count"] == data["total"]
 
 
 def test_supplier_count_matches_fixture():
@@ -88,8 +89,8 @@ def test_supplier_summaries_include_required_fields():
 def test_suppliers_list_returns_profiles():
     data = client.get("/api/s2p/suppliers").json()
 
-    assert data["source"] == "accumulator_with_fixture_fallback"
-    assert data["suppliers"][0]["source"] == "fixture"
+    assert data["source"] == "sample_fallback"
+    assert data["suppliers"][0]["source"] == "sample_fallback"
 
 
 def test_exception_rate_between_zero_and_one():
@@ -108,11 +109,11 @@ def test_profile_returns_deterministic_trend_length_six():
     assert len(first["exception_trend"]) == 6
 
 
-def test_unknown_supplier_returns_404():
+def test_unknown_supplier_returns_default_profile():
     response = client.get("/api/s2p/suppliers/UNKNOWN/profile")
 
-    assert response.status_code == 404
-    assert "not found" in response.json()["detail"]
+    assert response.status_code == 200
+    assert response.json()["invoice_count"] == 0
 
 
 def test_supplier_by_id_returns_profile():
@@ -136,10 +137,11 @@ def test_supplier_history_returns_events():
     assert data["events"][0]["supplier_id"] == "SUP-HISTORY"
 
 
-def test_supplier_history_unknown_returns_404():
+def test_supplier_history_unknown_returns_default():
     response = client.get("/api/s2p/suppliers/UNKNOWN/history")
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json() == {"events": [], "total": 0}
 
 
 def test_declining_returns_worsening_trend():
@@ -174,10 +176,11 @@ def test_heatmap_returns_categories_with_rates():
     assert all(0.0 <= item["exception_rate"] <= 1.0 for item in data["categories"])
 
 
-def test_heatmap_unknown_supplier_returns_404():
+def test_heatmap_unknown_supplier_returns_default():
     response = client.get("/api/s2p/suppliers/UNKNOWN/heatmap")
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json()["cells"] == []
 
 
 def test_clustering_returns_known_cluster_names():

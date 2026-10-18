@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -28,12 +28,15 @@ def create_proposal_router(service: ProposalService) -> APIRouter:
     @router.post("/proposal")
     def create_proposal(request: ProposalCreateRequest) -> dict[str, Any]:
         try:
-            return service.create_from_score(
-                request.score_result,
-                request.invoice_id,
-                request.factor_vector,
-                request.evidence,
-            ).to_dict()
+            return cast(
+                dict[str, Any],
+                service.create_from_score(
+                    request.score_result,
+                    request.invoice_id,
+                    request.factor_vector,
+                    request.evidence,
+                ).to_dict(),
+            )
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -45,7 +48,7 @@ def create_proposal_router(service: ProposalService) -> APIRouter:
         payload = proposal.to_dict()
         payload["outcome"] = service.store.get_outcome(proposal_id)
         payload["audit_trail"] = service.get_audit_trail(proposal.invoice_id)
-        return payload
+        return cast(dict[str, Any], payload)
 
     @router.get("/proposals")
     def list_proposals(
@@ -60,7 +63,7 @@ def create_proposal_router(service: ProposalService) -> APIRouter:
     @router.post("/proposal/{proposal_id}/confirm")
     def confirm_proposal(proposal_id: str) -> dict[str, Any]:
         try:
-            return service.confirm(proposal_id).to_dict()
+            return cast(dict[str, Any], service.confirm(proposal_id).to_dict())
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
@@ -72,7 +75,12 @@ def create_proposal_router(service: ProposalService) -> APIRouter:
         request: ProposalOverrideRequest = Body(...),
     ) -> dict[str, Any]:
         try:
-            return service.override(proposal_id, request.override_action, request.reason).to_dict()
+            return cast(
+                dict[str, Any],
+                service.override(
+                    proposal_id, request.override_action, request.reason
+                ).to_dict(),
+            )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:

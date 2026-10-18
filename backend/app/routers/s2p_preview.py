@@ -11,10 +11,12 @@ from fastapi import APIRouter, HTTPException, Request
 from copilot_sdk.state.cached_static import cached_static
 
 from app.domains.s2p.config import S2PDomainConfig
-from app.services.response_materializer import materialized_response
+from app.services.invoice_enricher import enrich_from_fixture
+from app.services.response_materializer import cached_response
 from app.models.responses import GenericResponse
-from app.services.s2p_preview_data import _mapping, _timestamp, _verified, demo_supplier_profiles, read_decisions
+from app.services.s2p_preview_data import _mapping, _timestamp, _verified, read_decisions
 from app.services.s2p_preview_simulation import _build_compounding_trajectory
+from app.services.supplier_profile_provider import build_profiles_from_store, preview_profiles
 
 router = APIRouter(prefix="/api/s2p/preview", tags=["s2p-preview"])
 
@@ -81,10 +83,21 @@ def _score_invoice(invoice: dict[str, Any], scorer) -> dict[str, Any]:
     actions = _get_action_list()
     category = str(invoice["category"])
     factor_names = _get_factor_list()
-    factors = invoice.get("factors") or {}
-    factor_vector = [float(factors.get(name, 0.5)) for name in factor_names]
-    scored_factors = {name: float(factors.get(name, 0.5)) for name in factor_names}
-    metadata = invoice.get("metadata") if isinstance(invoice.get("metadata"), dict) else {}
+    raw_factors = invoice.get("factors")
+    factors: dict[str, Any] = raw_factors if isinstance(raw_factors, dict) else {}
+    scored_factors: dict[str, float] = {}
+    unavailable_factors: list[str] = []
+    for name in factor_names:
+        value = factors.get(name)
+        if value is None:
+            unavailable_factors.append(name)
+        else:
+            scored_factors[name] = float(value)
+    available_factor_names = [name for name in factor_names if name in scored_factors]
+    factor_vector = [scored_factors[name] for name in available_factor_names]
+    invoice_metadata = invoice.get("metadata")
+    raw_metadata: dict[str, Any] = invoice_metadata if isinstance(invoice_metadata, dict) else {}
+    metadata = {key: value for key, value in raw_metadata.items() if value is not None}
     score_result = _score_read_only(
         scorer,
         scored_factors,
@@ -94,36 +107,70 @@ def _score_invoice(invoice: dict[str, Any], scorer) -> dict[str, Any]:
     action_index = int(score_result.action_index)
     confidence = float(score_result.confidence)
     probabilities = _to_float_list(score_result.probabilities)
-    variance_pct = float(factors.get("amount_variance_ratio", 0.0)) * 100.0
-
-    return {
+    variance_value = scored_factors.get("amount_variance_ratio")
+    result: dict[str, Any] = {
         "decision_id": invoice["decision_id"],
         "invoice_id": invoice["invoice_id"],
         "supplier_id": invoice["supplier_id"],
         "supplier": invoice["supplier_name"],
         "supplier_name": invoice["supplier_name"],
         "category": category,
-        "amount": invoice["amount"],
-        "po_reference": invoice["po_number"],
-        "variance_pct": float(variance_pct),
         "scored_action": action_name,
         "recommended_action": str(action_name),
         "recommended_action_index": action_index,
         "confidence": confidence,
         "probabilities": _to_float_list(probabilities),
-        "factors": {name: float(factors.get(name, 0.5)) for name in factor_names},
+        "factors": scored_factors,
+        "factor_names": available_factor_names,
         "factor_vector": _to_float_list(factor_vector),
-        "ground_truth_action": invoice["ground_truth_action"],
-        "ground_truth_action_index": actions.index(invoice["ground_truth_action"]) if invoice["ground_truth_action"] in actions else None,
+        "factor_availability": {
+            "status": "complete" if not unavailable_factors else "partial",
+            "available": len(scored_factors),
+            "required": len(factor_names),
+            "unavailable": unavailable_factors,
+        },
+        "unavailable_factors": unavailable_factors,
         "metadata": metadata,
         **({"process_context": invoice["process_context"]} if invoice.get("process_context") else {}),
-      }
+    }
+
+    unavailable_fields: list[str] = []
+    optional_fields = {
+        "amount": invoice.get("amount"),
+        "po_number": invoice.get("po_number"),
+        "po_reference": invoice.get("po_reference") or invoice.get("po_number"),
+        "invoice_date": invoice.get("invoice_date") or metadata.get("invoice_date"),
+        "due_date": invoice.get("due_date") or metadata.get("due_date"),
+    }
+    for name, value in optional_fields.items():
+        if value is None:
+            unavailable_fields.append(name)
+        else:
+            result[name] = value
+
+    ground_truth = invoice.get("ground_truth_action")
+    if ground_truth is None:
+        unavailable_fields.append("ground_truth_action")
+    else:
+        result["ground_truth_action"] = ground_truth
+        if ground_truth in actions:
+            result["ground_truth_action_index"] = actions.index(ground_truth)
+
+    if variance_value is None:
+        unavailable_fields.append("variance_pct")
+    else:
+        result["variance_pct"] = float(variance_value) * 100.0
+
+    if invoice.get("provenance") is not None:
+        result["provenance"] = invoice["provenance"]
+    result["unavailable_fields"] = unavailable_fields
+    return result
 
 
 def _write_preview_observation(request: Request, invoice: dict[str, Any]) -> None:
     scorer = _get_scorer(request)
     graph_store = _get_graph_store(request, scorer)
-    factor_names = _get_factor_list()
+    factor_names = list(invoice.get("factor_names") or [])
     metadata = dict(invoice.get("metadata") or {})
     metadata.update(
         {
@@ -183,7 +230,7 @@ def _decision_invoice(row: dict[str, Any]) -> dict[str, Any]:
     if isinstance(vector, str):
         vector = json.loads(vector)
     factors = {**dict(zip(names, vector)), **_mapping(row.get("factors"))}
-    return {
+    record = {
         "decision_id": row["decision_id"],
         "invoice_id": _invoice_id(row),
         "supplier_id": row.get("supplier_id") or "",
@@ -196,6 +243,7 @@ def _decision_invoice(row: dict[str, Any]) -> dict[str, Any]:
         "metadata": _mapping(row.get("metadata")),
         "process_context": row.get("process_context"),
     }
+    return cast(dict[str, Any], enrich_from_fixture(record))
 
 
 def _pending_decisions(request: Request) -> list[dict[str, Any]]:
@@ -231,7 +279,7 @@ def score_pending(decisions: list[dict[str, Any]], scorer: Any, n: int = 50) -> 
 
 
 def _recent_scores(request: Request, n: int = 50) -> list[dict[str, Any]]:
-    cached = materialized_response(request, "preview_queue")
+    cached = cached_response(request, "preview_queue")
     if cached is not None:
         return cast(list[dict[str, Any]], cached["invoices"][:n])
     scorer = _get_scorer(request)
@@ -270,7 +318,7 @@ def _preview_queue_payload(request: Request, limit: int = 5) -> dict[str, Any]:
 
 
 def queue_read_payload(request: Request, limit: int = 5) -> dict[str, Any]:
-    payload = materialized_response(request, "preview_queue")
+    payload = cached_response(request, "preview_queue")
     if payload is None:
         scorer = _get_scorer(request)
         invoices, total = score_pending(read_decisions(_get_graph_store(request, scorer)), scorer)
@@ -390,9 +438,11 @@ def preview_compounding() -> dict[str, Any]:
 
 @router.get("/suppliers", response_model=GenericResponse)
 def preview_suppliers(request: Request, limit: int | None = None) -> dict[str, Any]:
-    payload = materialized_response(request, "preview_suppliers")
+    payload = cached_response(request, "preview_suppliers")
     if payload is None:
-        payload = suppliers_payload(demo_supplier_profiles())
+        scorer = _get_scorer(request)
+        profiles = build_profiles_from_store(_get_graph_store(request, scorer))
+        payload = suppliers_payload(preview_profiles(profiles))
     suppliers = cast(list[dict[str, Any]], payload["suppliers"])
     shown = suppliers if limit is None else suppliers[:_clamp_limit(limit, 1, len(suppliers))]
     payload.update(suppliers=shown, showing=len(shown))
@@ -405,13 +455,14 @@ def suppliers_payload(suppliers: list[dict[str, Any]], limit: int | None = None)
     else:
         clamped_limit = _clamp_limit(limit, 1, len(suppliers))
         shown = suppliers[:clamped_limit]
+    has_graph = any(row.get("provenance") == "graph" for row in suppliers)
     return {
         "engine_version": ENGINE_VERSION,
         "total": len(suppliers),
         "showing": len(shown),
         "suppliers": shown,
-        "source": "fixture",
-        "provenance": "sample",
+        "source": "graph" if has_graph else "sample_fallback",
+        "provenance": "graph_with_sample_fallback" if has_graph else "sample_fallback",
     }
 
 

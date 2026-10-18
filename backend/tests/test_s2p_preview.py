@@ -78,7 +78,8 @@ def test_queue_excludes_verified_and_refreshes_after_outcome(preview_graph):
     second = _queue(50).json()
     assert second["total"] == 49
     assert decision["decision_id"] not in {row["decision_id"] for row in second["invoices"]}
-    assert all(row["ground_truth_action"] is None for row in second["invoices"])
+    assert all(row["provenance"] == "sample" for row in second["invoices"])
+    assert all(row["ground_truth_action"] in S2PDomainConfig.actions for row in second["invoices"])
 
 
 def test_queue_only_scores_latest_50_pending_decisions(preview_graph):
@@ -346,13 +347,16 @@ def test_suppliers_have_required_fields():
     for key in (
         "supplier_id",
         "supplier_name",
-        "region",
         "otif",
         "exception_rate",
         "lead_time",
-        "financial_health_trend",
+        "field_provenance",
     ):
         assert key in supplier
+    assert supplier["region_available"] is False
+    assert supplier["financial_health_trend_available"] is False
+    assert "region" not in supplier
+    assert "financial_health_trend" not in supplier
 
 
 def test_suppliers_preserve_fixture_names():
@@ -379,33 +383,52 @@ def test_supplier_preview_is_isolated_from_stress_and_colliding_ids(preview_grap
     response = client.get("/api/s2p/preview/suppliers")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["source"] == "fixture"
-    assert payload["provenance"] == "sample"
+    assert payload["source"] in {"graph", "sample_fallback"}
     assert payload["total"] == len(expected)
-    for actual, fixture in zip(payload["suppliers"], expected, strict=True):
-        assert all(actual[key] == value for key, value in fixture.items())
-        assert actual["supplier_name"] == fixture["name"]
+    assert [row["supplier_id"] for row in payload["suppliers"]] == [
+        row["supplier_id"] for row in expected
+    ]
+    assert all(row["supplier_id"] != "STRESS-SUPPLIER" for row in payload["suppliers"])
+    assert all(row["otif"] is not None for row in payload["suppliers"])
     if mat is not None:
         mat.invalidate()
         assert client.get("/api/s2p/preview/suppliers").json() == payload
     assert preview_graph.get_all_decisions("s2p") == before
 
 
-def test_supplier_preview_never_reads_live_graph_on_cache_miss(monkeypatch):
-    def forbidden(*args, **kwargs):
-        raise AssertionError("Demo supplier preview must not read the live store")
+def test_supplier_preview_reads_graph_and_keeps_fixture_ids_on_cache_miss(monkeypatch):
+    expected = json.loads((BACKEND_ROOT.parent / "data/s2p_demo_suppliers.json").read_text())
+    calls = []
+    original_all = app.state.graph_store.get_all_decisions
+    original_verified = app.state.graph_store.get_verified_decisions
+
+    def tracked_all(*args, **kwargs):
+        calls.append("all")
+        return original_all(*args, **kwargs)
+
+    def tracked_verified(*args, **kwargs):
+        calls.append("verified")
+        return original_verified(*args, **kwargs)
 
     monkeypatch.setattr(app.state, "materializer", None, raising=False)
-    monkeypatch.setattr(app.state.graph_store, "get_all_decisions", forbidden)
-    monkeypatch.setattr(app.state.graph_store, "get_verified_decisions", forbidden)
-    assert client.get("/api/s2p/preview/suppliers").json()["source"] == "fixture"
+    monkeypatch.setattr(app.state.graph_store, "get_all_decisions", tracked_all)
+    monkeypatch.setattr(app.state.graph_store, "get_verified_decisions", tracked_verified)
+    payload = client.get("/api/s2p/preview/suppliers").json()
+    assert calls == ["all", "verified"]
+    assert [row["supplier_id"] for row in payload["suppliers"]] == [
+        row["supplier_id"] for row in expected
+    ]
 
 
 def test_supplier_fixture_failure_does_not_fall_back_to_stress_data(monkeypatch, tmp_path):
-    from app.services import s2p_preview_data
+    from app.services import supplier_profile_provider
 
     monkeypatch.setattr(app.state, "materializer", None, raising=False)
-    monkeypatch.setattr(s2p_preview_data, "_DEMO_SUPPLIERS_PATH", tmp_path / "missing.json")
+    monkeypatch.setattr(
+        supplier_profile_provider,
+        "_DEFAULT_FIXTURE_PATH",
+        tmp_path / "missing.json",
+    )
     with pytest.raises(FileNotFoundError):
         client.get("/api/s2p/preview/suppliers")
 

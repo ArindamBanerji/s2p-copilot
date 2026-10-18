@@ -181,6 +181,13 @@ def _preview_supplier(row: dict[str, Any]) -> dict[str, Any]:
 
 def invoice_process_context(store: Any, invoice_id: str) -> dict[str, Any] | None:
     """Latest recorded process evidence for this invoice, read on every request."""
+    reader = S2PGraphReader(store)
+    # Process context is supplemental score-response data. Its historic
+    # metadata scan is expensive on remote AGE and is intentionally omitted
+    # from the synchronous score path; dedicated insight routes still provide
+    # process investigation when requested.
+    if reader.uses_remote_age_store():
+        return None
     history = [
         row for row in read_decisions(store)
         if str(row.get("invoice_id") or row.get("source_invoice_id") or row.get("entity_id") or "") == invoice_id

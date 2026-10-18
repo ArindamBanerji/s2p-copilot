@@ -44,7 +44,7 @@ def screen_compliance(payload: dict[str, Any]) -> dict[str, Any]:
     transaction = cast(dict[str, Any], transaction_value) if isinstance(transaction_value, dict) else payload
     supplier_value = payload.get("supplier")
     supplier = cast(dict[str, Any], supplier_value) if isinstance(supplier_value, dict) else {}
-    return ComplianceScreener().screen(transaction, supplier)
+    return cast(dict[str, Any], ComplianceScreener().screen(transaction, supplier))
 
 
 @router.post("/batch", response_model=GenericResponse)
@@ -79,4 +79,4 @@ def compliance_report() -> dict[str, Any]:
             )
         check["verified_correct"] = index < 91
         checks.append(check)
-    return screener.report(checks)
+    return cast(dict[str, Any], screener.report(checks))

@@ -930,3 +930,11 @@ New tests: 35
 Status: COMPLETE
 
 Validation: mypy clean on all changed production and new test files; 0 banned patterns; full backend suite 2250 passed, 0 failed, 0 skipped.
+
+## S2P Score Latency Fix
+- Date: 2026-10-12
+- Fixes applied: restored directed AGE-context discovery through the complete wrapper chain; bypassed optional full-history process-context reads for remote AGE score responses; enabled per-process AGE connection pooling by default.
+- Before: 13.02s (context=7.66s, enrich=4.50s).
+- After: steady-state POST /api/s2p/score measurements: 1.610s, 1.068s, 1.577s; initial pool warm-up requests measured 2.699s and 2.344s.
+- Tests: 2,279 passed, 0 failed (`python -m pytest tests/ -q --timeout=120`). Focused score/context tests: 75 passed.
+- Blast radius: `_resolve_graph_context` has one score-path caller; `invoice_process_context` has one score-path caller; S2PScoreResponse remains unchanged; health and all three preview endpoints returned 200 with data.

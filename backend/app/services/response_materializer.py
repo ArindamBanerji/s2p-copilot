@@ -129,6 +129,21 @@ def materialized_response(request: Any, key: str, *, item: str | None = None) ->
     return result
 
 
+def cached_response(request: Any, key: str, *, item: str | None = None) -> Any:
+    """Return cached data without blocking on a full refresh."""
+    mat = getattr(request.app.state, "materializer", None)
+    if mat is None:
+        return None
+    try:
+        result = mat.get(key, item=item)
+    except Exception:
+        log.exception("S2P cached read failed; using live handler: %s", key)
+        return None
+    if isinstance(result, dict) and result.get("status") == "unavailable" and "error" in result:
+        return None
+    return result
+
+
 def invalidate_materializer(request: Any) -> None:
     mat = getattr(request.app.state, "materializer", None)
     if mat is not None:

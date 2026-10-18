@@ -86,10 +86,11 @@ def test_process_context_bottleneck_is_longest_activity():
     assert data["bottleneck"]["system"] == longest["system"]
 
 
-def test_process_context_missing_invoice_returns_404():
+def test_process_context_missing_invoice_returns_default():
     response = client.get("/api/s2p/insight/process-context/missing")
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json()["activities"] == []
 
 
 def test_process_context_activity_durations_sum_to_total():

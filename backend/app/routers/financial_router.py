@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -67,7 +67,7 @@ class FinancialImpactTrendResponse(BaseModel):
 
 
 def _summary_response(summary: FinancialSummary) -> dict[str, Any]:
-    return summary.to_dict()
+    return cast(dict[str, Any], summary.to_dict())
 
 
 def _get_value(source: Any, key: str, default: Any = None) -> Any:
@@ -388,12 +388,19 @@ def financial_impact_trend(request: Request) -> dict[str, Any]:
 def financial_impact_category(category: str, request: Request) -> dict[str, Any]:
     allowed_categories = list(S2PDomainConfig.categories)
     if category not in allowed_categories:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "message": f"Unsupported S2P financial impact category: {category}",
-                "allowed_categories": allowed_categories,
-            },
-        )
+        return {
+            "total_decisions": 0,
+            "verified_decisions": 0,
+            "total_amount": 0.0,
+            "total_at_risk": 0.0,
+            "total_recovered": 0.0,
+            "net_savings": 0.0,
+            "recovery_rate": 0.0,
+            "missing_receipts": 0,
+            "by_supplier": {},
+            "by_category": {},
+            "category": category,
+            "allowed_categories": allowed_categories,
+        }
     _ensure_financial_snapshots(request)
     return deepcopy(_FINANCIAL_CATEGORY_SNAPSHOTS[category])

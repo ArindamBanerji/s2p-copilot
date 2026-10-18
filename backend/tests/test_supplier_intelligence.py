@@ -481,11 +481,12 @@ def test_endpoint_adds_intelligence_with_enrichment_and_keeps_json_safe():
     assert store.write_called is False
 
 
-def test_unknown_supplier_behavior_remains_404():
-    with pytest.raises(Exception) as excinfo:
-        s2p_suppliers.profile("UNKNOWN", _request(_graph_store({})))
+def test_unknown_supplier_behavior_returns_default_profile():
+    response = s2p_suppliers.profile("UNKNOWN", _request(_graph_store({})))
 
-    assert getattr(excinfo.value, "status_code", None) == 404
+    assert response["supplier_id"] == "UNKNOWN"
+    assert response["invoice_count"] == 0
+    assert response["intelligence"] == {}
 
 
 def test_fixture_otif_is_not_measured_or_verified():

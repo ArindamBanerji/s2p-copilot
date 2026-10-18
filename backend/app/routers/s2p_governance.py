@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -12,9 +13,13 @@ from app.models.responses import GenericResponse
 from app.graph.s2p_graph_reader import GraphUnavailableError
 from app.routers.s2p_data_helpers import load_suppliers
 from app.services.receipt_store import get_receipt_store
+from app.services.response_materializer import materialized_response
 
 
 router = APIRouter(prefix="/api/s2p/governance", tags=["s2p-governance"])
+
+COMPLIANCE_SCREENING_TIMEOUT_SECONDS = 4.0
+SCREENING_RECEIPT_LIMIT = 500
 
 
 def _safe_conservation_snapshot(request: Request) -> dict[str, Any]:
@@ -74,10 +79,21 @@ def _chain_verified(chain: dict[str, Any]) -> bool:
 
 def _screen_receipts(request: Request) -> dict[str, Any]:
     store = get_receipt_store()
-    receipts = store.get_chain(limit=10000)
+    receipts = store.get_chain(limit=SCREENING_RECEIPT_LIMIT)
     chain = store.verify_chain()
     stats = store.stats
     conservation = _safe_conservation_snapshot(request)
+
+    return _screening_payload(receipts, chain, stats, conservation)
+
+
+def _screening_payload(
+    receipts: list[dict[str, Any]],
+    chain: dict[str, Any],
+    stats: dict[str, Any],
+    conservation: dict[str, Any],
+) -> dict[str, Any]:
+    """Build compliance screening from snapshots already read by the caller."""
 
     gaps: list[dict[str, Any]] = []
     receipts_with_gaps = 0
@@ -118,9 +134,30 @@ def _screen_receipts(request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/compliance-screening", response_model=GenericResponse)
-def compliance_screening(request: Request) -> dict[str, Any]:
+def _compliance_screening_sync(request: Request) -> dict[str, Any]:
+    materialized = materialized_response(request, "governance_compliance_screening")
+    if materialized is not None:
+        return cast(dict[str, Any], materialized)
     return _screen_receipts(request)
+
+
+@router.get("/compliance-screening", response_model=GenericResponse)
+async def compliance_screening(request: Request) -> dict[str, Any]:
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(_compliance_screening_sync, request),
+            timeout=COMPLIANCE_SCREENING_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="S2P graph unavailable for governance",
+        ) from exc
+    except GraphUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="S2P graph unavailable for governance",
+        ) from exc
 
 
 @router.get("/compliance-gaps", response_model=GenericResponse)
@@ -198,7 +235,7 @@ def sox_readiness(request: Request) -> dict[str, Any]:
 
 
 def _load_supplier_data() -> list[dict[str, Any]]:
-    return load_suppliers()
+    return cast(list[dict[str, Any]], load_suppliers())
 
 
 def _extract_nested_float(supplier: dict[str, Any], field: str) -> float:

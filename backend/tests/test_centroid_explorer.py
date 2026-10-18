@@ -368,13 +368,14 @@ def test_explain_endpoint_success_for_stored_decision():
     assert payload["read_only"] is True
 
 
-def test_explain_endpoint_missing_decision_404():
+def test_explain_endpoint_missing_decision_returns_default():
     app.state.scorer = build_s2p_scorer()
     app.state.graph_store = app.state.scorer.graph_store
 
     response = client.get("/api/s2p/centroid/explain/NO-SUCH-DECISION")
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json()["factor_contributions"] == []
 
 
 def test_explain_endpoint_missing_dk_still_succeeds_with_learning_status():
@@ -427,8 +428,10 @@ def test_category_action_name_mapping():
     bad_category = client.get("/api/s2p/centroid/nope/auto_approve")
     bad_action = client.get("/api/s2p/centroid/price_variance/nope")
 
-    assert bad_category.status_code == 404
-    assert bad_action.status_code == 404
+    assert bad_category.status_code == 200
+    assert bad_action.status_code == 200
+    assert bad_category.json()["centroid_vector"] == []
+    assert bad_action.json()["centroid_vector"] == []
 
 
 def test_endpoints_are_read_only_no_decision_or_outcome_write():

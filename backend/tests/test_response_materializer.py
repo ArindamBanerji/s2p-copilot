@@ -169,12 +169,12 @@ def test_all_six_payloads_prewarm_without_observation_writes_and_keep_live_shape
     mat.invalidate()
     assert client.get(paths[0]).json()["total"] == 0
     assert client.get(paths[2]).json()["total_verified"] == 1
-    assert (store.reads, store.verified_reads) == (2, 2)
+    assert (store.reads, store.verified_reads) == (3, 3)
     from copilot_sdk.config.tenant import tenant_context
     with tenant_context("another-tenant"):
         assert mat.get("preview_queue") is None
         assert mat.get_or_refresh("preview_queue") is None
-    assert (store.reads, store.verified_reads) == (2, 2)
+    assert (store.reads, store.verified_reads) == (3, 3)
     app.state.graph_store = TrackingStore()
     assert mat.get("preview_queue") is None
     s2p_preview.reset_preview_state()

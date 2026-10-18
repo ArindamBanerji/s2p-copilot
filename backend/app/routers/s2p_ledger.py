@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Query, Request
 
@@ -20,7 +20,7 @@ def create_ledger_router(ledger: CompoundingLedger) -> APIRouter:
     @router.get("/summary")
     def summary() -> dict[str, Any]:
         ledger.refresh_live_observations()
-        return ledger.summary()
+        return cast(dict[str, Any], ledger.summary())
 
     @router.get("/iks-trajectory")
     def iks_trajectory(limit: int = Query(100, ge=0, le=1000)) -> dict[str, Any]:

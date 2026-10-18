@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -14,6 +15,7 @@ from app.services.response_materializer import materialized_response
 
 router = APIRouter(prefix="/api/s2p/performance", tags=["s2p-performance"])
 
+PERFORMANCE_SUMMARY_TIMEOUT_SECONDS = 4.0
 PENALTY_RATIO = 5.0
 ANNUAL_TARGET_USD = 680000
 
@@ -102,7 +104,7 @@ def _current_q(reader: S2PGraphReader) -> float:
 
 
 def _verified_decisions(reader: S2PGraphReader) -> list[dict[str, Any]]:
-    return reader.get_verified_decisions()
+    return cast(list[dict[str, Any]], reader.get_verified_decisions())
 
 
 def _age_store_or_none(store: Any) -> Any | None:
@@ -237,8 +239,7 @@ def what_if(
     }
 
 
-@router.get("/summary", response_model=GenericResponse)
-def summary(request: Request) -> dict[str, Any]:
+def _summary_sync(request: Request) -> dict[str, Any]:
     materialized = materialized_response(request, "performance_summary")
     if materialized is not None:
         return cast(dict[str, Any], materialized)
@@ -246,3 +247,22 @@ def summary(request: Request) -> dict[str, Any]:
         return cast(dict[str, Any], _build_summary(_graph_reader(request)))
     except GraphUnavailableError as exc:
         raise HTTPException(status_code=503, detail="S2P graph unavailable for performance") from exc
+
+
+@router.get("/summary", response_model=GenericResponse)
+async def summary(request: Request) -> dict[str, Any]:
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(_summary_sync, request),
+            timeout=PERFORMANCE_SUMMARY_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="S2P graph unavailable for performance",
+        ) from exc
+    except GraphUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="S2P graph unavailable for performance",
+        ) from exc

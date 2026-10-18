@@ -3,7 +3,10 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi.testclient import TestClient
 
+from app.domains.s2p import factors as s2p_factors
+from app.main import app
 from app.routers import s2p_demo_beats, s2p_evidence, s2p_insight, s2p_suppliers
 from app.routers.s2p_demo_beats import _rows
 
@@ -75,6 +78,23 @@ def test_compliance_marks_factor_failure(monkeypatch, bad_value):
     assert payload["compliance_available"] is False
     assert payload["degraded_factors"]
     assert payload["flagged_invoices"][0]["tax_regulatory_compliance"] == 1.0
+
+
+def test_compliance_endpoint_degrades_when_production_invoice_misses_factor(monkeypatch):
+    invoice = {
+        "invoice_id": "I-MISSING-FACTOR",
+        "category": "price_variance",
+        "supplier_id": "SUP-1",
+        **{name: 0.1 for name in s2p_factors.FACTOR_NAMES if name != "environmental_risk"},
+    }
+    monkeypatch.setattr(s2p_factors, "_production_profile", lambda: True)
+    monkeypatch.setattr(s2p_evidence, "_load_invoices", lambda: [invoice])
+    monkeypatch.setattr(app.state, "materializer", None, raising=False)
+
+    response = TestClient(app).get("/api/s2p/evidence/compliance")
+
+    assert response.status_code == 200
+    assert response.json()["compliance_available"] is False
 
 
 @pytest.mark.parametrize("bad_value", [None, {"unexpected": []}])

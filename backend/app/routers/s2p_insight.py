@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import compute_all_factors
+from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
 from app.routers.s2p_data_helpers import find_invoice, load_invoices, load_suppliers
 from app.services.process_fusion import ProcessFusionCycle
@@ -149,24 +150,45 @@ def fingerprint(invoice_id: str, request: Request) -> dict[str, Any]:
 
 def fingerprint_payload(invoice: dict[str, Any] | None, invoice_id: str) -> dict[str, Any]:
     if invoice is None:
-        return {"error": f"Invoice {invoice_id} not found", "narrative": f"Invoice {invoice_id} was not found."}
+        return {
+            "error": "invoice not found",
+            "invoice_id": invoice_id,
+            "factors": {},
+            "dominant_factor": None,
+            "narrative": f"Invoice {invoice_id} was not found.",
+            "fingerprint_available": False,
+            "degraded_factors": list(S2PDomainConfig.factors),
+        }
     fingerprint_available = True
     degraded_factors: list[str] = []
-    factor_result = compute_all_factors(invoice, return_status=True)
-    if (
-        not isinstance(factor_result, tuple)
-        or len(factor_result) != 3
-        or not isinstance(factor_result[0], dict)
-    ):
-        factors = {}
+    factor_error: str | None = None
+    try:
+        factor_result = compute_all_factors(invoice, return_status=True)
+    except ValueError as exc:
+        factors = _numeric_factors(invoice.get("factors"))
         fingerprint_available = False
-        degraded_factors = list(S2PDomainConfig.factors)
+        degraded_factors = [
+            name for name in S2PDomainConfig.factors if name not in factors
+        ]
+        factor_error = str(exc)
     else:
-        factors = cast(dict[str, float], factor_result[0])
-        fingerprint_available = bool(factor_result[1])
-        degraded_factors = list(factor_result[2])
+        if (
+            not isinstance(factor_result, tuple)
+            or len(factor_result) != 3
+            or not isinstance(factor_result[0], dict)
+        ):
+            factors = _numeric_factors(invoice.get("factors"))
+            fingerprint_available = False
+            degraded_factors = [
+                name for name in S2PDomainConfig.factors if name not in factors
+            ]
+            factor_error = "factor computation returned an invalid result"
+        else:
+            factors = cast(dict[str, float], factor_result[0])
+            fingerprint_available = bool(factor_result[1])
+            degraded_factors = list(factor_result[2])
     dominant_factor = max(factors, key=lambda name: factors[name]) if factors else None
-    return {
+    payload = {
         "invoice_id": invoice.get("invoice_id", invoice_id),
         "category": invoice.get("category"),
         "factors": factors,
@@ -178,6 +200,90 @@ def fingerprint_payload(invoice: dict[str, Any] | None, invoice_id: str) -> dict
         ),
         "fingerprint_available": fingerprint_available,
         "degraded_factors": degraded_factors,
+    }
+    if factor_error is not None:
+        payload["factor_error"] = factor_error
+    return payload
+
+
+def _graph_reader(request: Request) -> S2PGraphReader:
+    state = request.app.state
+    reader = getattr(state, "s2p_graph_reader", None)
+    if isinstance(reader, S2PGraphReader):
+        return reader
+    graph_store = getattr(state, "graph_store", None)
+    if graph_store is None:
+        raise HTTPException(status_code=503, detail="S2P graph store unavailable")
+    return S2PGraphReader(store=graph_store)
+
+
+def _decision_summary(decision: dict[str, Any]) -> dict[str, Any]:
+    metadata = decision.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    return {
+        "decision_id": decision.get("decision_id"),
+        "invoice_id": decision.get("invoice_id") or metadata.get("invoice_id"),
+        "category": decision.get("category"),
+        "action": decision.get("recommended_action") or decision.get("action"),
+        "confidence": decision.get("confidence"),
+        "created_at": decision.get("created_at") or metadata.get("created_at"),
+    }
+
+
+@router.get("/decision-explorer", response_model=GenericResponse)
+def decision_explorer(
+    request: Request,
+    limit: int = Query(default=25, ge=1, le=200),
+) -> dict[str, Any]:
+    reader = _graph_reader(request)
+    try:
+        decisions = [
+            row for row in reader.get_all_decisions() if isinstance(row, dict)
+        ]
+        verified = [
+            row for row in reader.get_verified_decisions() if isinstance(row, dict)
+        ]
+    except GraphUnavailableError as exc:
+        raise HTTPException(
+            status_code=503, detail="S2P graph unavailable for decision explorer"
+        ) from exc
+
+    category_names = sorted(
+        {
+            str(row.get("category"))
+            for row in [*decisions, *verified]
+            if row.get("category")
+        }
+    )
+    categories = []
+    for category in category_names:
+        category_decisions = [
+            row for row in decisions if str(row.get("category")) == category
+        ]
+        category_verified = [
+            row for row in verified if str(row.get("category")) == category
+        ]
+        correct = sum(row.get("is_correct") is True for row in category_verified)
+        categories.append(
+            {
+                "category": category,
+                "decisions": len(category_decisions),
+                "verified": len(category_verified),
+                "correct": correct,
+                "accuracy": round(correct / len(category_verified), 4)
+                if category_verified
+                else 0.0,
+            }
+        )
+
+    total_correct = sum(row.get("is_correct") is True for row in verified)
+    return {
+        "categories": categories,
+        "decisions": [_decision_summary(row) for row in decisions[:limit]],
+        "accuracy": round(total_correct / len(verified), 4) if verified else 0.0,
+        "total_decisions": len(decisions),
+        "total_verified": len(verified),
+        "source": "graph_store",
     }
 
 
@@ -231,7 +337,16 @@ def similar(invoice_id: str, limit: int = Query(5, ge=1, le=50)) -> dict[str, An
 def process_context(invoice_id: str) -> dict[str, Any]:
     invoice = find_invoice(invoice_id)
     if invoice is None:
-        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+        return {
+            "invoice_id": invoice_id,
+            "total_cycle_time_hours": 0.0,
+            "activities": [],
+            "activity_timeline": [],
+            "bottleneck": {},
+            "source": "unavailable",
+            "engine": "ci-platform-s2p",
+            "narrative": f"No process context available for {invoice_id}.",
+        }
     total_hours = _cycle_time_hours(invoice)
     activities = _process_activities(total_hours)
     bottleneck = _process_bottleneck(invoice, activities)

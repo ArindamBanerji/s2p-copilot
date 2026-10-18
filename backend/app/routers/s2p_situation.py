@@ -42,7 +42,13 @@ async def get_situation(
     except GraphUnavailableError as exc:
         raise HTTPException(status_code=503, detail="Decision graph unavailable") from exc
     if decision is None:
-        raise HTTPException(status_code=404, detail=f"decision_id not found: {decision_id}")
+        return _degraded_response(
+            decision_id,
+            "",
+            {},
+            status="unavailable",
+            reason=f"decision_id not found: {decision_id}",
+        )
     decision = dict(decision)
     decision["provenance"] = "graph_store"
     category = str(decision.get("category") or "")

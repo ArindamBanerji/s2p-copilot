@@ -10,8 +10,10 @@ from __future__ import annotations
 import argparse
 import http.client
 import json
+import math
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -27,6 +29,67 @@ VALID_ACTIONS = {
     "escalate_to_buyer",
     "flag_leakage",
     "refer_to_specialist",
+}
+PENDING_COHORT_VERSION = "v1"
+PENDING_COHORT_COUNT = 24
+MIN_VISIBLE_PENDING = 18
+PENDING_COHORT_CATEGORIES = (
+    "price_variance",
+    "quantity_mismatch",
+    "duplicate_risk",
+    "contract_gap",
+)
+PENDING_COHORT_FACTOR_NAMES = (
+    "match_status",
+    "amount_variance_ratio",
+    "duplicate_score",
+    "supplier_exception_history",
+    "payment_terms_impact",
+    "commodity_index_correlation",
+    "tax_regulatory_compliance",
+    "environmental_risk",
+)
+PENDING_COHORT_FACTORS: dict[str, dict[str, float]] = {
+    "price_variance": {
+        "match_status": 0.90,
+        "amount_variance_ratio": 0.18,
+        "duplicate_score": 0.03,
+        "supplier_exception_history": 0.12,
+        "payment_terms_impact": 0.30,
+        "commodity_index_correlation": 0.60,
+        "tax_regulatory_compliance": 0.95,
+        "environmental_risk": 0.10,
+    },
+    "quantity_mismatch": {
+        "match_status": 0.55,
+        "amount_variance_ratio": 0.08,
+        "duplicate_score": 0.04,
+        "supplier_exception_history": 0.15,
+        "payment_terms_impact": 0.35,
+        "commodity_index_correlation": 0.75,
+        "tax_regulatory_compliance": 0.95,
+        "environmental_risk": 0.15,
+    },
+    "duplicate_risk": {
+        "match_status": 0.90,
+        "amount_variance_ratio": 0.02,
+        "duplicate_score": 0.75,
+        "supplier_exception_history": 0.10,
+        "payment_terms_impact": 0.25,
+        "commodity_index_correlation": 0.80,
+        "tax_regulatory_compliance": 0.95,
+        "environmental_risk": 0.10,
+    },
+    "contract_gap": {
+        "match_status": 0.65,
+        "amount_variance_ratio": 0.10,
+        "duplicate_score": 0.05,
+        "supplier_exception_history": 0.20,
+        "payment_terms_impact": 0.55,
+        "commodity_index_correlation": 0.40,
+        "tax_regulatory_compliance": 0.80,
+        "environmental_risk": 0.20,
+    },
 }
 
 
@@ -96,6 +159,206 @@ def _existing_decisions(api: str) -> dict[str, dict[str, Any]]:
     return existing
 
 
+def _mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _decision_identity(row: dict[str, Any]) -> str:
+    metadata = _mapping(row.get("metadata"))
+    value = (row.get("event_id") or row.get("invoice_id") or row.get("source_invoice_id")
+             or metadata.get("invoice_id") or metadata.get("source_invoice_id"))
+    return str(value or "")
+
+
+def _group_decisions(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        identity = _decision_identity(row)
+        if identity:
+            grouped.setdefault(identity, []).append(row)
+    return grouped
+
+
+def _pending_cohort_payload(slot: int) -> dict[str, Any]:
+    category = PENDING_COHORT_CATEGORIES[(slot - 1) % len(PENDING_COHORT_CATEGORIES)]
+    factors = PENDING_COHORT_FACTORS[category]
+    return {
+        "event_id": f"S2P-INV-PENDING-V1-{slot:04d}",
+        "category": category,
+        "amount": 1000.0 + 125.0 * (slot - 1),
+        "supplier_id": f"SUP-S2P-PENDING-V1-{slot:04d}",
+        "supplier_name": f"Planted pending demo supplier {slot:02d}",
+        "supplier_risk_rating": 1.0 - factors["supplier_exception_history"],
+        **factors,
+    }
+
+
+def _cohort_row_verified(row: dict[str, Any]) -> bool:
+    return (row.get("status") in {"confirmed", "overridden", "verified"}
+            or row.get("correct") is not None or row.get("is_correct") is not None
+            or row.get("verified") is True or bool(row.get("actual_action")))
+
+
+def _cohort_row_owned(row: dict[str, Any], payload: dict[str, Any]) -> bool:
+    metadata = _mapping(row.get("metadata"))
+    context = _mapping(row.get("context"))
+    provenance = _mapping(metadata.get("demo_provenance"))
+
+    def _value(name: str) -> Any:
+        return row.get(name, metadata.get(name))
+
+    planted = any(source.get("planted") is True for source in (row, metadata, context, provenance))
+    evidence_tier = next(
+        (source.get("evidence_tier") for source in (row, metadata, context, provenance)
+         if source.get("evidence_tier") is not None),
+        None,
+    )
+    try:
+        amount_matches = math.isclose(float(_value("amount")), float(payload["amount"]), abs_tol=1e-9)
+    except (TypeError, ValueError):
+        amount_matches = False
+    return (
+        _decision_identity(row) == payload["event_id"]
+        and str(_value("supplier_id") or "") == payload["supplier_id"]
+        and str(_value("category") or "") == payload["category"]
+        and amount_matches
+        and planted
+        and evidence_tier == "T_S"
+    )
+
+
+def _cohort_factor_vector_valid(row: dict[str, Any]) -> bool:
+    metadata = _mapping(row.get("metadata"))
+    vector = row.get("factor_vector") or metadata.get("factor_vector")
+    if isinstance(vector, str):
+        try:
+            vector = json.loads(vector)
+        except (TypeError, ValueError):
+            return False
+    if not isinstance(vector, list) or len(vector) != len(PENDING_COHORT_FACTOR_NAMES):
+        return False
+    try:
+        return all(math.isfinite(float(value)) for value in vector)
+    except (TypeError, ValueError):
+        return False
+
+
+def _pending_cohort_report(status: str = "pending") -> dict[str, Any]:
+    return {
+        "version": PENDING_COHORT_VERSION,
+        "target_count": PENDING_COHORT_COUNT,
+        "created_ids": [],
+        "reused_pending_ids": [],
+        "consumed_ids": [],
+        "collision_ids": [],
+        "blocked_ids": [],
+        "pending_count": 0,
+        "owned_pending_ids": [],
+        "pre_inventory_count": 0,
+        "post_inventory_count": 0,
+        "queue_total": None,
+        "queue_showing": None,
+        "queue_error": None,
+        "status": status,
+    }
+
+
+def _gate_evidence(value: Any) -> bool:
+    """Return true only for an explicit held/conservation response contract."""
+    detail = _mapping(value)
+    return any(detail.get(key) not in (None, False, "", 0) for key in (
+        "gate", "conservation", "held",
+    ))
+
+
+def _queue_pending_cohort(
+    api: str,
+    *,
+    attempts: int,
+) -> tuple[set[str], int | None, int | None, str | None]:
+    """Read and validate the visible owned cohort without accepting fake zeroes."""
+    last_total: int | None = None
+    last_showing: int | None = None
+    last_error: str | None = None
+    last_owned: set[str] = set()
+    expected_ids = {
+        str(_pending_cohort_payload(slot)["event_id"])
+        for slot in range(1, PENDING_COHORT_COUNT + 1)
+    }
+    for attempt in range(attempts):
+        status, queue, error = _probe(api, "/api/s2p/preview/queue?limit=50")
+        if status != 200 or queue is None:
+            last_error = f"HTTP {status}: {error or 'invalid response body'}"
+        else:
+            total = queue.get("total")
+            showing = queue.get("showing")
+            exceptions = queue.get("exceptions")
+            if (
+                not isinstance(total, int) or isinstance(total, bool) or total < 0
+                or not isinstance(showing, int) or isinstance(showing, bool) or showing < 0
+                or not isinstance(exceptions, list)
+                or showing != len(exceptions)
+                or showing > total
+            ):
+                last_error = "malformed queue totals/showing/exceptions"
+            else:
+                last_total = total
+                last_showing = showing
+                owned: set[str] = set()
+                malformed_owned: list[str] = []
+                for item in exceptions:
+                    if not isinstance(item, dict):
+                        last_error = "queue exceptions contains a non-object row"
+                        break
+                    identity = str(item.get("invoice_id") or item.get("event_id") or "")
+                    if identity not in expected_ids:
+                        continue
+                    factors = item.get("factors")
+                    if (
+                        not isinstance(factors, dict)
+                        or set(factors) != set(PENDING_COHORT_FACTOR_NAMES)
+                        or not all(
+                            isinstance(value, (int, float))
+                            and not isinstance(value, bool)
+                            and math.isfinite(float(value))
+                            for value in factors.values()
+                        )
+                    ):
+                        malformed_owned.append(identity)
+                        continue
+                    owned.add(identity)
+                else:
+                    last_owned = owned
+                    if malformed_owned:
+                        last_error = (
+                            "owned queue rows have invalid eight-factor payloads: "
+                            + ", ".join(sorted(malformed_owned))
+                        )
+                    elif len(owned) >= MIN_VISIBLE_PENDING:
+                        return owned, total, showing, None
+                    elif total > 50:
+                        last_error = (
+                            "queue coverage unavailable: more than 50 pending rows may hide "
+                            f"owned cohort IDs (visible_owned={len(owned)})"
+                        )
+                    else:
+                        last_error = (
+                            f"owned_pending={len(owned)}, need>={MIN_VISIBLE_PENDING}, "
+                            f"total={total}, showing={showing}"
+                        )
+        if attempt < attempts - 1:
+            time.sleep(5)
+    return last_owned, last_total, last_showing, last_error
+
+
 def _score(
     api: str,
     payload: dict[str, Any],
@@ -113,7 +376,7 @@ def _score(
         report["errors"].append({"event_id": event_id, "status": status, "detail": error})
         return None
     if not body.get("decision_id"):
-        report["errors"].append({"event_id": event_id, "status": status, "detail": "score returned no decision_id"})
+        report["errors"].append({"event_id": event_id, "status": status, "detail": body})
         return None
     existing[event_id] = body
     report["scored"].append(event_id)
@@ -282,6 +545,196 @@ def _probe(api: str, path: str) -> tuple[int, dict[str, Any] | None, str | None]
     return status, body if isinstance(body, dict) else None, error
 
 
+def _seed_pending_cohort(
+    api: str,
+    existing: dict[str, dict[str, Any]],
+    report: dict[str, Any],
+) -> None:
+    """Plant deterministic, score-only invoices that remain available to triage."""
+    phase = _pending_cohort_report()
+    report["pending_cohort"] = phase
+    if any(report.get(key) for key in (
+        "errors", "learning_errors", "investigation_errors", "limitations",
+    )):
+        phase["status"] = "skipped_training_failed"
+        return
+
+    config_status, config, config_error = _probe(api, "/api/s2p/centroid/all")
+    deployed_factors = None if config is None else config.get("factors")
+    if config_status != 200 or deployed_factors != list(PENDING_COHORT_FACTOR_NAMES):
+        phase["status"] = "skipped_factor_schema_mismatch"
+        report["limitations"].append(
+            "S2P-F01: pending cohort factor schema mismatch "
+            f"({config_status}: {config_error or deployed_factors})"
+        )
+        return
+
+    try:
+        initial_rows = _decision_rows(api)
+    except ValueError as exc:
+        phase["status"] = "inventory_failed"
+        report["errors"].append({"phase": "pending_cohort", "detail": str(exc)})
+        return
+    phase["pre_inventory_count"] = len(initial_rows)
+    pre_queue_ids, _pre_total, _pre_showing, _pre_error = _queue_pending_cohort(
+        api, attempts=1,
+    )
+    phase["pre_queue_owned_ids"] = sorted(pre_queue_ids)
+    grouped = _group_decisions(initial_rows)
+
+    # Replace the caller's potentially stale map with the complete inventory
+    # read immediately before this phase. _score() uses this map for dedup.
+    existing.clear()
+    for identity, rows in grouped.items():
+        if len(rows) == 1:
+            existing[identity] = rows[0]
+
+    payloads = [_pending_cohort_payload(slot) for slot in range(1, PENDING_COHORT_COUNT + 1)]
+    for payload in payloads:
+        event_id = str(payload["event_id"])
+        rows = grouped.get(event_id, [])
+        if rows:
+            if len(rows) != 1 or not _cohort_row_owned(rows[0], payload):
+                phase["collision_ids"].append(event_id)
+            elif _cohort_row_verified(rows[0]):
+                phase["consumed_ids"].append(event_id)
+            else:
+                phase["reused_pending_ids"].append(event_id)
+            continue
+
+        errors_before = len(report["errors"])
+        scored = _score(api, payload, existing, report)
+        if scored is not None:
+            phase["created_ids"].append(event_id)
+            continue
+
+        score_errors = report["errors"][errors_before:]
+        score_error = score_errors[-1] if score_errors else {}
+        score_status = score_error.get("status")
+        raw_detail = score_error.get("detail")
+        detail = str(raw_detail or "").lower()
+        is_gate_block = _gate_evidence(raw_detail) or (
+            score_status in {403, 503}
+            and any(token in detail for token in ("conservation", "amber", "red", "blocked", "gate"))
+        )
+        if is_gate_block:
+            del report["errors"][errors_before:]
+            phase["blocked_ids"].append(event_id)
+            continue
+
+        # A timeout can occur after the graph commit. Reconcile the reserved
+        # identity before any future rerun; never issue a blind retry here.
+        if score_status == 0:
+            try:
+                readback = _group_decisions(_decision_rows(api)).get(event_id, [])
+            except ValueError as exc:
+                report["errors"].append({
+                    "event_id": event_id,
+                    "phase": "pending_cohort_readback",
+                    "detail": str(exc),
+                })
+                phase["status"] = "inventory_failed"
+                break
+            matching = [row for row in readback if _cohort_row_owned(row, payload)]
+            if len(readback) == 1 and len(matching) == 1:
+                del report["errors"][errors_before:]
+                phase["created_ids"].append(event_id)
+                existing[event_id] = matching[0]
+            elif len(readback) > 1:
+                phase["collision_ids"].append(event_id)
+                phase["status"] = "ambiguous_timeout_readback"
+                break
+
+    try:
+        final_rows = _decision_rows(api)
+    except ValueError as exc:
+        phase["status"] = "inventory_failed"
+        report["errors"].append({"phase": "pending_cohort_verify", "detail": str(exc)})
+        return
+    phase["post_inventory_count"] = len(final_rows)
+    final_grouped = _group_decisions(final_rows)
+    pending_ids: list[str] = []
+    invalid_vector_ids: list[str] = []
+    missing_ids: list[str] = []
+    duplicate_ids: list[str] = []
+    for payload in payloads:
+        event_id = str(payload["event_id"])
+        rows = final_grouped.get(event_id, [])
+        if len(rows) > 1:
+            duplicate_ids.append(event_id)
+            continue
+        if not rows:
+            if event_id in phase["created_ids"] or event_id in phase["reused_pending_ids"]:
+                missing_ids.append(event_id)
+            continue
+        row = rows[0]
+        if not _cohort_row_owned(row, payload):
+            if event_id not in phase["collision_ids"]:
+                phase["collision_ids"].append(event_id)
+            continue
+        if not _cohort_row_verified(row):
+            pending_ids.append(event_id)
+            if not _cohort_factor_vector_valid(row):
+                invalid_vector_ids.append(event_id)
+    phase["pending_count"] = len(pending_ids)
+
+    if phase["collision_ids"]:
+        report["limitations"].append(
+            "S2P-F01: reserved pending-cohort IDs have conflicting provenance: "
+            + ", ".join(phase["collision_ids"])
+        )
+    if invalid_vector_ids:
+        report["limitations"].append(
+            "S2P-F01: pending cohort rows have incomplete factor vectors: "
+            + ", ".join(invalid_vector_ids)
+        )
+    if missing_ids:
+        report["limitations"].append(
+            "S2P-F01: created/reused pending cohort rows missing from post-write inventory: "
+            + ", ".join(missing_ids)
+        )
+    if duplicate_ids:
+        report["limitations"].append(
+            "S2P-F01: reserved pending-cohort IDs have duplicate decision rows: "
+            + ", ".join(duplicate_ids)
+        )
+    if len(pending_ids) < 2:
+        report["limitations"].append(
+            f"S2P-F01: pending cohort exhausted; {len(pending_ids)} usable slots remain"
+        )
+
+    queue_ids, queue_total, queue_showing, queue_error = _queue_pending_cohort(
+        api, attempts=3,
+    )
+    visible_owned = queue_ids.intersection(pending_ids)
+    phase["owned_pending_ids"] = sorted(visible_owned)
+    phase["queue_total"] = queue_total
+    phase["queue_showing"] = queue_showing
+    phase["queue_error"] = queue_error
+    if queue_error is not None or len(visible_owned) < MIN_VISIBLE_PENDING:
+        report["limitations"].append(
+            "S2P-F01: preview queue readiness failed after 3 attempts "
+            f"({queue_error or 'owned cohort not visible'}; "
+            f"inventory_pending={len(pending_ids)}, visible_owned={len(visible_owned)})"
+        )
+    if phase["blocked_ids"]:
+        report["limitations"].append(
+            "S2P-F01: conservation blocked pending cohort slots: "
+            + ", ".join(phase["blocked_ids"])
+        )
+
+    if phase["status"] == "pending":
+        phase["status"] = (
+            "ready"
+            if len(pending_ids) >= MIN_VISIBLE_PENDING
+            and len(visible_owned) >= MIN_VISIBLE_PENDING
+            and queue_error is None
+            and not report["limitations"]
+            and not report["errors"]
+            else "partial"
+        )
+
+
 def _seed_boundary_allocations(api: str, existing: dict[str, dict[str, Any]], report: dict[str, Any]) -> None:
     """Investigate the actual scored vector before any learning moves its boundary."""
     for _ in range(2):
@@ -379,7 +832,13 @@ def run(api: str, *, dry_run: bool = False) -> dict[str, Any]:
         raise ValueError("fixture has invalid special_decisions, warmup, or post_freeze sections")
 
     if dry_run:
-        report["planned_scores"] = len(special) + int(warmup.get("count", 0)) + int(post_freeze.get("count", 0))
+        report["planned_pending_scores"] = PENDING_COHORT_COUNT
+        report["planned_scores"] = (
+            len(special)
+            + int(warmup.get("count", 0))
+            + int(post_freeze.get("count", 0))
+            + PENDING_COHORT_COUNT
+        )
         report["planned_investigations"] = 4
         report["additional_boundary_scores"] = 4
         report["maximum_post_freeze_review_scores"] = 60
@@ -406,6 +865,7 @@ def run(api: str, *, dry_run: bool = False) -> dict[str, Any]:
             _learn(api, score, report)
 
     _seed_extinction(api, existing, report)
+    _seed_boundary_allocations(api, existing, report)
     if report["errors"] or report["learning_errors"] or report["limitations"]:
         return report
 
@@ -429,7 +889,18 @@ def run(api: str, *, dry_run: bool = False) -> dict[str, Any]:
             _learn(api, score, report)
 
     _seed_review_learning(api, existing, report)
-    _seed_boundary_allocations(api, existing, report)
+    if not any(report[key] for key in (
+        "errors", "learning_errors", "investigation_errors", "limitations",
+    )):
+        try:
+            pending_existing = _existing_decisions(api)
+        except ValueError as exc:
+            report["pending_cohort"] = _pending_cohort_report("inventory_failed")
+            report["errors"].append({"phase": "pending_cohort", "detail": str(exc)})
+        else:
+            _seed_pending_cohort(api, pending_existing, report)
+    else:
+        report["pending_cohort"] = _pending_cohort_report("skipped_training_failed")
     status, body, error = _request_json(api, "POST", "/api/demo/s2p/learning/persist")
     report["demo_runtime_persistence"] = {"status": status, "body": body, "detail": error}
     if status != 200 or not isinstance(body, dict) or body.get("status") != "persisted":

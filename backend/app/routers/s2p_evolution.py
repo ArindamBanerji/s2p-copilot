@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 from typing import Any, Callable, cast
 
 from fastapi import APIRouter, Body, HTTPException, Request
@@ -20,6 +21,10 @@ from app.services.s2p_evolver import (
     propose_variant,
     reset_s2p_evolver,
 )
+
+PROMOTION_CHECK_TIMEOUT_SECONDS = 4.0
+_PROMOTION_CALL_FAILED = object()
+_PROMOTION_CHECK_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
 
 def create_s2p_evolution_router(
@@ -70,7 +75,15 @@ def create_s2p_evolution_router(
         _reject_red_write(governance)
         if governance["conservation_status"] == "AMBER":
             return {"promotion": None, "gate": "HELD", "reason": "conservation_amber", "evidence_tier": governance["evidence_tier"]}
-        promotion = check_promotion(governance["conservation_status"])
+        promotion = _guarded_promotion_check(governance["conservation_status"])
+        if promotion is _PROMOTION_CALL_FAILED:
+            return {
+                "promotion": None,
+                "gate": "TIMEOUT",
+                "reason": "promotion_check_timeout",
+                "evidence_tier": governance["evidence_tier"],
+                "degraded": True,
+            }
         if (
             isinstance(promotion, dict)
             and str(live_status).strip().upper() in {"AMBER", "RED"}
@@ -106,3 +119,11 @@ router = create_s2p_evolution_router()
 def _current_conservation_status(request: Request) -> str:
     """Compatibility seam for callers that observe live evolution state."""
     return _score_current_conservation_status(request)
+
+
+def _guarded_promotion_check(conservation_status: str) -> dict[str, Any] | object:
+    future = _PROMOTION_CHECK_EXECUTOR.submit(check_promotion, conservation_status)
+    try:
+        return future.result(timeout=PROMOTION_CHECK_TIMEOUT_SECONDS)
+    except concurrent.futures.TimeoutError:
+        return _PROMOTION_CALL_FAILED

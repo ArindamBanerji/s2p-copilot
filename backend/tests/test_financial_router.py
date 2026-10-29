@@ -60,7 +60,9 @@ def _set_financial_state(
     *,
     fail_reads: bool = False,
 ) -> None:
-    graph_store = FailingReadStore() if fail_reads else TrackingGraphStore()
+    graph_store: InMemoryGraphStore = (
+        FailingReadStore() if fail_reads else TrackingGraphStore()
+    )
     for row in decisions:
         decision_id = str(row.get("decision_id") or row.get("invoice_id") or "D")
         category = str(row.get("category") or "price_variance")
@@ -296,9 +298,9 @@ def test_financial_impact_invalid_category_returns_allowed_categories(monkeypatc
 
     response = client.get("/api/s2p/financial-impact/not_a_category")
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     payload = response.json()
-    assert payload["total_decisions"] == 0
+    assert payload["detail"] == "Invalid category"
     assert payload["allowed_categories"] == list(S2PDomainConfig.categories)
 
 

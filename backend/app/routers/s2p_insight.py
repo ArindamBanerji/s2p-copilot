@@ -164,29 +164,23 @@ def fingerprint_payload(invoice: dict[str, Any] | None, invoice_id: str) -> dict
     factor_error: str | None = None
     try:
         factor_result = compute_all_factors(invoice, return_status=True)
-    except ValueError as exc:
+    except ValueError:
+        factor_result = compute_all_factors(invoice, context=[], return_status=True)
+    if (
+        not isinstance(factor_result, tuple)
+        or len(factor_result) != 3
+        or not isinstance(factor_result[0], dict)
+    ):
         factors = _numeric_factors(invoice.get("factors"))
         fingerprint_available = False
         degraded_factors = [
             name for name in S2PDomainConfig.factors if name not in factors
         ]
-        factor_error = str(exc)
+        factor_error = "factor computation returned an invalid result"
     else:
-        if (
-            not isinstance(factor_result, tuple)
-            or len(factor_result) != 3
-            or not isinstance(factor_result[0], dict)
-        ):
-            factors = _numeric_factors(invoice.get("factors"))
-            fingerprint_available = False
-            degraded_factors = [
-                name for name in S2PDomainConfig.factors if name not in factors
-            ]
-            factor_error = "factor computation returned an invalid result"
-        else:
-            factors = cast(dict[str, float], factor_result[0])
-            fingerprint_available = bool(factor_result[1])
-            degraded_factors = list(factor_result[2])
+        factors = cast(dict[str, float], factor_result[0])
+        fingerprint_available = bool(factor_result[1])
+        degraded_factors = list(factor_result[2])
     dominant_factor = max(factors, key=lambda name: factors[name]) if factors else None
     payload = {
         "invoice_id": invoice.get("invoice_id", invoice_id),

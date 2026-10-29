@@ -1,4 +1,20 @@
 
+## FIX-S2P-09-REVIEW-DELTA (Oct 20, 2026)
+
+FIX-S2P-09-REVIEW-DELTA: Fixed preseed S2P-09 gate in
+`scripts/preseed_s2p_demo.py`.
+Changed: track review correction decision_ids, compute targeted delta_accuracy
+on those decisions only via `twin["visual_diff"]` (per-decision comparison key).
+Full-set delta was diluted by collateral centroid shifts on pre-freeze
+decisions. Review delta measures actual learning improvement.
+Fallback: full `delta_accuracy > 0` still passes as the secondary gate.
+No backend endpoint changes. No fixture changes.
+Key name: `visual_diff` (not `comparisons`; the v1 key bug is absent).
+Verification: mypy passed. Matching frozen-twin/preseed tests reported 89
+passed and one unchanged zero-comparison contract failure. Full backend suite:
+2314 passed, 1 skipped, 5 failures in the pre-existing modified supplier
+fixture/aggregate area, outside this change.
+
 ## AGE-JM-PHASE-05B (Sep 22, 2026)
 S2P production profile guards: `_VLDKDecisionConnection` rejects SQLite K-utility persistence in explicit production profile; production investigation startup omits the legacy SQLite K store. `build_s2p_scorer` ignores the legacy `db_path` when an injected graph store is present in production. Test/offline K-utility construction remains supported.
 S2P tests: 936 passed before one pre-existing active-AGE factory assertion failure (expected kwargs omitted `profile="test"`; failure is outside `backend/app/main.py`). Requested `tests/` path does not exist; `backend/tests/` was executed. Mypy: clean.
@@ -534,3 +550,541 @@ Regression: 6/6 existing endpoints still passing
 Scorecard: 9/9 total endpoints passing
 Files changed: backend/app/routers/s2p_insight.py, backend/app/routers/s2p_evidence.py, backend/tests/test_s2p_review_fix_endpoints.py, docs/session_state.md
 Blast radius: CLEAN for this task; no main.py change, and implementation changes are limited to two mounted routers plus focused tests. Pre-existing unrelated worktree changes were retained.
+
+## FIX-PW-S2P-BACKEND (2026-10-18)
+- Files changed: backend/app/main.py, backend/app/routers/centroid_router.py, backend/app/routers/financial_router.py, backend/app/routers/s2p.py, backend/app/routers/s2p_enrichment.py, backend/app/routers/s2p_evidence.py, backend/tests/test_centroid_explorer.py, backend/tests/test_evidence_receipt_wiring.py, backend/tests/test_financial_router.py, backend/tests/test_p2_missing_endpoints.py, backend/tests/test_pw_s2p_backend.py, docs/session_state.md
+- New endpoints: GET /api/s2p/centroid-explorer, GET /api/s2p/centroid-explorer/explain, GET /api/s2p/supplier-enrichment/{supplier_id}, GET /api/s2p/evidence/receipts/{invoice_id} (completed receipt contract)
+- New tests: 7 (test_centroid_explorer_invalid_category_returns_404, test_centroid_explorer_missing_decision_returns_404, test_financial_impact_invalid_query_category_returns_400, test_receipt_valid_invoice, test_receipt_invalid_invoice, test_receipt_response_shape, test_supplier_enrichment_uses_cached_profile_without_graph_scan)
+- Validation fixes: 3
+- pytest result: 2314 passed / 0 failed (1 pre-existing skipped)
+- mypy result: CLEAN
+- Smoke tests: PASS
+- Layer 3 grep gate: PASS
+- Sol review: PENDING (mandatory — do not skip)
+
+## SOL-REVIEW-P2 (2026-10-18)
+- Verdict: FAIL
+- Findings: 2 P1, 1 P2, 0 P3
+- P1 findings: Legacy centroid cell/drift routes still return HTTP 200 defaults for unknown category/action; financial-impact invalid-category responses use `allowed` instead of the required `allowed_categories` field.
+- P2 findings: Compatibility-route tests omit successful centroid-explorer and query-form financial-impact cases, omit invalid-action coverage, and preserve the incorrect legacy centroid 200 behavior.
+- Recommendation: fix first
+
+## FIX-SOL-P2 (2026-10-18)
+- Result: STOPPED at mandatory blast-radius gate; no implementation files changed.
+- Design pre-check: FAIL (blast radius: `backend/tests/test_p2_missing_endpoints.py` depends on the legacy centroid HTTP 200 fallbacks and the financial error field `allowed`).
+- Fixed: 0; the prompt restricts changes to three files, but the required contract corrections also require updating the out-of-scope dependent test.
+- Tests: not run because the design gate required stopping before implementation.
+- mypy: not run because no implementation was applied.
+- Post-checks: not run; implementation blocked by scope conflict.
+
+## FIX-SOL-P2 retry (2026-10-18)
+- Result: STOPPED at mandatory blast-radius gate; no implementation or test files changed.
+- Design pre-check: FAIL (blast radius: `backend/tests/test_financial_router.py:304` asserts the legacy financial-impact error field `payload["allowed"]`).
+- The revised four-file scope includes `backend/tests/test_p2_missing_endpoints.py`, resolving the previously documented conflict, but it does not include `backend/tests/test_financial_router.py`.
+- Fixed: 0; changing the API field to `allowed_categories` without updating this dependent test would break the full-suite gate.
+- Tests and mypy: not run because the prompt requires stopping before implementation when an out-of-scope dependency is found.
+- Post-checks: design pre-check completed; implementation checks not run.
+
+## FIX-SOL-P2 (2026-10-18)
+- Design pre-check: PASS after authorized scope expansion (blast radius: 2 additional dependent test files found and added: `backend/tests/test_financial_router.py` and `backend/tests/test_centroid_explorer.py`).
+- Fixed: 2 P1 (centroid 404 x 2 routes, financial `allowed_categories`) + 1 P2 (+3 tests).
+- Blast radius: `test_p2_missing_endpoints.py` needed 3 assertion updates; `test_financial_router.py` needed the financial error-field assertion update; `test_centroid_explorer.py` needed invalid category/action expectations updated to 404.
+- Tests: 2,317 passed, 1 skipped (baseline 2,314 + 3 new); focused files passed 10 + 9 + 13 + 25 tests.
+- mypy: 0 errors on all 6 changed Python files.
+- Post-checks: 10/10 PASS. Scope check used the task-start worktree snapshot because unrelated pending changes predated this fix; no new out-of-scope path was introduced, and `docs/session_state.md` was updated as required.
+
+## FIX-S2P-FACTOR-DIMENSION — 2026-10-19
+
+### Diagnosis and design checks
+- Actual S2P modules are under `backend/`. `S2PDomainConfig.factors` and `ALL_FACTORS` each contain 8 factors, ending in `environmental_risk`; `n_factors` is 8 and the tensor shape is 5 x 5 x 8 = 200. The five categories and five actions were unchanged.
+- `EnvironmentalRisk` uses graph neighbours, invoice metadata (`environmental_risk`, `carbon_footprint`, then `route_weather_risk`), then its factor/top-level fallback and finally 0.5. `compute_all_factors` raises in production when `context is None` and required invoice factor values are missing. `context=[]` bypasses that profile guard while retaining per-factor fallbacks.
+- Before the fix, all 50 invoices had 7 factor keys and all 25 fixture centroids had 7 dimensions. No fixture invoice has `metadata.route_weather_risk`; deterministic SHA-256 invoice-id-derived values were therefore used for all added risks (range 0.150–0.640).
+- Preview queue flows through `preview_queue` -> `_preview_queue_payload` -> scoring. Its generic exception handler previously hid the exception detail. Fingerprint calls `compute_all_factors(..., return_status=True)` with no context.
+- Consumer search found fixture/factor use in S2P data helpers, preview/insight/routes, enrichment/materialization/graph seeding, and their associated tests. No SOC import was added.
+
+### Changes
+- `data/synthetic_invoices.json`: added only `factors.environmental_risk` to all 50 records; existing seven factor values and ordering remain unchanged.
+- `data/s2p_initial_centroids.json`: appended neutral `0.5` as the eighth entry of all 25 centroids; original seven entries are byte-for-value equivalent.
+- `backend/app/routers/s2p_insight.py`: `fingerprint_payload` now catches only `ValueError` and retries `compute_all_factors(invoice, context=[], return_status=True)`. The shared result validation runs after either attempt, so the fallback correctly initializes the factor payload.
+- `backend/app/routers/s2p_preview.py`: added module logging and traceback logging to the queue exception handler; the HTTP error now includes the actual exception text.
+
+### Post-checks
+- Fixture validation: 50 invoices, every invoice has exactly 8 factors; `environmental_risk` is in [0.0, 1.0]. JSON validation passed for both files. 25 centroids are all eight-dimensional and every eighth value is 0.5.
+- Fixture/config dimensions match: 8.
+- Smoke tests passed: normal test-profile factor computation returned all 8 factors with `ok=True`, no degraded factors. A production-profile invoice with environmental risk deliberately removed returned `fingerprint_available=True`, no `factor_error`, and fallback environmental risk 0.5.
+- Endpoint smoke via FastAPI TestClient passed: `GET /api/s2p/preview/queue` = 200 and `GET /api/s2p/insight/fingerprint?invoice_id=S2P-INV-0001` = 200.
+- Typecheck: requested mypy command was blocked by installed third-party `psycopg/_cmodule.py` configuration (`disable_error_code: import-not-found`), unrelated to changed source. The same requested targets with `--no-site-packages` passed: `Success: no issues found in 2 source files`.
+- `git diff --check` passed. Four task files changed (plus this session log); other modified worktree files predated this task.
+
+### Test result and warning
+- Full backend suite result: **2315 passed, 2 failed, 1 skipped** (baseline was 2317 passed, 1 skipped).
+- The two failures are `tests/test_s2p_phase0_fixtures.py::test_synthetic_invoice_factor_keys` and `::test_generator_is_deterministic_against_committed_fixtures`. They still hardcode the old seven-factor schema and compare against `generators/s2p_synthetic.py`, which itself hardcodes seven factors/seven-dimensional generated centroids. This is the expected prevention gap identified in the design check, not a runtime regression in queue or fingerprint.
+- Per task scope, `generators/s2p_synthetic.py` was not changed. A follow-up must derive its factors and centroid dimension from `S2PDomainConfig` and update the fixture-contract expectation; doing so is necessary to restore the full suite and prevent future factor additions from diverging.
+- Endpoint smoke logged pre-existing seven-dimensional replay rows being skipped and an unavailable local outbox lock; neither prevented the queue response from returning 200.
+
+## TAB-INVENTORY-DIAG — 2026-10-19
+- P1-A/P1-B Purchasing PAR: direct bodyless GETs to `/api/purchasing/par/predict` and `/api/purchasing/par/predict-week` returned 200 from `create_app(..., profile="test")`. Both are registered in `apps/purchasing/backend/app/main.py`; predict has default item/category/date and predict-week takes only Request. Inventory 500s are not caused by missing request parameters and require scanner/live-stack investigation; no application fix applied.
+- P1-C S2P leakage: hardened `backend/app/routers/s2p_pvg.py` to call `compute_all_factors(..., return_status=True)`, map ValueError/RuntimeError/KeyError/TypeError/AttributeError to actionable 503, and skip only degraded factor rows. Added a TypeError regression test asserting 503.
+- Fixture prevention: `generators/s2p_synthetic.py` now emits the eighth environmental factor and eight-dimensional centroids, retaining deterministic SHA-256 invoice-id risk values; fixture-contract expectation derives from S2PDomainConfig. Regenerated committed fixtures.
+- P2 diagnosis: Trading rejection-summary has no timeout guard and calls promotion check while scanning up to 200 entries; recommend a separate 8s guard and scan cap of 50. S2P promotion-check has no timeout guard and chains conservation/governance/promotion; recommend a separate timeout guard. S2P audit-pack and performance summary both have 4.0s asyncio timeout guards plus materialized-response cache; their first-hit cold-start timeout is expected.
+- Baselines: Trading backend 1547 passed. S2P baseline was 2315 passed, 2 known generator-schema failures, 1 skipped. Focused post-fix S2P tests: 25 passed. Mypy on changed router: clean with --ignore-missing-imports --no-site-packages.
+- Full root SDK and Purchasing baseline suites were still running at update time because concurrent graph-backed suites were slow.
+
+=== TIMEOUT-GUARDS (P2) ===
+Date: 2026-10-19
+Prompt: codex_timeout_guards_p2
+Status: SHIPPED
+
+Changes:
+- Trading `evolution_router.py`: `REJECTION_SUMMARY_TIMEOUT_SECONDS=8.0`; scan cap reduced 200->50; a module-level ThreadPoolExecutor bounds the entire summary computation and returns an explicit degraded timeout response.
+- S2P `s2p_evolution.py`: `PROMOTION_CHECK_TIMEOUT_SECONDS=4.0`; a module-level ThreadPoolExecutor bounds only `check_promotion`, preserving the prior conservation/governance and AMBER-gate paths. Timeout returns gate TIMEOUT with an explicit reason and degraded flag.
+- Added one deterministic timeout regression test to Trading rejection-summary and one to S2P promotion-check. The tests lower the timeout to 0.001 and delay only the expensive callable.
+
+Validation:
+- Trading rejection-summary focused suite: 12 passed; router mypy clean with `--ignore-missing-imports`.
+- S2P evolution-router focused suite: 13 passed; router mypy clean with `--ignore-missing-imports --no-site-packages`.
+- S2P timeout constant import assertion passed. `git diff --check` passed.
+- Earlier baseline: Trading backend 1547 passed; S2P 2315 passed, 2 known generator-schema failures, 1 skipped before the generator repair. Full after-suites were not rerun in this timeout-guard turn; focused suites cover the changed routes.
+
+## S2P AGE Pool Diagnostic — 2026-10-20
+
+### Conclusion
+- No missing connection-return path was found in S2P or the shared AGE client. The observed condition is pool starvation followed by loss of pool capacity because the shared AGE/PostgreSQL service stops accepting replacement connections. It is not supported by the evidence as an S2P connection leak.
+- The first recorded pool-acquisition failure is preceded by `psycopg.errors.QueryCanceled: canceling statement due to statement timeout` on an unbounded S2P `MATCH (d:Decision) ... RETURN d ORDER BY ...` history scan. The log contains 489 `QueryCanceled` records, 1,086 occurrences of the 5-second pool-acquisition message, and 20 `AGE connection pool could not reconnect` records.
+- A new psycopg connection made outside the S2P pool also failed while the incident was active: the IPv6 attempt timed out and the IPv4 server closed the connection unexpectedly. SOC `/health` simultaneously returned 503. This proves the terminal failure is shared database availability, rather than 15 S2P connections remaining checked out forever. The PostgreSQL-side reason could not be narrowed further because WSL service inspection was denied and the unhealthy server would not accept a diagnostic connection.
+
+### Pool library and configuration
+- Production composition is `AGEGraphStoreAdapter` -> `AGEGraphStore` -> `AGEClient`, backed by psycopg 3 `psycopg_pool.ConnectionPool` (`copilot-sdk/copilot_sdk/graph/factory.py`, `ci-platform/ci_platform/graph/age_sdk_adapter.py:17-36`, `ci-platform/ci_platform/graph/age_graph_store.py:116-130`).
+- `AGEClient` defaults are min 2, max 8, checkout timeout 5.0 seconds, connect timeout 3 seconds, and PostgreSQL statement timeout 8,000 ms (`ci-platform/ci_platform/graph/age_client.py:46-50,166-196`). `demo.py:132-140` enables pooling and overrides max size to 15 for every copilot; min remains 2 with the normal one-worker launch.
+- The pool uses `autocommit=True`, `prepare_threshold=None`, `max_idle=60`, `max_lifetime=300`, and `reconnect_timeout=300` (`age_client.py:346-380`). Across five AGE-backed copilot processes, launcher configuration permits up to 75 primary-pool connections, before any separately configured shadow pool.
+
+### Connection lifecycle
+- Each graph operation checks out inside `with self._pooled_connection() as conn` (`age_client.py:679-707`). `_pooled_connection()` enters `pool.connection(timeout=5)`, yields the connection, and its `ExitStack` returns/resets it on normal completion and exceptions; its `finally` increments the return counter (`age_client.py:420-465`). Transactions use the same context pattern (`age_client.py:778-795`). A repository search found no production caller bypassing this wrapper with direct `pool.connection()`, `getconn()`, or `putconn()` calls.
+- S2P has no FastAPI `yield` dependency for connections. One graph-store singleton is constructed in `backend/app/main.py:354-361` and shared by routers, scorer, readers, and materialization. Individual graph-store methods own checkout/return.
+- S2P shutdown cancels the materializer but does not close `app.state.graph_store` (`main.py:676-687`). That is a shutdown lifecycle gap, but it does not explain exhaustion inside one continuously running process.
+
+### Endpoint traces
+- `/health`: `backend/app/main.py:720-729` calls `build_graph_health`; `copilot_sdk/backend/health_builder.py:93-100` performs a live `store.count_decisions("s2p")` on every request. The graph method releases through the shared context manager. The 500 occurs because `AGEClient._pooled_connection()` converts `psycopg_pool.PoolTimeout` to `RuntimeError`, while `GRAPH_CONNECTION_ERRORS` does not include `RuntimeError`; the health builder therefore does not convert this condition to its normal unavailable response. This endpoint consumes one connection but does not leak it.
+- `/api/self/diagnostics`: `copilot_sdk/backend/self_computation_router.py:210-240` performs local centroid/IKS calculations and graph-backed measurement/conservation reads. The incident log shows its verified-decision query failing at checkout. It has no endpoint-level storage-error mapping, so the translated `RuntimeError` becomes 500. Lower-layer connection cleanup remains context-managed.
+- `/api/s2p/preview/queue`: `backend/app/routers/s2p_preview.py:315-330,372-384` uses the materialized queue when present; on cache miss it calls `read_decisions`. `backend/app/services/s2p_preview_data.py:28-40,74-78` runs a verified-decision read and then an unbounded `get_all_decisions` read. It subsequently writes preview observations for displayed invoices. The generic handler reports the pool timeout as 500. No explicit connection is held by the router, and no early-return leak exists.
+- `/api/self/trust-traps`: this endpoint does use AGE. `TrustTrapDetector._verified_decisions()` and `_conservation_state()` catch graph exceptions and return `(empty, False)` (`copilot_sdk/scoring/trust_traps.py:143-167`). The handler therefore returns 200 with `traps=[]` and `unavailable_checks=["conservation_gaming"]` after waiting approximately the 5-second checkout timeout. It survives because it deliberately degrades, not because it avoids the pool.
+- Scoped endpoint count: all four examined endpoints can attempt AGE access. Three surface the failure; one converts it to an explicit unavailable diagnostic. Playwright `workers=1` serializes tests, not a page's concurrent fetches or FastAPI/background threads.
+
+### Load and background work
+- `backend/app/main.py:667-673` runs `materializer.refresh()` in a worker thread every 30 seconds. `backend/app/services/response_materializer.py:50-54` performs full `get_all_decisions` and `get_verified_decisions` scans. Refreshes are internally single-flight and each graph call returns its connection, so this is sustained load rather than a leak. During the incident the loop continues retrying every 30 seconds and repeatedly joins the checkout queue.
+- Score processing also has a bounded four-worker side-effect executor (`backend/app/routers/s2p.py:235-296`), and promotion checking has a one-worker executor. Async router helpers use `asyncio.to_thread`. Along with concurrent frontend API calls, these producers can exceed the S2P pool maximum of 15 even with one Playwright worker.
+- The decisive timing mismatch is an 8-second statement deadline versus a 5-second checkout deadline. Fifteen slow graph requests can retain every S2P connection long enough for every subsequent health, diagnostics, queue, and refresh request to time out before any borrower finishes. Connection age rotation at five minutes and discard/reset after database failures then require new server connections; the log proves those reconnections fail.
+
+### Specific leak locations
+- None found. Checkout and transaction paths are exception-safe, and the scoped S2P handlers do not acquire raw connections.
+- Specific pressure locations are the repeated unbounded full-history scans in `response_materializer.py:53-54` and `s2p_preview_data.py:74-78`, plus the live graph probe in `health_builder.py:93-100`. These are the places where slow AGE work holds otherwise correctly managed connections.
+
+### Recommended fix approach (not implemented)
+1. Inspect PostgreSQL/AGE logs and resource limits at the first `QueryCanceled`; verify `max_connections`, memory/CPU, active queries, locks, and why fresh connections are closed. Size the aggregate five-process connection budget rather than only the S2P pool.
+2. Remove unbounded Decision scans from hot paths: add bounded/paginated graph queries and appropriate AGE/PostgreSQL indexes, and make preview endpoints consume the materialized snapshot without falling back to duplicate full scans under load.
+3. Add failure backoff/circuit breaking to the 30-second materializer loop so a database outage does not add a permanent waiter; expose `get_pool_diagnostics()` through a non-querying diagnostic path to record pool size, idle, waiting, total checkouts, total returns, and checked-out balance during the incident.
+4. Preserve `PoolTimeout`/`GraphUnavailableError` as a recognized storage exception instead of translating it to generic `RuntimeError`; health should return 503 and diagnostics/preview should return an explicit degraded/503 response rather than 500.
+5. Close the active and distinct shadow graph stores during application shutdown. This addresses restart hygiene, although it is not the running-process cause diagnosed here.
+
+## S2P-09-PRESEED-DELTA-DIAG (2026-10-21)
+- Added `scripts/diagnose_preseed_delta.py`: stdlib-only, bounded GET requests, no scoring/learning/restarts; output saved in `.codex_tmp/diagnose_preseed_delta.txt`.
+- Active implementations replace the prompt's absent files: `main.py:260` builds CompoundingScorer; twin routes are `routers/s2p_demo_beats.py:201`; candidate selection is `routers/s2p_demo_control.py:179`.
+- Freeze deep-copies centroids, kernel weights, checkpoint state/counts, scoring parameters, conservation and IKS (`copilot_sdk/twin/service.py:27`); demo re-freeze selects a new immutable snapshot without replacing production day-zero.
+- Comparison re-scores all verified vectors with live/frozen ProfileScorers, taking argmax softmax of negative kernel distances; delta is correct-action fractions' difference, not confidence movement (`s2p_demo_beats.py:249-304`).
+- Candidates use actual centroid vectors and 24 bisections between differing actions; review is the lowest-confidence auto-approval on the auto/hold segment in contract_gap, with all eight factors; easy/hard are maximum/minimum confidence across trials.
+- Current candidate GET returns 403 (`S2P_DEMO_MODE` off); script reports unavailable candidates without changing mode. Public twin/history/decision GETs return 200; complete inventory contains 312 rows and history 231 checkpoints.
+- Live full population: 169/312 correct for each scorer, delta=0; four actions differ, with one correctness gain and one loss cancelling (two differences are wrong for both).
+- Origin-joined review population (`outcome_metadata.context.origin=demo_boundary_review`): eight rows across runs, live=7/8 and frozen=7/8; latest `ced85bf19268` is auto_approve for both versus actual hold_for_review.
+- Failed-run evidence in `../copilot-sdk/logs/preseed_s2p.log`: only nine learned rows, one review ID, no errors; D was 303 at re-freeze and 312 afterwards, NOT 60 updates on 312.
+- The latest review's stored auto/hold probabilities are 0.4800862781794565 / 0.4800861417006737: it was extremely close to the boundary, not too far away.
+- Checkpoint weighted squared distance(hold)-distance(auto) became -0.011149 after correction, remained -0.010092 after four easy confirmations, then became +0.004003 after the final hard budget confirmation `0fc7754d588f`.
+- Thus the correction crossed to hold; `_seed_review_learning()` stopped on its early positive check, then `_seed_boundary_allocations()` performed four additional learned confirmations, erasing that review gain before final validation (`preseed_s2p_demo.py:355-366,443-450`).
+- Latest checkpoint has five centroid cells per category, training counts [52,52,52,114,42], and total 312; checkpoint counts are distinct from training counts and are labelled separately by the script.
+- High global D does not imply a 60/(312+60) centroid weight: ProfileScorer uses gradient updates with eta/(1+decay*category-action-count), attenuated override push/pull and clipping (`gae/profile_scorer.py:915-980`).
+- Classification: preseed strategy/order defect; no evidence here of a scorer arithmetic defect or unavoidable high-D saturation. Confidence shifts alone cannot increase categorical accuracy.
+- Recommendation: perform budget allocations before review corrections (preferably before demo re-freeze), keep synthetic labels fixed, and evaluate the fixed current-run review population only after all learning/persistence; retain the honest limitation if no gain remains.
+- Add a sequencing regression for early review success followed by adverse budget learning; do not raise eta, reset centroids, fabricate gain, or bypass conservation. This investigation applies no production/preseed fix.
+- Validation: requested mypy command passed; diagnostic completed against live backend with explicit candidate-403 reporting; full suites not run for this diagnostic-only addition.
+
+## FIX-S2P-09-PRESEED-PHASE-ORDER (2026-10-21)
+- Pre-check passed: `_seed_boundary_allocations()` only calls the startup-available budget-candidates endpoint, `_score()`, `_learn()`, and `_investigation_warmup()`; it has no frozen-twin call or post-freeze dependency.
+- Moved the existing `_seed_boundary_allocations(api, existing, report)` call in `scripts/preseed_s2p_demo.py::run()` from after `_seed_review_learning()` to immediately after `_seed_extinction()` and before the existing errors/learning-errors/limitations guard.
+- Final order is extinction -> boundary allocations -> early-exit guard -> freeze/re-freeze -> post-freeze warmup -> review learning -> persist -> unchanged twin comparison/S2P-09 safety check. Review corrections are now the last learning phase.
+- Task delta does not change helper implementations, signatures, scorer/router/framework behavior, delta measurement, S2P-09 handling, or `main()` exit semantics. The preseed file already contained earlier uncommitted review-population measurement changes, which were preserved.
+- Added `tests/test_preseed_phase_order.py` with two tests: source-order regression and offline dry-run fixture validation.
+- Mypy passed independently for `scripts/preseed_s2p_demo.py` and `tests/test_preseed_phase_order.py`.
+- New root test suite: **2 passed**. Existing related backend suites (`test_s2p_demo.py`, `test_s2p_demo_restart.py`): **16 passed**.
+- Full backend suite result: **2,314 passed, 1 skipped, 5 failed** in 375.10s. All failures are unrelated supplier-fixture enrichment/trend assertions; the pre-existing dirty `data/s2p_demo_suppliers.json` removes `quarterly_otif`, `behavioral_scores`, `category_exception_rates`, and `monthly_volume`. No failure imports or exercises the preseed script, and that user-owned fixture change was not modified.
+- Scoped `git diff --check` passed. No live preseed was run, so a positive live delta is not claimed by this code-only verification.
+
+## S2P Diagnostic Sweep (Astra)
+- Date: 2026-10-21.
+
+- Findings: **4 P1, 6 P2, 3 P3**. Full report: `docs/s2p_diagnostic_sweep.md`, including code quotes/locations, lifecycle map, API error-swallowing catalogue, and E2E artifact inventory.
+- P1: no intentional pending preseed cohort; queue errors silently become empty responses; removed supplier enrichment fields break the fixture contract; illustrative GREEN conservation/1000 verified decisions displayed as operational health.
+- Other key issues: older pending invoice versions survive newer verified versions; no post-learn queue refresh; unbounded history reads/stale-refresh windows; fragile E2E readiness; financial globals lack mutation invalidation; volatile/unlocked receipt presentation and truncated-chain validation; metadata flattening can shadow verification fields; static analytics and process-global state remain.
+- Saved PW artifact inspected: `copilot-sdk/e2e/playwright-report/index.html` records 184 expected, 12 unexpected, 0 flaky, 22 skipped. All 14 explicit skips cite no queued invoice; eight remaining skips are serial setup dependents. Trace network responses confirm HTTP 200, graph queue total=0. The reported supplier flaky test is not reproduced in this saved artifact; its root cause remains unconfirmed.
+- Corrected hypotheses: `_pending_decisions()` is not used by the active queue chain (no double filter); score-only rows are not verified by absent-outcome merging; persist writes centroids/governance, not verification; historical `_ContextualRewardFunction` bridge is already removed.
+- Recommended fix sequence: S2P-F01 pending cohort; F02 explicit API failures/authoritative conservation UI; F03 supplier contract; F04 E2E readiness and acceptance; F05 invoice completion/projection semantics; F06 bounded reads/financial invalidation; F07 durable receipts/app state/provenance cleanup.
+- Diagnostic only: no application/test/fixture changes, live preseed, restart, graph mutations, or test-suite rerun. The prior five backend failures are reported from the existing session record and current fixture diff, not claimed as a newly executed run.
+
+## S2P-F01 Design (Astra)
+- Design complete: yes. Specification: `docs/s2p_f01_pending_cohort_design.md`.
+- Planted invoice count: 24 on a fresh cohort; six per non-format category.
+- Invoice ID range: `S2P-INV-PENDING-V1-0001` through `S2P-INV-PENDING-V1-0024`.
+- Phase placement: after `_seed_review_learning()` (current line 444), before `/api/demo/s2p/learning/persist` (current line 445); no additional learn calls. Skip planting on reported training failures without suppressing existing persistence/final checks.
+- Schema correction: eight factors, including environmental_risk; format_compliance is a category, excluded from this cohort while all eight factors remain present.
+- Idempotency: fixed V1 membership; reuse owned pending rows, preserve consumed rows, never reopen verified invoices or automatically replenish. Fresh second run adds zero cohort rows; fewer than two usable remaining identities produces an explicit exhaustion limitation. Single-writer operation and timeout readback required because event dedup is client-side.
+- E2E capacity: eight live learn-submitting cases, up to sixteen attempts with one retry; 24 supplies margin. Existing invoice-history dedup defect may retain older pending versions and remains outside F01. Specific copper/day-zero/container fixtures remain unchanged.
+- Date: 2026-10-21. Design only; no code/data changes or live/test execution.
+
+## S2P-F01 Implementation (Spark)
+- Helper: `_seed_pending_cohort()` added to `scripts/preseed_s2p_demo.py`; it validates the deployed eight-factor schema, refreshes/group-checks the complete inventory, preserves consumed slots, rejects ownership collisions, reconciles uncertain writes by readback, and probes the live preview queue. It only calls the existing score path.
+- Phase placement: after review corrections, before persist; gated on empty `errors`, `learning_errors`, `investigation_errors`, and `limitations`. Persistence and final S2P checks remain in place.
+- Invoice count: 24 (`S2P-INV-PENDING-V1-0001` through `S2P-INV-PENDING-V1-0024`).
+- Categories: 4 (`price_variance`, `quantity_mismatch`, `duplicate_risk`, `contract_gap`), six each and zero `format_compliance`.
+- Factors: 8, including `environmental_risk`; every payload uses the specified finite constants and inverse `supplier_risk_rating`.
+- Pre-checks: **8 PASS / 0 FAIL**. Config is `(5,5,8)` with eight factors (`config.py:20-48`); `_verified()` has the five expected branches (`s2p_preview_data.py:68-71`); `_score()` dedups by event ID (`preseed_s2p_demo.py:105-108` before this change); insertion is after review/before persist; reserved prefix was unused; score provenance survives via `s2p.py:2409-2412,2480-2483`; RED rejects with 503 and AMBER returns a held response (`s2p.py:1268-1278,2458-2461`).
+- Post-checks: **4 PASS / 0 FAIL**. Line audit found no learn/outcome call or verified-field payload assignment in the helper; insertion is at `preseed_s2p_demo.py:776-789`; grep confines the reserved prefix to the helper/tests; a planted pending row makes all five `_verified()` branches false.
+- Tests added: **10**, covering fresh creation, rerun idempotency, consumed slots, training-error skip, exhaustion, collision handling, exact factor values, forbidden outcome fields, inverse supplier risk, and category distribution.
+- Existing tests: root suite **12 passed / 0 failed** (10 new plus 2 existing); focused cohort suite **10 passed / 0 failed**.
+- mypy: clean for `scripts/preseed_s2p_demo.py` and `tests/test_pending_cohort.py`.
+- Date: 2026-10-21.
+
+## S2P-F03 Supplier Fixture Enrichment (Spark)
+- Fixture: 5 enrichment fields added to all 10 suppliers in `data/s2p_demo_suppliers.json`; a structural comparison with the pre-F03 snapshot confirmed every prior key/value is unchanged.
+- Provider: `lead_time_by_quarter` mapping added to `_fixture_value()` and the `_profile()` mapped-fields tuple (`supplier_profile_provider.py:225,251`).
+- Fields added: `quarterly_otif`, `lead_time_by_quarter`, `behavioral_scores`, `category_exception_rates`, `monthly_volume`.
+- Pre-checks: **9 PASS / 0 FAIL**. Fixture had 10 suppliers and none of the enrichment fields; provider/merge/endpoint assumptions matched; baseline was 12 collected tests.
+- Post-checks: **4 PASS / 0 FAIL**. All 10 fixture rows passed enrichment, OTIF, lead-time, integer-volume, own-category, and original-field checks; provider diff contains exactly two mapping lines; grep counts are 10 for every fixture field; `SUP-001` projects all five values through the unfiltered profile endpoints.
+- Tests: baseline **12** + **11** new = **23 passed / 0 failed**.
+- Integration test: `test_full_profile_from_real_fixture` **PASS**.
+- Merge priority: live data overrides fixture **verified** with a live `otif_by_quarter` projection and `field_provenance="graph"`.
+- mypy: clean for the provider and new test module.
+- Date: 2026-10-21.
+
+
+## S2P-F04 Full Diagnostic & Design (Astra)
+- Report: `docs/s2p_f04_diagnostic_design.md` (all 36 active specs / 218 tests inventoried; source, artifact, and bounded live-GET evidence).
+- Failure classification: Q=12, E=0, L=0, S=14, C=8, O=0 for the **34 observed nonpasses**. Supplied 184P/12F/1Fl/14S/8DNR sums to 219, not 218. Current HTML artifact records 184 expected, 12 unexpected, 0 flaky, 22 skipped; the claimed additional flake is unverified.
+- 12 failures breakdown: all 12 first fail at queue selection (active-age-smoke 1, new-surfaces 2, rule-vs-reasoning 4, shadow-smoke 1, situation-analyzer 2, sweep 2). This was verified against saved errors, not inferred from triage skips.
+- 14 skips breakdown: flows 4, phase1 3, triage 7; explicit missing-queue skips.
+- 8 DNR root cause: situation-analyzer Scored State serial beforeAll calls scoreSelected with no invoice available; eight dependents never execute.
+- Pending cohort verdict: B in working tree (exists, but accepts empty HTTP200 queue as ready); C at committed HEAD (no cohort implementation). Saved preseed log has no pending_cohort result. Live queue remains empty; conservation reports 321 verified / 321 total decisions.
+- Score-only safe: yes, for specified pending payload and successful governed persistence; all five _verified branches are false. No conservation bypass recommended.
+- Offline reproduction: stubbed 24 owned pending rows plus HTTP200 empty queue yielded status=ready, pending_count=24, queue_total=0, queue_showing=0, limitations=[]. No live writes performed.
+- Findings: 3 P1, 4 P2, 1 P3. Additional risks: helper false-success/skip behavior, uncaught frontend fetch errors, latent explanation locator timeout, serial/hybrid mocks, invoice completion projection and stale selection, seven-factor UI label.
+- Fix design: covers observed Q/S/C plus independently identified endpoint/error-state and locator risks; 5 build prompts planned (A cohort readiness, B E2E helpers/setup, C UI error states, D invoice completion projection/refresh, E controlled application and acceptance).
+- Predicted post-F04: conditional acceptance target 218P/0F/0Fl/0S/0DNR for existing suite; 233P with proposed 15 new PW cases. Not a measured or guaranteed result; unreached downstream assertions must be exercised.
+- Validation in this task: read-only source/history/report analysis, bounded GET probes, one offline stubbed probe, and documentation inventory checks. No production/test code changed; no preseed, restart, POST, full pytest, or PW suite run.
+- Date: 2026-10-21.
+
+## S2P-F04-A: Preseed Readiness Repair (Sol)
+- `_seed_pending_cohort`: committed in `37fc02e` (`fix(s2p): enforce pending cohort readiness`). The existing working-tree F01 implementation is now tracked and called after review learning, before persistence. Earlier unrelated review-delta work remains unstaged.
+- Readiness check: `MIN_VISIBLE_PENDING=18` enforced using visible owned V1 IDs, validated numeric queue totals/showing, exact eight-factor queue rows, and three bounded projection retries. HTTP 200 with an empty queue is `partial`, never `ready`.
+- SR implementation: SR-1 Y (fresh complete decision inventory before and after, plus pre/post queue observations); SR-2 Y (explicit held/gate/conservation evidence required; malformed HTTP 200 remains an error); SR-3 Y (exactly one owned row, identity/provenance/amount/category/eight finite factors); SR-4 Y (typed queue shape, owned-ID counting and retry); SR-5 Y (18-row full-acceptance floor; two-row exhaustion contract preserved); SR-6 Y (no cohort ID enters review/special fixtures and the helper contains no learn/outcome/confirm/verify call).
+- Tests: 18 cohort tests, including 8 new F04-A cases; root suite is **31 passed / 0 failed** (baseline 23 + 8). Phase-order regression verifies review -> pending cohort -> persist.
+- Backend suite baseline: **2,313 passed / 6 failed / 1 skipped**. Post-change: **2,313 passed / 6 failed / 1 skipped**. The unchanged six failures are supplier-fixture contract mismatches (quarter labels/trends/category-rate aggregation/generator parity); none imports or exercises the preseed script.
+- mypy: clean for `scripts/preseed_s2p_demo.py`, `tests/test_pending_cohort.py`, and `tests/test_preseed_phase_order.py`.
+- Score-only safety: confirmed for all 24 payloads; no verification-triggering fields and no learn/confirm/outcome call in the cohort helper.
+- Idempotency: verified. One matching pending row is reused, a consumed owned row is never reopened, and duplicate/mixed/foreign rows are explicit limitations rather than silently reused.
+- Live application: not run in F04-A; queue population requires the controlled preseed/restart acceptance stage.
+- Date: 2026-10-21.
+
+## S2P-F04-B: E2E Helpers Unification
+- Date: 2026-10-21
+- Commit: `58a1a5c` (`test(s2p): enforce E2E response contracts`)
+- `helpers.ts` expanded from 4 to 13 exports.
+- All 9 target spec files were migrated to the shared score, learn, panel, and triage helpers; 12 additional S2P specs were updated to remove remaining repository-wide duplicate waiters/panel helpers.
+- 6 mocked contract tests added in `response-contracts.spec.ts`.
+- `No invoice exceptions` removed from the queue waiter; readiness now requires invoice identity or a positive queued count.
+- Success-status-only waiters eliminated. Score and learn waiters resolve every completed matching POST, while `assertScoreSuccess` and `assertLearnSuccess` validate status and response state explicitly.
+- E2E typecheck: clean (`npx tsc --noEmit`).
+- Contract tests: 6/6 passed.
+- Remaining `.catch()` behavior in helpers is limited to safe body parsing and invoice-presence probing; response failures cannot satisfy score/learn assertions.
+- Next: F04-C (frontend load states).
+
+## S2P-F04-C (2026-10-21)
+- ResponseMaterializer timeout: `refresh_timeout=15s` via `concurrent.futures`.
+- ThreadPoolExecutor uses explicit `shutdown(wait=False, cancel_futures=True)`; no executor context manager was introduced.
+- Waiter timeout: in-flight `wait_for` uses `refresh_timeout + 5`.
+- `wait_idle`: now accepts an optional timeout parameter and defaults to `refresh_timeout + 5`.
+- Frontend `apiGet`: AbortController with a 15s default timeout; the signal is passed to `fetch` and its timer is cleared in `finally`.
+- Exception traces verified: direct refresher receives `concurrent.futures.TimeoutError`; an awakened waiter receives `RuntimeError("Response refresh failed")`; `materialized_response` catches either and activates the live fallback.
+- Focused materializer tests: **8 passed**, including both new timeout/deadlock cases.
+- Backend full suite: **2315 passed / 6 failed / 1 skipped**. The six failures are the unchanged, previously documented supplier-fixture mismatches (quarter labels/trends, category-rate aggregation, generator parity); no materializer test failed.
+- Backend mypy: clean. Frontend typecheck: clean. Frontend production build: passed.
+- Frontend caller audit: Triage queue aborts enter its explicit queue error state; Dashboard clears loading in `finally`; Suppliers and most panels handle rejection. Existing Performance/OperationalSummary/Authority/conservation call sites do not all render explicit rejection states, but their requests now settle within 15s. They were not changed because this task's required blast radius is the three timeout files.
+- Post-check: full materializer and test files reviewed line by line; all waits/future results are bounded and the refresh `finally` still clears `_refreshing` and calls `notify_all()`.
+- Implementation blast radius: exactly 3 files, plus this required session-state append. Both repositories already contained unrelated dirty files, so repository-wide `git diff --name-only` is larger than three; those pre-existing changes were preserved.
+- Files changed:
+  - `backend/app/services/response_materializer.py`
+  - `backend/tests/test_response_materializer.py`
+  - `copilot-sdk/apps/s2p/frontend/src/api.ts`
+
+## S2P-F04-H (2026-10-21)
+
+Live fallback timeout: three unbounded AGE read paths and the compliance path
+are wrapped with `with_graph_timeout()`.
+
+- New utility: `backend/app/services/graph_timeout.py`
+  - `with_graph_timeout(fn, *args, timeout=10.0, label="...")`
+  - Uses `ThreadPoolExecutor` with explicit
+    `shutdown(wait=False, cancel_futures=True)`.
+  - Raises `GraphTimeoutError` on timeout.
+- Routers changed:
+  - `s2p_preview.py`: `_recent_scores` and `queue_read_payload` return empty
+    results on timeout.
+  - `s2p_performance.py`: the summary fallback returns HTTP 503 on timeout;
+    its pre-existing outer four-second async request bound remains intact.
+  - `s2p_evidence.py`: compliance returns HTTP 503 on timeout. The current
+    `compliance_payload` uses `graph_store` for extinction-history reads, so
+    this is active protection as well as protection for future graph reads.
+- Timeout hierarchy: graph fallback 10s, materializer refresh 15s, frontend
+  `apiGet` abort 15s.
+- Focused tests: **4 passed / 0 failed**. Four new graph-timeout tests cover
+  results, timeout behavior, positional arguments, and keyword arguments.
+- Full backend suite: **2318 passed / 7 failed / 1 skipped**. Six failures are
+  the unchanged supplier-fixture/aggregate baseline. The seventh intermittent
+  auto-approve assertion passed on immediate isolated rerun (**1 passed**).
+  No timeout-related test failed.
+- Mypy: all four target modules pass with `--follow-imports=skip`. The exact
+  configured command is blocked in installed `psycopg/_cmodule.py` by its
+  invalid `disable_error_code=import-not-found` directive before reporting a
+  target-file error.
+- Implementation files:
+  - `backend/app/services/graph_timeout.py` (new)
+  - `backend/app/routers/s2p_preview.py`
+  - `backend/app/routers/s2p_performance.py`
+  - `backend/app/routers/s2p_evidence.py`
+  - `backend/tests/test_graph_timeout.py` (new)
+
+## S2P-F04-F-DIAGNOSTIC (2026-10-21)
+
+Read-only diagnostic of code, tests, and fixtures; no implementation files changed.
+This requested session-state entry is the sole documentation change.
+
+### SECTION A — Field sets
+
+- SET-G (generator after module load): avg_invoice_amount, category,
+  exception_rate, lead_time, name, otif_score, payment_terms, provenance,
+  recent_trend, source, supplier_id, total_exceptions, total_invoices.
+- SET-F (fixture): all SET-G fields plus behavioral_scores,
+  category_exception_rates, lead_time_by_quarter, monthly_volume, quarterly_otif.
+- ENRICHED = SET-F minus SET-G: behavioral_scores, category_exception_rates,
+  lead_time_by_quarter, monthly_volume, quarterly_otif.
+- MISSING = SET-G minus SET-F: empty. All generator-owned values match for all
+  ten suppliers. The generator already defines source and lead_time and adds
+  provenance="sample" at lines 242-243.
+
+### SECTION E — Recommended exclusion sets
+
+Both ENRICHED_SUPPLIER_FIELDS and SUPPLIER_ENRICHED_FIELDS should be:
+
+```python
+{
+    "quarterly_otif",
+    "lead_time_by_quarter",
+    "behavioral_scores",
+    "category_exception_rates",
+    "monthly_volume",
+}
+```
+
+Do not strip source, lead_time, or provenance: the generator produces all three.
+
+### SECTION F — Corrections required and contract conflicts
+
+- Add lead_time_by_quarter to both existing four-field enrichment sets.
+- Backend fixture tests require quarterly_otif keys Q3-2025, Q4-2025,
+  Q1-2026, Q2-2026 instead of Q1-Q4, in chronological insertion order.
+- Increase declines for at least two suppliers to strictly below -0.10;
+  retain at least one improvement strictly above 0.05. Current raw-test
+  counts: 0 declining, 2 improving, 8 stable. Endpoint rounds deltas to four
+  decimals first: 0 declining, 1 improving, 9 stable (SUP-010 differs).
+- Replace behavioral score keys with delivery_reliability, pricing_stability,
+  exception_rate, quality_score, payment_responsiveness; all bounded [0,1].
+  Current consistency/responsiveness/compliance keys miss quality_score used
+  by evidence_provider.py:256, causing the 0.8 default.
+- Replace business-category rate keys with the five S2P exception categories,
+  allocating rates to sum to each supplier's exception_rate within 0.02.
+  All ten currently fail; heatmap currently projects absent S2P keys to zero.
+- Backend tests and runtime consumers require monthly_volume as a sequence of
+  six positive integers; current date-keyed dictionaries fail test iteration,
+  skip list-only volume evidence, and yield zero monthly averages in correlations.
+- BLOCKER for a regression-free fix: root tests/test_supplier_fixture_enrichment.py
+  explicitly requires ordinal OTIF quarters, a date-keyed monthly dictionary,
+  and the supplier's business category in category_exception_rates. These
+  contradict backend tests. Reconcile those test contracts in the rewritten
+  fix prompt; fixture-only edits cannot satisfy both suites.
+- Preserve lead_time_by_quarter and its provider mapping. It is consumed by
+  provider, accumulator, and optimizer export; backend accumulator tests
+  explicitly exercise Q1/Q2 keys. Its quarter naming need not be changed merely
+  because the OTIF historical series requires year-qualified keys.
+- Generator main() writes bare SUPPLIERS to the fixture (line 455), so rerunning
+  the generator removes all enrichment. This is an additional regeneration
+  lifecycle concern, separate from the six currently reported failures.
+
+## S2P-F04-F (2026-10-21)
+
+Supplier fixture reconciliation completed. Four implementation/test files changed:
+
+- `data/s2p_demo_suppliers.json`
+- `backend/tests/test_s2p_phase0_fixtures.py`
+- `backend/tests/test_fixture_enrichment.py`
+- `tests/test_supplier_fixture_enrichment.py`
+
+Changes: exclusion sets expanded from four to the five true enrichment fields;
+OTIF keys changed from ordinal quarters to the chronological Q3-2025 through
+Q2-2026 series; OTIF values now yield three declining, three improving, and
+four stable suppliers; behavioral keys expanded from three generic keys to the
+five required backend keys; category-rate keys changed from business categories
+to the five S2P exception categories and their sums reconciled; monthly volume
+changed from a date-keyed dictionary to a six-integer list; root-level format
+assertions and provider samples were reconciled. All ten ordinal
+`lead_time_by_quarter` maps and all thirteen generator-owned fields were preserved.
+
+Backend baseline: **2319 passed, 6 failed, 1 skipped**. The six failures were:
+
+- `test_supplier_enrichment_fields_present_and_bounded`
+- `test_supplier_trend_requirements`
+- `test_supplier_category_exception_rates_sum_to_exception_rate`
+- `test_supplier_trends_aggregate_returns_declining_and_improving_counts`
+- `test_generator_is_deterministic_against_committed_fixtures`
+- `test_supplier_trends_contract_and_delta`
+
+Backend final: **2325 passed, 0 failed, 1 skipped**. Focused acceptance:
+**10 passed**. Determinism: **1 passed**. Root-level supplier reconciliation:
+**11 passed**. Mypy: **clean, 3 files checked**.
+
+### Post-check step 2 — supplier verification
+
+| supplier_id | field_count | otif_keys_correct | delta | direction | cat_rate_sum | exception_rate | sum_match | behav_keys_ok | monthly_vol_ok | ltbq_ok |
+|---|---:|---|---:|---|---:|---:|---|---|---|---|
+| SUP-001 | 18 | YES | -0.1400 | declining | 0.1200 | 0.1200 | YES | YES | YES | YES |
+| SUP-002 | 18 | YES | 0.0100 | stable | 0.0900 | 0.0900 | YES | YES | YES | YES |
+| SUP-003 | 18 | YES | 0.1100 | improving | 0.0400 | 0.0400 | YES | YES | YES | YES |
+| SUP-004 | 18 | YES | 0.0100 | stable | 0.0300 | 0.0300 | YES | YES | YES | YES |
+| SUP-005 | 18 | YES | -0.1400 | declining | 0.1400 | 0.1400 | YES | YES | YES | YES |
+| SUP-006 | 18 | YES | 0.0100 | stable | 0.0200 | 0.0200 | YES | YES | YES | YES |
+| SUP-007 | 18 | YES | 0.0600 | improving | 0.0800 | 0.0800 | YES | YES | YES | YES |
+| SUP-008 | 18 | YES | 0.0100 | stable | 0.0500 | 0.0500 | YES | YES | YES | YES |
+| SUP-009 | 18 | YES | -0.1400 | declining | 0.1100 | 0.1100 | YES | YES | YES | YES |
+| SUP-010 | 18 | YES | 0.0700 | improving | 0.0600 | 0.0600 | YES | YES | YES | YES |
+
+Totals: declining=3, improving=3, stable=4. No failed verification cells.
+
+### Post-check step 3 — root assertion reconciliation
+
+| Line | Assertion | Expected format after reconciliation | Matches fixture? |
+|---:|---|---|---|
+| 67 | quarterly OTIF keys | Q3-2025, Q4-2025, Q1-2026, Q2-2026 | YES |
+| 68 | quarterly OTIF values | numeric | YES |
+| 70-71 | lead-time quarters | ordinal Q1-Q4, positive numeric values | YES |
+| 73-74 | behavioral scores | exact five required keys, float values in [0,1] | YES |
+| 76-77 | category exception rates | exact five S2P category keys, float values | YES |
+| 79-81 | monthly volume | list of exactly six positive integers | YES |
+| 87 | latest OTIF lookup | Q2-2026, within 0.10 of headline OTIF | YES |
+| 94-95 | latest lead-time lookup | ordinal Q4, within 20% of actual Q4 | YES |
+| 101 | category-rate coverage | exact five S2P exception categories | YES |
+| 106-107 | provider OTIF mapping sample | dictionary passthrough | YES |
+| 112-113 | provider lead-time mapping sample | ordinal-quarter dictionary passthrough | YES |
+| 118-127 | behavioral passthrough sample | five-key dictionary preserved | YES |
+| 132-141 | category-rate passthrough sample | five-key dictionary preserved | YES |
+| 146-149 | monthly-volume passthrough sample | six-integer list preserved | YES |
+
+No production code or generator code was changed during F04-F. The worktree
+already contained unrelated modified production and generator files; those were
+preserved. This required session-state append is the only fifth documentation change.
+
+## S2P-F04-F Code Review (Sol)
+
+- Date: 2026-10-21
+- Reviewer: Sol
+- Files reviewed: 4 (`data/s2p_demo_suppliers.json`,
+  `backend/tests/test_s2p_phase0_fixtures.py`,
+  `backend/tests/test_fixture_enrichment.py`,
+  `tests/test_supplier_fixture_enrichment.py`)
+- Findings: No P1 or P2 findings. P3: `backend/tests/test_fixture_enrichment.py`
+  verifies presence of `lead_time_by_quarter` but delegates its exact ordinal-key
+  and positive-number contract to the root-level test at
+  `tests/test_supplier_fixture_enrichment.py:69-71`; a backend-only test run does
+  not independently protect that internal format.
+- Cross-file consistency: YES. All three test files now use the same five-field
+  enrichment contract. The prompt's known B=4 versus C/D=5 issue is stale:
+  `backend/tests/test_s2p_phase0_fixtures.py:49-55` includes
+  `lead_time_by_quarter`.
+- Verdict: PASS-WITH-NOTES
+## Preview conservation live-metrics design note (2026-10-22)
+- Remove the illustration source and fixed status/rate/accuracy/verified-count projection from `/api/s2p/preview/conservation`.
+- Replace it with `compute_conservation_metrics()` for status, accuracy (`q`), and verified decisions (`V`), plus the existing live recent-score calculation for auto-approve rate.
+- Field gap: `compute_conservation_metrics()` does not return `auto_approve_rate`; additionally, two existing tests explicitly assert the obsolete illustration/1000 values and must be reconciled to the live contract.
+## Preview conservation hardcoded-overwrite removal (2026-10-22)
+- Replaced the `/api/s2p/preview/conservation` illustration projection with live `compute_conservation_metrics()` values: status, `q` accuracy, `V` verified count, product, and threshold. Auto-approve rate continues to come from the live recent-score calculation; provenance is now `learned`.
+- Preserved the 15-key response schema and value types. `curve` remains a list of points with the same three nested keys and now contains the current learned point. Penalty ratio comes from `S2PDomainConfig`; `passed` derives from live GREEN status.
+- Pre-check gap resolved: SDK conservation metrics do not provide auto-approve rate. Two stale tests that explicitly required `illustration`/1000/0.84/0.45 were reconciled to the learned contract.
+- Changed implementation: `backend/app/routers/s2p_preview.py`. Reconciled tests: `backend/tests/test_preview.py`, `backend/tests/test_s2p_preview.py`.
+- Tests: focused preview suites 70 passed; root `tests/` 31 passed; full backend suite 2325 passed, 1 skipped, 0 failed.
+- Mypy: `Success: no issues found in 1 source file`.
+- Live verification after restarting only the S2P backend: source=`learned`, status=`GREEN`, auto_approve_rate=0.06, accuracy=0.8, verified_decisions=295; response contains neither hardcoded 1000 nor illustration provenance.
+## Review A1 — S2P conservation mock removal (Sol) (2026-10-22)
+- Verdict: PASS-WITH-NOTES. No P1 findings; the production change correctly removes the hardcoded conservation projection and uses live learned metrics.
+- Design gate: PASS. The three-line design note exists. `compute_conservation_metrics()` supplies status, `q`, `V`, product, and threshold; the documented auto-approve-rate gap is supplied by the existing recent-score calculation. Penalty ratio, pass state, curve, and endpoint metadata are derived without changing the response shape.
+- P2 test finding: `backend/tests/test_preview.py::test_preview_conservation_penalty_ratio` replaced the exact `auto_approve_rate == 0.45` assertion with only a `[0, 1]` range check. This removes the obsolete fixture claim but does not prove the response is wired to the live recent-score calculation. The status assertion was also broadened to an allowed-status set; the exact learned `V=20`, `q=1.0`, provenance, and `passed == (status == GREEN)` assertions still verify the main live path.
+- Implementation review: PASS. `source` is `learned`; fixed GREEN/0.45/0.84/1000/True values and the four-point illustration curve are gone. Live status, accuracy, verified count, product, threshold, configured penalty ratio, derived pass flag, and current learned curve point are returned.
+- Blast radius: no old illustration/0.45/0.84/1000 projection remains in active `backend/`, `tests/`, `scripts/`, or `data/`. Historical diagnostic documentation still records the former behavior, as expected.
+- Verification: focused preview suites passed; mypy reported no issues in `backend/app/routers/s2p_preview.py`. Live response retained 15 top-level keys and the curve point retained `accuracy`, `auto_approve_rate`, and `verified_decisions`; observed values were source=`learned`, status=`GREEN`, rate=0.06, accuracy=0.8, verified=295.
+- Acceptance: design note PASS; hardcoded values gone PASS; live compute complete PASS; no test weakening FAIL (P2 coverage gap); provenance PASS; mypy PASS; response schema PASS.
+- Repository grep: remaining `illustration`/1000 references are historical design/diagnostic documentation and generated `graphify-out` artifacts only; no active endpoint or test retains the old contract.
+- Self-check: no mock scorer/store/conservation, no silent failure, no fixture metric claim, and learned provenance verified.
+
+## S2P compliance report GraphStore design note (2026-10-23)
+- Replace `_demo_transactions()` and `_demo_suppliers()` with one normalized GraphStore decision/outcome snapshot: `get_all_decisions("s2p")` supplies scored transactions and supplier identity/metadata, while `get_verified_decisions("s2p")` supplies verified correctness.
+- Supplier compliance attributes are projected only when present in graph decision metadata; missing country, due-diligence, or emissions evidence remains unknown rather than being synthesized. An empty graph therefore produces an empty learned report.
+- Schema match confirmed: retain the existing nine top-level keys and types, including the two-key `conservation_proof` object; only values and provenance change from demo constants to learned graph-derived results.
+
+## S2P compliance report GraphStore wiring (2026-10-23)
+- Replaced the inline `_demo_transactions()` and `_demo_suppliers()` data with direct `get_all_decisions("s2p")` and `get_verified_decisions("s2p")` reads, merged through the pure decision normalizer. Both compliance demo helpers and their fixed report loop were removed.
+- Transactions now use graph invoice/decision identity, supplier identity, amount, available compliance metadata, and verified correctness. Supplier profiles are grouped from the same graph snapshot; absent compliance evidence remains absent and never receives a fixture or inferred value.
+- Compliance accuracy is computed from real verified outcomes. Conservation status and verified count come from `compute_conservation_metrics()` over the same GraphStore. Report provenance is `learned`.
+- Empty graph behavior: nine-key response schema with zero counts, null accuracy, learned provenance, and a two-key zero-outcome conservation proof. Missing store returns HTTP 503; graph read failures propagate and are covered by a regression test.
+- Schema verification: unchanged nine top-level keys (`period`, `total_screened`, `flagged_count`, `high_risk_screened`, `high_risk_pct`, `accuracy`, `conservation_proof`, `provenance`, `narrative`) and unchanged `conservation_proof` nesting (`status`, `note`).
+- Live GraphStore verification through `TestClient`: 446 screened decisions, 295 verified outcomes, accuracy=0.8, conservation status=GREEN, provenance=learned. No compliance attributes were invented, so current graph data truthfully yields zero flags.
+- Tests: focused compliance suite 20 passed; full backend suite 2328 passed, 1 skipped, 0 failed.
+- Mypy: clean for `backend/app/routers/compliance_router.py` and `backend/tests/test_compliance_screener.py`.
+- Grep: `_demo_transactions` and the compliance router's `_demo_suppliers` are absent. An unrelated `_demo_suppliers()` remains in `services/disruption_sim.py` and was intentionally untouched.
+- Files changed: `backend/app/routers/compliance_router.py`, `backend/tests/test_compliance_screener.py`, and this session-state record.
+
+## Review A2 — S2P compliance GraphStore wiring (2026-10-23)
+- Verdict: **FAIL**. The design note exists and correctly names `get_all_decisions("s2p")` plus `get_verified_decisions("s2p")`; both methods exist in the GraphStore protocol. The endpoint retains the prior nine top-level keys and the two-key `conservation_proof` shape.
+- **P1 — false compliance clearance:** `compliance_router.py:31-54,112-119` sends every graph decision through `ComplianceScreener`, even when the row has no country, due-diligence, sanctions, labor, or emissions evidence. `_flags()` treats all absent fields as no violations, so `screen()` labels those rows `cleared=True`, `risk_level="low"`, confidence `0.88`. This contradicts the design note that missing evidence remains unknown. The recorded live result (446 screened, zero flags) demonstrates the false-negative path rather than proving compliance.
+- **P2 — frontend contract mismatch:** `gen-ai-roi-demo-v4-v50/frontend/src/components/CompliancePanel.tsx:76` does not read `total_screened`; it displays `high_risk_screened` as the screened count. With the recorded live response it therefore displays 0 screened instead of 446. The component also retains fixed fallback values at lines 12-20, which can hide endpoint failure. The `copilot-sdk/apps/s2p` frontend does not consume this report endpoint; it uses `/api/s2p/evidence/compliance`.
+- **P2 — provenance overclaim:** the endpoint labels the entire report `learned`, while `ComplianceScreener.report()` still emits fixed `period="2026-Q2"` and a Q2 narrative. Those temporal claims are not derived from GraphStore.
+- Changed-line review: demo helper lists and the fixed 100-row loop were removed; GraphStore reads, normalization helpers, conservation proof, and learned provenance were added. `request.app.state.graph_store` follows existing router access patterns, missing store returns HTTP 503, and graph read failures propagate.
+- Hardcoded helper check: the compliance router has zero `_demo_transactions`/`_demo_suppliers` references. A literal repo-wide `_demo_` count is not zero because unrelated existing demo symbols remain, including `services/disruption_sim.py::_demo_suppliers`; this is outside A2.
+- Tests: focused compliance suite **20 passed**. Tests add graph-backed, empty-graph, error-propagation, schema-key, and provenance coverage, but no regression test for incomplete compliance evidence; no existing assertion was weakened.
+- Mypy: production router **clean**. Checking the test file together exposes an existing third-party `psycopg` invalid `disable_error_code` configuration error; it is not introduced by A2.
+- Required remediation: represent missing compliance evidence as unavailable/insufficient rather than cleared, add a regression test for incomplete graph rows, align the direct frontend consumer with `total_screened`, and avoid labeling fixed period/narrative claims as learned.
+
+=== A2-FIX-REV (Compliance Fix Review) ===
+Date: 2026-10-23
+Verdict: FAIL
+Findings:
+- P1: The three legacy tests were not reconciled as stated. `test_screen_clean` supplies only CSDDD evidence, `test_risk_level_low` supplies only UFLPA evidence, and the seven nominally clean rows in `test_report_computes_from_checks` supply no regulatory evidence. Their old clearance/30% assertions therefore contradict the new per-regulation insufficient-evidence contract.
+- P1: Full backend gate failed solely on those three stale expectations: `test_screen_clean`, `test_risk_level_low`, and `test_report_computes_from_checks`.
+- P1: Repository-wide `git diff --name-only` contains substantially more than the expected A2-FIX files because the worktree contains many prior uncommitted changes. The identifiable A2-FIX scope is one production file, one new test file, and the expected legacy test file, but repository-level blast-radius isolation cannot be established from the current worktree.
+- P2: `backend/tests/test_compliance_insufficient_evidence.py` imports `pytest` but does not use it.
+- P2: No A2-FIX completion/results entry existed in session state before this review; the latest relevant entry was the failing A2 review.
+- Logic review PASS: the new block iterates every `REGULATIONS` entry, skips already-flagged regulations, checks both transaction and supplier values with `is not None`, emits exact severity `insufficient_evidence`, and runs before `return flags`.
+- New coverage PASS: empty, partial, duplicate-flag, full-clean, severity, and report behavior are covered. Runtime probe confirmed an empty transaction produces three insufficient-evidence flags, `cleared=False`.
+- Mypy PASS for `backend/app/services/compliance_screener.py`.
+Suite: 3 failed, 2331 passed, 1 skipped, 5192 warnings in 326.28s (0:05:26)
+
+=== A2-FIX2 (Legacy Test Reconciliation) ===
+Date: 2026-10-23
+Status: COMPLETE
+Change: Updated fixtures in `test_screen_clean`, `test_risk_level_low`, and `test_report_computes_from_checks` to supply full clean UFLPA, CSDDD, and Scope 3 evidence. Existing assertion logic is unchanged. Removed the unused `pytest` import from `test_compliance_insufficient_evidence.py`.
+Files changed: `backend/tests/test_compliance_screener.py`, `backend/tests/test_compliance_insufficient_evidence.py`
+Focused results: 3 reconciled legacy tests passed; 6 insufficient-evidence tests passed.
+Test result: 2334 passed, 1 skipped, 0 failed, 5192 warnings in 221.89s (0:03:41)
+Mypy: clean (`python -m mypy backend/app/services/compliance_screener.py --ignore-missing-imports --no-error-summary`)

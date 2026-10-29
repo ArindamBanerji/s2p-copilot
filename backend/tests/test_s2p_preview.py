@@ -265,7 +265,7 @@ def test_conservation_has_status():
 def test_conservation_has_auto_approve_pct():
     data = client.get("/api/s2p/preview/conservation").json()
     assert 0.0 <= data["auto_approve_pct"] <= 100.0
-    assert data["verified_decisions"] == 1000
+    assert data["verified_decisions"] == 20
     assert data["fixture_decisions"] == 50
 
 

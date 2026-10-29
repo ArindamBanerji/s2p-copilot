@@ -1,9 +1,12 @@
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
+from copilot_sdk.graph.memory_store import InMemoryGraphStore
 
 from app.main import app
 from app.services.compliance_screener import ComplianceScreener
@@ -14,7 +17,14 @@ client = TestClient(app)
 def test_screen_clean():
     check = ComplianceScreener().screen(
         {"transaction_id": "INV-1", "supplier_id": "S1"},
-        {"supplier_id": "S1", "supplier_name": "Clean Supplier", "environmental_due_diligence": True},
+        {
+            "supplier_id": "S1",
+            "supplier_name": "Clean Supplier",
+            "country_of_origin": "germany",
+            "labor_practices": "audited",
+            "carbon_footprint": 50.0,
+            "environmental_due_diligence": True,
+        },
     )
 
     assert check["cleared"] is True
@@ -61,7 +71,13 @@ def test_risk_level_high():
 def test_risk_level_low():
     check = ComplianceScreener().screen(
         {"transaction_id": "INV-6", "supplier_id": "S6"},
-        {"supplier_id": "S6", "supplier_name": "Low Risk", "country_of_origin": "US"},
+        {
+            "supplier_id": "S6",
+            "supplier_name": "Low Risk",
+            "country_of_origin": "US",
+            "labor_practices": "audited",
+            "carbon_footprint": 50.0,
+        },
     )
 
     assert check["risk_level"] == "low"
@@ -150,15 +166,97 @@ def test_router_report():
 
     assert response.status_code == 200
     data = response.json()
+    assert set(data) == {
+        "period",
+        "total_screened",
+        "flagged_count",
+        "high_risk_screened",
+        "high_risk_pct",
+        "accuracy",
+        "conservation_proof",
+        "provenance",
+        "narrative",
+    }
+    assert data["provenance"] == "learned"
     assert "conservation_proof" in data
     assert "narrative" in data
+
+
+def test_router_report_reads_graph_decision_and_verified_outcome(monkeypatch):
+    store = InMemoryGraphStore(domain="s2p")
+    decision_id = store.write_decision(
+        "s2p",
+        "format_compliance",
+        "hold_for_review",
+        0.91,
+        {"tax_regulatory_compliance": 0.2},
+        metadata={
+            "invoice_id": "INV-GRAPH-1",
+            "supplier_id": "SUP-GRAPH-1",
+            "supplier_name": "Graph Supplier",
+            "environmental_due_diligence": False,
+        },
+    )
+    store.write_outcome(
+        decision_id,
+        "hold_for_review",
+        True,
+        domain="s2p",
+    )
+    monkeypatch.setattr(app.state, "graph_store", store)
+
+    response = client.get("/api/s2p/compliance/report")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_screened"] == 1
+    assert data["flagged_count"] == 1
+    assert data["high_risk_screened"] == 1
+    assert data["accuracy"] == 1.0
+    assert data["provenance"] == "learned"
+    assert data["conservation_proof"]["note"] == "Computed from 1 verified S2P outcomes"
+
+
+def test_router_report_empty_graph_is_empty_learned_result(monkeypatch):
+    monkeypatch.setattr(app.state, "graph_store", InMemoryGraphStore(domain="s2p"))
+
+    response = client.get("/api/s2p/compliance/report")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_screened"] == 0
+    assert data["flagged_count"] == 0
+    assert data["high_risk_screened"] == 0
+    assert data["high_risk_pct"] == 0.0
+    assert data["accuracy"] is None
+    assert data["provenance"] == "learned"
+    assert data["conservation_proof"] == {
+        "status": "RED",
+        "note": "Computed from 0 verified S2P outcomes",
+    }
+
+
+def test_router_report_does_not_silence_verified_history_failure(monkeypatch):
+    class FailingVerifiedStore(InMemoryGraphStore):
+        def get_verified_decisions(self, domain, **kwargs):
+            raise RuntimeError("verified history unavailable")
+
+    monkeypatch.setattr(app.state, "graph_store", FailingVerifiedStore(domain="s2p"))
+
+    with pytest.raises(RuntimeError, match="verified history unavailable"):
+        client.get("/api/s2p/compliance/report")
 
 
 def test_report_computes_from_checks():
     screener = ComplianceScreener()
     checks = []
     for index in range(10):
-        supplier = {"supplier_id": f"S{index}"}
+        supplier = {
+            "supplier_id": f"S{index}",
+            "country_of_origin": "germany",
+            "labor_practices": "audited",
+            "carbon_footprint": 50.0,
+        }
         if index < 3:
             supplier["environmental_due_diligence"] = False
         checks.append(screener.screen({"transaction_id": f"INV-X-{index}", "supplier_id": f"S{index}"}, supplier))

@@ -10,6 +10,7 @@ import logging
 from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.domains.s2p.config import S2PDomainConfig
@@ -372,9 +373,24 @@ def _ensure_financial_snapshots(request: Request) -> None:
             ) from exc
 
 
+def _invalid_category(allowed_categories: list[str]) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content={"detail": "Invalid category", "allowed_categories": allowed_categories},
+    )
+
+
 @router.get("", response_model=FinancialImpactSummaryResponse)
-def financial_impact(request: Request) -> dict[str, Any]:
+def financial_impact(
+    request: Request,
+    category: str | None = None,
+) -> dict[str, Any] | JSONResponse:
+    allowed_categories = list(S2PDomainConfig.categories)
+    if category is not None and category not in allowed_categories:
+        return _invalid_category(allowed_categories)
     _ensure_financial_snapshots(request)
+    if category is not None:
+        return deepcopy(_FINANCIAL_CATEGORY_SNAPSHOTS[category])
     return deepcopy(_FINANCIAL_SNAPSHOT or {})
 
 
@@ -385,22 +401,12 @@ def financial_impact_trend(request: Request) -> dict[str, Any]:
 
 
 @router.get("/{category}", response_model=FinancialImpactCategoryResponse)
-def financial_impact_category(category: str, request: Request) -> dict[str, Any]:
+def financial_impact_category(
+    category: str,
+    request: Request,
+) -> dict[str, Any] | JSONResponse:
     allowed_categories = list(S2PDomainConfig.categories)
     if category not in allowed_categories:
-        return {
-            "total_decisions": 0,
-            "verified_decisions": 0,
-            "total_amount": 0.0,
-            "total_at_risk": 0.0,
-            "total_recovered": 0.0,
-            "net_savings": 0.0,
-            "recovery_rate": 0.0,
-            "missing_receipts": 0,
-            "by_supplier": {},
-            "by_category": {},
-            "category": category,
-            "allowed_categories": allowed_categories,
-        }
+        return _invalid_category(allowed_categories)
     _ensure_financial_snapshots(request)
     return deepcopy(_FINANCIAL_CATEGORY_SNAPSHOTS[category])

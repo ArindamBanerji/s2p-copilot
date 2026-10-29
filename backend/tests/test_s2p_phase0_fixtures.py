@@ -38,15 +38,7 @@ EXPECTED_ACTIONS = [
     "flag_leakage",
     "refer_to_specialist",
 ]
-EXPECTED_FACTORS = [
-    "match_status",
-    "amount_variance_ratio",
-    "duplicate_score",
-    "supplier_exception_history",
-    "payment_terms_impact",
-    "commodity_index_correlation",
-    "tax_regulatory_compliance",
-]
+EXPECTED_FACTORS = list(S2PDomainConfig.factors)
 ENRICHED_INVOICE_FIELDS = {
     "intent",
     "amount_at_risk",
@@ -56,6 +48,7 @@ ENRICHED_INVOICE_FIELDS = {
 }
 ENRICHED_SUPPLIER_FIELDS = {
     "quarterly_otif",
+    "lead_time_by_quarter",
     "behavioral_scores",
     "category_exception_rates",
     "monthly_volume",

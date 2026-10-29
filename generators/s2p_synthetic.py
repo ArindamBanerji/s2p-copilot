@@ -11,6 +11,7 @@ Run from the repository root:
 from __future__ import annotations
 
 import json
+import hashlib
 import random
 from datetime import date, timedelta
 from pathlib import Path
@@ -42,29 +43,30 @@ FACTORS = [
     "payment_terms_impact",
     "commodity_index_correlation",
     "tax_regulatory_compliance",
+    "environmental_risk",
 ]
 
 ACTION_CENTROIDS = {
-    "auto_approve": [0.95, 0.05, 0.02, 0.03, 0.50, 0.80, 0.95],
-    "hold_for_review": [0.70, 0.30, 0.10, 0.15, 0.40, 0.50, 0.80],
-    "escalate_to_buyer": [0.50, 0.60, 0.15, 0.30, 0.60, 0.30, 0.70],
-    "flag_leakage": [0.80, 0.50, 0.10, 0.40, 0.70, 0.20, 0.60],
-    "refer_to_specialist": [0.40, 0.40, 0.30, 0.50, 0.30, 0.40, 0.50],
+    "auto_approve": [0.95, 0.05, 0.02, 0.03, 0.50, 0.80, 0.95, 0.5],
+    "hold_for_review": [0.70, 0.30, 0.10, 0.15, 0.40, 0.50, 0.80, 0.5],
+    "escalate_to_buyer": [0.50, 0.60, 0.15, 0.30, 0.60, 0.30, 0.70, 0.5],
+    "flag_leakage": [0.80, 0.50, 0.10, 0.40, 0.70, 0.20, 0.60, 0.5],
+    "refer_to_specialist": [0.40, 0.40, 0.30, 0.50, 0.30, 0.40, 0.50, 0.5],
 }
 
 CATEGORY_TWEAKS = {
-    "price_variance": [0.00, 0.02, 0.00, 0.00, 0.02, 0.04, 0.00],
-    "quantity_mismatch": [-0.02, 0.00, 0.01, 0.02, 0.00, 0.00, -0.01],
-    "duplicate_risk": [-0.05, 0.00, 0.12, 0.04, -0.02, 0.00, -0.02],
-    "contract_gap": [-0.03, 0.00, 0.00, 0.00, 0.10, -0.02, -0.04],
-    "format_compliance": [-0.04, 0.00, 0.02, 0.04, -0.03, -0.01, -0.10],
+    "price_variance": [0.00, 0.02, 0.00, 0.00, 0.02, 0.04, 0.00, 0.0],
+    "quantity_mismatch": [-0.02, 0.00, 0.01, 0.02, 0.00, 0.00, -0.01, 0.0],
+    "duplicate_risk": [-0.05, 0.00, 0.12, 0.04, -0.02, 0.00, -0.02, 0.0],
+    "contract_gap": [-0.03, 0.00, 0.00, 0.00, 0.10, -0.02, -0.04, 0.0],
+    "format_compliance": [-0.04, 0.00, 0.02, 0.04, -0.03, -0.01, -0.10, 0.0],
 }
 
 ANCHOR_CENTROIDS = {
-    ("price_variance", "auto_approve"): [0.95, 0.05, 0.02, 0.03, 0.50, 0.80, 0.95],
-    ("price_variance", "flag_leakage"): [0.90, 0.40, 0.05, 0.25, 0.70, 0.15, 0.85],
-    ("duplicate_risk", "flag_leakage"): [0.85, 0.10, 0.90, 0.40, 0.30, 0.50, 0.80],
-    ("contract_gap", "escalate_to_buyer"): [0.70, 0.15, 0.05, 0.15, 0.85, 0.20, 0.60],
+    ("price_variance", "auto_approve"): [0.95, 0.05, 0.02, 0.03, 0.50, 0.80, 0.95, 0.5],
+    ("price_variance", "flag_leakage"): [0.90, 0.40, 0.05, 0.25, 0.70, 0.15, 0.85, 0.5],
+    ("duplicate_risk", "flag_leakage"): [0.85, 0.10, 0.90, 0.40, 0.30, 0.50, 0.80, 0.5],
+    ("contract_gap", "escalate_to_buyer"): [0.70, 0.15, 0.05, 0.15, 0.85, 0.20, 0.60, 0.5],
 }
 
 DISTRIBUTION = {
@@ -278,7 +280,12 @@ def _invoice_plan() -> list[tuple[str, str]]:
 def _factor_dict(category: str, action: str, index: int, rng: random.Random) -> dict[str, float]:
     centroid = build_centroids()[category][action]
     factors = []
-    for value in centroid:
+    for factor_index, value in enumerate(centroid):
+        if FACTORS[factor_index] == "environmental_risk":
+            invoice_id = f"S2P-INV-{index:04d}"
+            digest = hashlib.sha256(invoice_id.encode("utf-8")).digest()
+            factors.append(_clip(0.15 + (int.from_bytes(digest[:8], "big") % 100) / 200.0))
+            continue
         jitter = rng.uniform(-0.025, 0.025)
         factors.append(_clip(value + jitter))
 

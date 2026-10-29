@@ -129,6 +129,24 @@ class ComplianceScreener:
                     "severity": "warning",
                 }
             )
+
+        # Flag regulations with no evidence — absence is not clearance
+        flagged_regulations = {f["regulation"] for f in flags}
+        for reg_name, reg_info in REGULATIONS.items():
+            if reg_name in flagged_regulations:
+                continue  # already flagged for a specific violation
+            has_evidence = any(
+                transaction.get(factor) is not None or supplier.get(factor) is not None
+                for factor in reg_info["risk_factors"]
+            )
+            if not has_evidence:
+                flags.append(
+                    {
+                        "regulation": reg_name,
+                        "issue": f"No {reg_info['description']} evidence on file",
+                        "severity": "insufficient_evidence",
+                    }
+                )
         return flags
 
     def _confidence(self, risk_level: str) -> float:

@@ -11,6 +11,7 @@ from gae.calibration import compute_theta_min
 from app.domains.s2p.config import S2P_CATEGORIES
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
+from app.services.graph_timeout import GraphTimeoutError, with_graph_timeout
 from app.services.response_materializer import materialized_response
 
 router = APIRouter(prefix="/api/s2p/performance", tags=["s2p-performance"])
@@ -244,8 +245,14 @@ def _summary_sync(request: Request) -> dict[str, Any]:
     if materialized is not None:
         return cast(dict[str, Any], materialized)
     try:
-        return cast(dict[str, Any], _build_summary(_graph_reader(request)))
-    except GraphUnavailableError as exc:
+        reader = _graph_reader(request)
+        result = with_graph_timeout(
+            _build_summary,
+            reader,
+            label="performance_summary",
+        )
+        return cast(dict[str, Any], result)
+    except (GraphUnavailableError, GraphTimeoutError) as exc:
         raise HTTPException(status_code=503, detail="S2P graph unavailable for performance") from exc
 
 

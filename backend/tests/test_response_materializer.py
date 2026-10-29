@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures as cf
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
@@ -178,6 +179,63 @@ def test_all_six_payloads_prewarm_without_observation_writes_and_keep_live_shape
     app.state.graph_store = TrackingStore()
     assert mat.get("preview_queue") is None
     s2p_preview.reset_preview_state()
+
+
+def test_refresh_timeout_prevents_indefinite_hang():
+    """A slow store query must not block the materializer forever."""
+    hang = threading.Event()
+
+    class HangingStore(TrackingStore):
+        def get_all_decisions(self, domain):
+            self.reads += 1
+            hang.wait(30)
+            return []
+
+    store = HangingStore()
+    mat = ResponseMaterializer(
+        "s2p",
+        lambda: store,
+        {"queue": lambda s: {"ok": True}},
+        refresh_timeout=1.0,
+    )
+    with pytest.raises(cf.TimeoutError):
+        mat.refresh()
+    assert mat.get("queue") is None
+    hang.set()
+
+
+def test_waiter_timeout_prevents_deadlock():
+    """Neither the refresher nor the waiter may hang forever."""
+    started = threading.Event()
+    hang = threading.Event()
+
+    class SlowStore(TrackingStore):
+        def get_all_decisions(self, domain):
+            self.reads += 1
+            started.set()
+            hang.wait(30)
+            return []
+
+    store = SlowStore()
+    mat = ResponseMaterializer(
+        "s2p",
+        lambda: store,
+        {"queue": lambda s: {"ok": True}},
+        refresh_timeout=1.0,
+    )
+    with cf.ThreadPoolExecutor(max_workers=2) as pool:
+        f1 = pool.submit(mat.refresh)
+        assert started.wait(5)
+        f2 = pool.submit(mat.get_or_refresh, "queue")
+        done, not_done = cf.wait([f1, f2], timeout=10)
+        assert len(not_done) == 0, (
+            f"Deadlock: {len(not_done)} thread(s) still blocked"
+        )
+        with pytest.raises(cf.TimeoutError):
+            f1.result()
+        with pytest.raises(RuntimeError, match="refresh failed"):
+            f2.result()
+    hang.set()
 
 
 @pytest.mark.asyncio

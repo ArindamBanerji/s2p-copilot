@@ -8,9 +8,13 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.graph.s2p_graph_reader import S2PGraphReader
+from app.models.responses import GenericResponse
+from app.services.response_materializer import cached_response
 from app.services.s2p_enrichment import ENRICHMENT_READ_ERRORS, NAMESPACE, S2PSupplierEnrichmentService
+from app.services.supplier_profile_provider import build_profiles
 
 router = APIRouter(prefix="/api/s2p/enrichment", tags=["s2p-enrichment"])
+compat_router = APIRouter(prefix="/api/s2p", tags=["s2p-enrichment"])
 
 
 class EnrichmentRunResponse(BaseModel):
@@ -115,6 +119,24 @@ def enrichment_supplier(request: Request, supplier_id: str) -> EnrichedSupplierR
     )
 
 
+@compat_router.get("/supplier-enrichment/{supplier_id}", response_model=GenericResponse)
+def supplier_enrichment(supplier_id: str, request: Request) -> dict[str, Any]:
+    profiles = cached_response(request, "supplier_profiles", item="profiles")
+    if not isinstance(profiles, list):
+        profiles = build_profiles([])
+    profile = next(
+        (
+            row
+            for row in profiles
+            if isinstance(row, dict) and row.get("supplier_id") == supplier_id
+        ),
+        None,
+    )
+    if profile is None:
+        raise HTTPException(status_code=404, detail=f"Supplier {supplier_id} not found")
+    return cast(dict[str, Any], profile)
+
+
 def _service(request: Request) -> S2PSupplierEnrichmentService:
     state = getattr(request.app, "state", None)
     scorer = getattr(state, "scorer", None)
@@ -141,5 +163,6 @@ __all__ = [
     "EnrichmentRunResponse",
     "EnrichmentSummaryResponse",
     "EnrichedSupplierResponse",
+    "compat_router",
     "router",
 ]

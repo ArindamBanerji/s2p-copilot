@@ -1,5 +1,7 @@
 import math
 
+from threading import Event
+
 import pytest
 from copilot_sdk.evolution.graph_store import GraphVariantStore
 from copilot_sdk.graph.memory_store import InMemoryGraphStore
@@ -144,6 +146,22 @@ def test_evolution_promotion_check_endpoint():
         assert promotion["reason"] == "conservation_gate_red"
     else:
         assert promotion["promoted_id"] == "EVIDENCE_ORDER_v2"
+
+
+def test_promotion_check_returns_degraded_on_timeout(monkeypatch):
+    """promotion-check returns degraded response when graph traversal exceeds timeout."""
+    from app.routers import s2p_evolution
+
+    monkeypatch.setattr(s2p_evolution, "PROMOTION_CHECK_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(s2p_evolution, "check_promotion", lambda *_args: Event().wait(1.0))
+
+    response = client.get("/api/s2p/evolution/promotion-check")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("degraded") is True
+    assert data["gate"] == "TIMEOUT"
+    assert data["reason"] == "promotion_check_timeout"
 
 
 def test_evolution_reset_endpoint():

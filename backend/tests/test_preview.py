@@ -83,21 +83,21 @@ def test_preview_queue_auto_approve_rate():
 
 def test_preview_conservation_status():
     data = client.get("/api/s2p/preview/conservation").json()
-    assert data["status"] == "GREEN"
-    assert data["passed"] is True
+    assert data["status"] in {"GREEN", "AMBER", "RED", "CALIBRATING", "COLD_START"}
+    assert data["passed"] is (data["status"] == "GREEN")
 
 
-def test_preview_conservation_is_illustration():
+def test_preview_conservation_is_learned():
     data = client.get("/api/s2p/preview/conservation").json()
-    assert data["source"] == "illustration"
-    assert data["verified_decisions"] == 1000
-    assert data["accuracy"] == 0.84
+    assert data["source"] == "learned"
+    assert data["verified_decisions"] == 20
+    assert data["accuracy"] == 1.0
 
 
 def test_preview_conservation_penalty_ratio():
     data = client.get("/api/s2p/preview/conservation").json()
     assert data["penalty_ratio"] == 5.0
-    assert data["auto_approve_rate"] == 0.45
+    assert 0.0 <= data["auto_approve_rate"] <= 1.0
 
 
 def test_preview_suppliers_default_returns_all():

@@ -85,9 +85,7 @@ def test_centroid_endpoint_shape_and_unknown_default() -> None:
     assert required.issubset(response.json())
 
     unknown = client.get("/api/s2p/centroid/UNKNOWN/UNKNOWN")
-    assert unknown.status_code == 200
-    assert required.issubset(unknown.json())
-    assert unknown.json()["centroid_vector"] == []
+    assert unknown.status_code == 404
 
 
 def test_centroid_explanation_endpoint_shape_and_unknown_default() -> None:
@@ -111,9 +109,8 @@ def test_centroid_explanation_endpoint_shape_and_unknown_default() -> None:
     assert required.issubset(response.json())
 
     unknown = client.get("/api/s2p/centroid/explain/UNKNOWN")
-    assert unknown.status_code == 200
-    assert required.issubset(unknown.json())
-    assert unknown.json()["factor_contributions"] == []
+    assert unknown.status_code == 404
+    assert unknown.json()["detail"] == "Decision not found: UNKNOWN"
 
 
 def test_centroid_drift_endpoint_shape_and_unknown_default() -> None:
@@ -123,9 +120,7 @@ def test_centroid_drift_endpoint_shape_and_unknown_default() -> None:
     assert required.issubset(response.json())
 
     unknown = client.get("/api/s2p/centroid/drift/UNKNOWN/UNKNOWN")
-    assert unknown.status_code == 200
-    assert required.issubset(unknown.json())
-    assert unknown.json()["points"] == []
+    assert unknown.status_code == 404
 
 
 def test_financial_impact_endpoint_shape_and_unknown_default() -> None:
@@ -148,9 +143,9 @@ def test_financial_impact_endpoint_shape_and_unknown_default() -> None:
     assert required.issubset(response.json())
 
     unknown = client.get("/api/s2p/financial-impact/UNKNOWN")
-    assert unknown.status_code == 200
-    assert required.issubset(unknown.json())
-    assert unknown.json()["total_decisions"] == 0
+    assert unknown.status_code == 400
+    assert unknown.json()["detail"] == "Invalid category"
+    assert unknown.json()["allowed_categories"] == list(S2PDomainConfig.categories)
 
 
 def test_supplier_profile_endpoint_shape_and_unknown_default() -> None:

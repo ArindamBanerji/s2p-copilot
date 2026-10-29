@@ -239,14 +239,20 @@ def test_chain_index_monotonic_for_multiple_receipts() -> None:
 def test_receipt_does_not_add_extra_conservation_increment() -> None:
     score = _score("EVID-RCP-CONSERVE-001")
     before_status = client.get("/api/conservation/status").json()
+    before_screening = client.get("/api/s2p/governance/compliance-screening").json()
     before_verified = app.state.graph_store.count_verified_decisions("s2p")
 
     _learn(score["decision_id"], score["action"])
 
     after_status = client.get("/api/conservation/status").json()
+    after_screening = client.get("/api/s2p/governance/compliance-screening").json()
     assert app.state.graph_store.count_verified_decisions("s2p") == before_verified + 1
     assert after_status["total_decisions"] == before_status["total_decisions"] + 1
     assert after_status["verified_count"] == before_status["verified_count"] + 1
+    assert (
+        after_screening["total_decisions_screened"]
+        == before_screening["total_decisions_screened"] + 1
+    )
 
 
 def test_main_score_still_creates_decision_before_outcome() -> None:

@@ -162,7 +162,10 @@ from app.routers.s2p_auto_approve import router as s2p_auto_approve_router
 from app.routers.s2p_budget import create_budget_allocation_router
 from app.routers.s2p_clustering import router as s2p_clustering_router
 from app.routers.compliance_router import router as s2p_compliance_router
-from app.routers.centroid_router import router as s2p_centroid_router
+from app.routers.centroid_router import (
+    compat_router as s2p_centroid_compat_router,
+    router as s2p_centroid_router,
+)
 from app.routers.s2p_control_tower import router as s2p_control_tower_router
 from app.routers.cohort_status_router import create_cohort_status_router
 from app.routers.s2p_discovery import router as s2p_discovery_router
@@ -173,7 +176,10 @@ from app.routers.s2p_demo_control import router as s2p_demo_control_router
 from app.routers.s2p_explorer import router as s2p_explorer_router
 from app.routers.factor_proposer_router import router as s2p_factor_proposer_router, warm_factor_snapshots
 from app.routers.s2p_evidence import router as s2p_evidence_router
-from app.routers.s2p_enrichment import router as s2p_enrichment_router
+from app.routers.s2p_enrichment import (
+    compat_router as s2p_enrichment_compat_router,
+    router as s2p_enrichment_router,
+)
 from app.routers.s2p_enrichment_context import router as s2p_enrichment_context_router
 from app.routers.s2p_situation import router as s2p_situation_router
 from app.routers.financial_router import router as s2p_financial_router, warm_financial_snapshots
@@ -609,6 +615,7 @@ app.include_router(s2p_demo_control_router)
 app.include_router(s2p_explorer_router)
 app.include_router(s2p_factor_proposer_router)
 app.include_router(s2p_centroid_router)
+app.include_router(s2p_centroid_compat_router)
 app.include_router(s2p_control_tower_router)
 app.include_router(s2p_discovery_router)
 app.include_router(s2p_simulation_router)
@@ -616,6 +623,7 @@ app.include_router(s2p_insight_router)
 app.include_router(s2p_evidence_router)
 app.include_router(s2p_situation_router)
 app.include_router(s2p_enrichment_router)
+app.include_router(s2p_enrichment_compat_router)
 app.include_router(s2p_enrichment_context_router)
 app.include_router(s2p_governance_router)
 app.include_router(s2p_performance_router)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
@@ -41,6 +42,7 @@ SUPPLIER_BASE_FIELDS = {
 }
 SUPPLIER_ENRICHED_FIELDS = {
     "quarterly_otif",
+    "lead_time_by_quarter",
     "behavioral_scores",
     "category_exception_rates",
     "monthly_volume",
@@ -63,11 +65,11 @@ BEHAVIORAL_SCORE_KEYS = {
 
 
 def _invoices() -> list[dict]:
-    return json.loads(INVOICE_PATH.read_text(encoding="utf-8"))
+    return cast(list[dict], json.loads(INVOICE_PATH.read_text(encoding="utf-8")))
 
 
 def _suppliers() -> list[dict]:
-    return json.loads(SUPPLIER_PATH.read_text(encoding="utf-8"))
+    return cast(list[dict], json.loads(SUPPLIER_PATH.read_text(encoding="utf-8")))
 
 
 def test_invoice_fixture_count_and_existing_fields_preserved():

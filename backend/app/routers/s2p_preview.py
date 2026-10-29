@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+import logging
+import math
 from uuid import uuid4
 from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
+from copilot_sdk.backend.conservation_utils import compute_conservation_metrics
 from copilot_sdk.state.cached_static import cached_static
 
 from app.domains.s2p.config import S2PDomainConfig
 from app.services.invoice_enricher import enrich_from_fixture
+from app.services.graph_timeout import GraphTimeoutError, with_graph_timeout
 from app.services.response_materializer import cached_response
 from app.models.responses import GenericResponse
 from app.services.s2p_preview_data import _mapping, _timestamp, _verified, read_decisions
@@ -19,6 +23,7 @@ from app.services.s2p_preview_simulation import _build_compounding_trajectory
 from app.services.supplier_profile_provider import build_profiles_from_store, preview_profiles
 
 router = APIRouter(prefix="/api/s2p/preview", tags=["s2p-preview"])
+log = logging.getLogger(__name__)
 
 ENGINE_VERSION = "v0.7.23"
 
@@ -283,8 +288,16 @@ def _recent_scores(request: Request, n: int = 50) -> list[dict[str, Any]]:
     if cached is not None:
         return cast(list[dict[str, Any]], cached["invoices"][:n])
     scorer = _get_scorer(request)
-    invoices, _total = score_pending(read_decisions(_get_graph_store(request, scorer)), scorer, n)
-    return invoices
+    try:
+        decisions = with_graph_timeout(
+            read_decisions,
+            _get_graph_store(request, scorer),
+            label="preview_recent_scores",
+        )
+        invoices, _total = score_pending(decisions, scorer, n)
+        return invoices
+    except GraphTimeoutError:
+        return []
 
 
 def _get_preview_simulation_scorer():
@@ -321,7 +334,15 @@ def queue_read_payload(request: Request, limit: int = 5) -> dict[str, Any]:
     payload = cached_response(request, "preview_queue")
     if payload is None:
         scorer = _get_scorer(request)
-        invoices, total = score_pending(read_decisions(_get_graph_store(request, scorer)), scorer)
+        try:
+            decisions = with_graph_timeout(
+                read_decisions,
+                _get_graph_store(request, scorer),
+                label="preview_queue_read",
+            )
+            invoices, total = score_pending(decisions, scorer)
+        except GraphTimeoutError:
+            invoices, total = [], 0
         payload = queue_payload(invoices, total)
     shown = payload["invoices"][:_clamp_limit(limit, 1, 50)]
     payload.update(invoices=shown, exceptions=shown, showing=len(shown))
@@ -374,15 +395,18 @@ def preview_queue(request: Request) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
+        import traceback
+        log.error("S2P preview queue failed: %s\n%s", exc, traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail={"status": "error", "message": "S2P preview queue failed", "exceptions": []},
+            detail={"status": "error", "message": f"S2P preview queue failed: {exc}", "exceptions": []},
         ) from exc
 
 
 @router.get("/conservation", response_model=GenericResponse)
 def preview_conservation(request: Request) -> dict[str, Any]:
     invoices = _recent_scores(request)
+    metrics = compute_conservation_metrics(_get_scorer(request), domain="s2p")
     auto_approve_count = sum(
         1
         for invoice in invoices
@@ -390,30 +414,37 @@ def preview_conservation(request: Request) -> dict[str, Any]:
         and invoice["confidence"] >= 0.80
     )
     auto_approve_pct = (auto_approve_count / len(invoices) * 100.0) if invoices else 0.0
-    status = "AMBER" if auto_approve_pct < 20.0 else "GREEN"
-    conservation_product = float(auto_approve_pct / 100.0)
+    auto_approve_rate = float(auto_approve_pct / 100.0)
+    status = str(metrics["status"])
+    accuracy = float(metrics["q"])
+    verified_decisions = int(metrics["V"])
+    conservation_product = float(metrics["product"])
+    conservation_threshold = float(metrics["theta_min"])
+    if not math.isfinite(conservation_threshold):
+        conservation_threshold = 0.0
 
     return {
         "engine_version": ENGINE_VERSION,
-        "source": "illustration",
-        "status": "GREEN",
-        "auto_approve_rate": 0.45,
-        "accuracy": 0.84,
-        "verified_decisions": 1000,
-        "penalty_ratio": 5.0,
-        "passed": True,
+        "source": "learned",
+        "status": status,
+        "auto_approve_rate": auto_approve_rate,
+        "accuracy": accuracy,
+        "verified_decisions": verified_decisions,
+        "penalty_ratio": float(S2PDomainConfig.penalty_ratio),
+        "passed": status == "GREEN",
         "curve": [
-            {"verified_decisions": 0, "accuracy": 0.70, "auto_approve_rate": 0.12},
-            {"verified_decisions": 250, "accuracy": 0.76, "auto_approve_rate": 0.24},
-            {"verified_decisions": 500, "accuracy": 0.80, "auto_approve_rate": 0.35},
-            {"verified_decisions": 1000, "accuracy": 0.84, "auto_approve_rate": 0.45},
+            {
+                "verified_decisions": verified_decisions,
+                "accuracy": accuracy,
+                "auto_approve_rate": auto_approve_rate,
+            },
         ],
         "computed_status": status,
         "auto_approve_pct": float(round(auto_approve_pct, 4)),
         "fixture_decisions": int(len(invoices)),
         "copilot": "S2P Invoice Exception",
         "conservation_product": float(round(conservation_product, 6)),
-        "conservation_threshold": 0.20,
+        "conservation_threshold": conservation_threshold,
     }
 
 

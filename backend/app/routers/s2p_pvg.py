@@ -193,12 +193,20 @@ def leakage() -> dict[str, Any]:
     flagged: list[dict[str, Any]] = []
     for invoice in load_invoices():
         try:
-            factors = compute_all_factors(invoice)
-        except (ValueError, RuntimeError) as exc:
+            factor_result = compute_all_factors(invoice, return_status=True)
+        except (ValueError, RuntimeError, KeyError, TypeError, AttributeError) as exc:
             raise HTTPException(
                 status_code=503,
                 detail="S2P factor context unavailable",
             ) from exc
+        if isinstance(factor_result, tuple) and len(factor_result) >= 3:
+            factors, factors_available, _factor_names = factor_result
+            if not factors_available:
+                continue
+        elif isinstance(factor_result, dict):
+            factors = factor_result
+        else:
+            continue
         variance = float(factors.get("amount_variance_ratio", 0.0))
         correlation = float(factors.get("commodity_index_correlation", 1.0))
         if variance > 0.15 and correlation < 0.5:

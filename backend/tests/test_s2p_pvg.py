@@ -101,6 +101,18 @@ def test_total_at_risk_equals_sum_of_flagged_amounts():
     assert data["total_at_risk"] == pytest.approx(expected, abs=0.01)
 
 
+def test_leakage_factor_type_error_returns_503(monkeypatch):
+    def fail_factor_computation(*args, **kwargs):
+        raise TypeError("malformed factor input")
+
+    monkeypatch.setattr(s2p_pvg, "compute_all_factors", fail_factor_computation)
+
+    response = client.get("/api/s2p/pvg/leakage")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "S2P factor context unavailable"
+
+
 def test_cycle_time_returns_unavailable_or_valid_activities():
     response = client.get("/api/s2p/pvg/cycle-time")
 

@@ -2910,8 +2910,6 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             actual_action=request.actual_action,
             payload=payload,
         )
-        invalidate_materializer(http_request)
-        apply_cache_invalidation_event("s2p", "learn")
         invalidate_preview_observation(_decision_invoice_id(decision))
         conservation_after_snapshot = _receipt_conservation_snapshot(http_request)
         payload_snapshot = dict(payload)
@@ -2946,6 +2944,8 @@ def learn_decision(request: LearnRequest, http_request: Request) -> dict[str, An
             evidence_receipt=evidence_receipt,
             context=context,
         )
+    invalidate_materializer(http_request)
+    apply_cache_invalidation_event("s2p", "learn")
     _record_supplier_profile(decision_snapshot, payload_snapshot, request.actual_action, context)
     _record_evolver_outcome_if_allowed(
         payload_snapshot,
@@ -3101,8 +3101,6 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             actual_action=request.analyst_action,
             payload=payload,
         )
-        invalidate_materializer(http_request)
-        apply_cache_invalidation_event("s2p", "learn")
         invalidate_preview_observation(invoice_id)
         conservation_after_snapshot = _receipt_conservation_snapshot(http_request)
         payload_snapshot = dict(payload)
@@ -3136,6 +3134,8 @@ def record_outcome(request: OutcomeRequest, http_request: Request) -> dict[str, 
             evidence_receipt=evidence_receipt,
             context=outcome_context,
         )
+    invalidate_materializer(http_request)
+    apply_cache_invalidation_event("s2p", "learn")
     _record_supplier_profile(decision_snapshot, payload_snapshot, request.analyst_action, outcome_context)
     _record_evolver_outcome_if_allowed(
         payload_snapshot,

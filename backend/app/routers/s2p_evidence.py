@@ -21,6 +21,7 @@ from app.domains.s2p.config import S2PDomainConfig
 from app.domains.s2p.factors import FACTOR_NAMES, compute_all_factors
 from app.graph.s2p_graph_reader import GraphUnavailableError, S2PGraphReader
 from app.models.responses import GenericResponse
+from app.services.graph_timeout import GraphTimeoutError, with_graph_timeout
 from app.services.response_materializer import materialized_response
 from app.routers.s2p_data_helpers import load_invoices
 from app.services.receipt_store import get_receipt_store
@@ -329,11 +330,34 @@ def receipts(limit: int = 50) -> dict[str, Any]:
 
 @router.get("/receipts/{invoice_id}", response_model=GenericResponse)
 def receipts_for_invoice(invoice_id: str) -> dict[str, Any]:
-    store = get_receipt_store()
-    invoice_receipts = store.get_for_invoice(invoice_id)
+    invoice_receipts = get_receipt_store().get_for_invoice(invoice_id)
     if not invoice_receipts:
-        raise HTTPException(status_code=404, detail=f"No receipts for invoice {invoice_id}")
-    return {"invoice_id": invoice_id, "receipts": invoice_receipts}
+        raise HTTPException(status_code=404, detail=f"Invoice not found: {invoice_id}")
+    receipt = dict(invoice_receipts[-1])
+    factor_vector = receipt.get("factor_vector")
+    raw_factors = receipt.get("factors")
+    factors = (
+        list(factor_vector)
+        if isinstance(factor_vector, list)
+        else list(raw_factors.values()) if isinstance(raw_factors, dict) else []
+    )
+    return {
+        **receipt,
+        "invoice_id": invoice_id,
+        "outcome": "correct" if receipt.get("is_correct") else "incorrect",
+        "decision_id": str(receipt.get("decision_id") or ""),
+        "factors": factors,
+        "pd_audit": {
+            "receipt_id": receipt.get("receipt_id"),
+            "receipt_hash": receipt.get("receipt_hash"),
+            "previous_hash": receipt.get("previous_hash"),
+            "conservation_state_before": receipt.get("conservation_state_before"),
+            "conservation_state_after": receipt.get("conservation_state_after"),
+        },
+        "timestamp": receipt.get("timestamp"),
+        "amount": float(receipt.get("amount") or 0.0),
+        "receipts": invoice_receipts,
+    }
 
 
 @router.get("/receipts/decision/{decision_id}", response_model=GenericResponse)
@@ -594,7 +618,19 @@ def compliance(request: Request) -> dict[str, Any]:
     materialized = materialized_response(request, "evidence_compliance")
     if materialized is not None:
         return cast(dict[str, Any], materialized)
-    return cast(dict[str, Any], compliance_payload(_load_invoices(), _graph_store(request)))
+    try:
+        result = with_graph_timeout(
+            compliance_payload,
+            _load_invoices(),
+            _graph_store(request),
+            label="evidence_compliance",
+        )
+        return cast(dict[str, Any], result)
+    except GraphTimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="S2P graph unavailable for compliance",
+        ) from None
 
 
 def compliance_payload(invoices: list[dict[str, Any]], graph_store: Any) -> dict[str, Any]:

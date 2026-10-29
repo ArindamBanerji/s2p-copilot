@@ -5,6 +5,7 @@ object, never by callers. Invalidation cannot publish an in-flight old build.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import threading
 import time
@@ -19,6 +20,7 @@ class ResponseMaterializer:
         self, domain: str, store_provider: Callable[[], Any],
         computations: dict[str, Callable[[dict[str, Any]], Any]], ttl: float = 30.0,
         *, available: Callable[[], bool] | None = None,
+        refresh_timeout: float = 15.0,
     ) -> None:
         if ttl <= 0:
             raise ValueError("ttl must be positive")
@@ -33,6 +35,7 @@ class ResponseMaterializer:
         self._generation = 0
         self._failure: BaseException | None = None
         self._available = available or (lambda: True)
+        self._refresh_timeout = refresh_timeout
 
     def refresh(self, *, if_stale: bool = False) -> None:
         if not self._available():
@@ -41,7 +44,15 @@ class ResponseMaterializer:
             if if_stale and self._last_refresh is not None and time.monotonic() - self._last_refresh < self._ttl:
                 return
             if self._refreshing:
-                self._lock.wait_for(lambda: not self._refreshing)
+                if not self._lock.wait_for(
+                    lambda: not self._refreshing,
+                    timeout=self._refresh_timeout + 5,
+                ):
+                    log.warning(
+                        "ResponseMaterializer: timed out waiting for in-flight refresh (%s)",
+                        self._domain,
+                    )
+                    return
                 if self._failure is not None:
                     raise RuntimeError("Response refresh failed") from self._failure
                 return
@@ -50,8 +61,18 @@ class ResponseMaterializer:
             generation = self._generation
         try:
             store = self._store_provider()
-            decisions = store.get_all_decisions(self._domain)
-            verified = store.get_verified_decisions(self._domain)
+            # Bounded AGE queries — a hanging query must not hold
+            # self._refreshing=True forever, or every caller blocks.
+            _pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            try:
+                decisions = _pool.submit(
+                    store.get_all_decisions, self._domain,
+                ).result(timeout=self._refresh_timeout)
+                verified = _pool.submit(
+                    store.get_verified_decisions, self._domain,
+                ).result(timeout=self._refresh_timeout)
+            finally:
+                _pool.shutdown(wait=False, cancel_futures=True)
             shared = {"decisions": decisions, "verified": verified,
                       "store": store, "domain": self._domain}
             results: dict[str, Any] = {}
@@ -108,10 +129,13 @@ class ResponseMaterializer:
             self._last_refresh = None
             self._materialized = {}
 
-    def wait_idle(self) -> None:
+    def wait_idle(self, timeout: float | None = None) -> None:
         """Join an in-flight thread before application resources are closed."""
         with self._lock:
-            self._lock.wait_for(lambda: not self._refreshing)
+            self._lock.wait_for(
+                lambda: not self._refreshing,
+                timeout=timeout or self._refresh_timeout + 5,
+            )
 
 
 def materialized_response(request: Any, key: str, *, item: str | None = None) -> Any:

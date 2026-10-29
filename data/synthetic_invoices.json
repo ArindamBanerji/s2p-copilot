@@ -8,6 +8,7 @@
     "currency": "USD",
     "category": "contract_gap",
     "ground_truth_action": "escalate_to_buyer",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.698,
       "amount_variance_ratio": 0.142,
@@ -15,7 +16,8 @@
       "supplier_exception_history": 0.164,
       "payment_terms_impact": 0.859,
       "commodity_index_correlation": 0.194,
-      "tax_regulatory_compliance": 0.586
+      "tax_regulatory_compliance": 0.586,
+      "environmental_risk": 0.45
     },
     "metadata": {
       "invoice_date": "2026-01-07",
@@ -46,8 +48,7 @@
     "amount_at_risk": 22426.73,
     "verified": true,
     "amount_recovered": 20856.86,
-    "cycle_time_hours": 24.0,
-    "provenance": "sample"
+    "cycle_time_hours": 24.0
   },
   {
     "invoice_id": "S2P-INV-0002",
@@ -58,6 +59,7 @@
     "currency": "USD",
     "category": "quantity_mismatch",
     "ground_truth_action": "escalate_to_buyer",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.477,
       "amount_variance_ratio": 0.577,
@@ -65,7 +67,8 @@
       "supplier_exception_history": 0.314,
       "payment_terms_impact": 0.584,
       "commodity_index_correlation": 0.316,
-      "tax_regulatory_compliance": 0.678
+      "tax_regulatory_compliance": 0.678,
+      "environmental_risk": 0.44
     },
     "metadata": {
       "invoice_date": "2026-01-14",
@@ -102,8 +105,7 @@
     "amount_at_risk": 9752.58,
     "verified": true,
     "amount_recovered": 9069.9,
-    "cycle_time_hours": 1.24,
-    "provenance": "sample"
+    "cycle_time_hours": 1.24
   },
   {
     "invoice_id": "S2P-INV-0003",
@@ -114,6 +116,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.953,
       "amount_variance_ratio": 0.04,
@@ -121,7 +124,8 @@
       "supplier_exception_history": 0.033,
       "payment_terms_impact": 0.515,
       "commodity_index_correlation": 0.822,
-      "tax_regulatory_compliance": 0.938
+      "tax_regulatory_compliance": 0.938,
+      "environmental_risk": 0.24
     },
     "metadata": {
       "invoice_date": "2026-01-21",
@@ -164,8 +168,7 @@
     "amount_at_risk": 3781.7,
     "verified": true,
     "amount_recovered": 3516.98,
-    "cycle_time_hours": 1.61,
-    "provenance": "sample"
+    "cycle_time_hours": 1.61
   },
   {
     "invoice_id": "S2P-INV-0004",
@@ -176,6 +179,7 @@
     "currency": "USD",
     "category": "contract_gap",
     "ground_truth_action": "refer_to_specialist",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.352,
       "amount_variance_ratio": 0.414,
@@ -183,7 +187,8 @@
       "supplier_exception_history": 0.494,
       "payment_terms_impact": 0.42,
       "commodity_index_correlation": 0.397,
-      "tax_regulatory_compliance": 0.477
+      "tax_regulatory_compliance": 0.477,
+      "environmental_risk": 0.415
     },
     "metadata": {
       "invoice_date": "2026-01-28",
@@ -208,8 +213,7 @@
     "amount_at_risk": 30171.46,
     "verified": true,
     "amount_recovered": 28059.46,
-    "cycle_time_hours": 1.98,
-    "provenance": "sample"
+    "cycle_time_hours": 1.98
   },
   {
     "invoice_id": "S2P-INV-0005",
@@ -220,6 +224,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.972,
       "amount_variance_ratio": 0.062,
@@ -227,7 +232,8 @@
       "supplier_exception_history": 0.051,
       "payment_terms_impact": 0.52,
       "commodity_index_correlation": 0.785,
-      "tax_regulatory_compliance": 0.939
+      "tax_regulatory_compliance": 0.939,
+      "environmental_risk": 0.63
     },
     "metadata": {
       "invoice_date": "2026-02-04",
@@ -258,8 +264,7 @@
     "amount_at_risk": 41289.58,
     "verified": true,
     "amount_recovered": 38399.31,
-    "cycle_time_hours": 2.35,
-    "provenance": "sample"
+    "cycle_time_hours": 2.35
   },
   {
     "invoice_id": "S2P-INV-0006",
@@ -270,6 +275,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "hold_for_review",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.685,
       "amount_variance_ratio": 0.341,
@@ -277,7 +283,8 @@
       "supplier_exception_history": 0.132,
       "payment_terms_impact": 0.413,
       "commodity_index_correlation": 0.524,
-      "tax_regulatory_compliance": 0.793
+      "tax_regulatory_compliance": 0.793,
+      "environmental_risk": 0.28
     },
     "metadata": {
       "invoice_date": "2026-02-11",
@@ -314,8 +321,7 @@
     "amount_at_risk": 1402.74,
     "verified": true,
     "amount_recovered": 1304.55,
-    "cycle_time_hours": 2.72,
-    "provenance": "sample"
+    "cycle_time_hours": 2.72
   },
   {
     "invoice_id": "S2P-INV-0007",
@@ -326,6 +332,7 @@
     "currency": "USD",
     "category": "quantity_mismatch",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.916,
       "amount_variance_ratio": 0.064,
@@ -333,7 +340,8 @@
       "supplier_exception_history": 0.027,
       "payment_terms_impact": 0.484,
       "commodity_index_correlation": 0.799,
-      "tax_regulatory_compliance": 0.964
+      "tax_regulatory_compliance": 0.964,
+      "environmental_risk": 0.49
     },
     "metadata": {
       "invoice_date": "2026-02-18",
@@ -376,8 +384,7 @@
     "amount_at_risk": 14965.97,
     "verified": true,
     "amount_recovered": 13918.35,
-    "cycle_time_hours": 3.09,
-    "provenance": "sample"
+    "cycle_time_hours": 3.09
   },
   {
     "invoice_id": "S2P-INV-0008",
@@ -388,6 +395,7 @@
     "currency": "USD",
     "category": "quantity_mismatch",
     "ground_truth_action": "hold_for_review",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.68,
       "amount_variance_ratio": 0.315,
@@ -395,7 +403,8 @@
       "supplier_exception_history": 0.186,
       "payment_terms_impact": 0.386,
       "commodity_index_correlation": 0.487,
-      "tax_regulatory_compliance": 0.776
+      "tax_regulatory_compliance": 0.776,
+      "environmental_risk": 0.31
     },
     "metadata": {
       "invoice_date": "2026-02-25",
@@ -420,8 +429,7 @@
     "amount_at_risk": 18887.12,
     "verified": true,
     "amount_recovered": 17565.02,
-    "cycle_time_hours": 3.46,
-    "provenance": "sample"
+    "cycle_time_hours": 3.46
   },
   {
     "invoice_id": "S2P-INV-0009",
@@ -432,6 +440,7 @@
     "currency": "USD",
     "category": "duplicate_risk",
     "ground_truth_action": "hold_for_review",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.626,
       "amount_variance_ratio": 0.285,
@@ -439,7 +448,8 @@
       "supplier_exception_history": 0.168,
       "payment_terms_impact": 0.36,
       "commodity_index_correlation": 0.509,
-      "tax_regulatory_compliance": 0.76
+      "tax_regulatory_compliance": 0.76,
+      "environmental_risk": 0.525
     },
     "metadata": {
       "invoice_date": "2026-03-04",
@@ -470,8 +480,7 @@
     "amount_at_risk": 42303.0,
     "verified": true,
     "amount_recovered": 39341.79,
-    "cycle_time_hours": 3.83,
-    "provenance": "sample"
+    "cycle_time_hours": 3.83
   },
   {
     "invoice_id": "S2P-INV-0010",
@@ -482,6 +491,7 @@
     "currency": "USD",
     "category": "quantity_mismatch",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.95,
       "amount_variance_ratio": 0.069,
@@ -489,7 +499,8 @@
       "supplier_exception_history": 0.059,
       "payment_terms_impact": 0.494,
       "commodity_index_correlation": 0.785,
-      "tax_regulatory_compliance": 0.952
+      "tax_regulatory_compliance": 0.952,
+      "environmental_risk": 0.435
     },
     "metadata": {
       "invoice_date": "2026-03-11",
@@ -526,8 +537,7 @@
     "amount_at_risk": 8564.69,
     "verified": true,
     "amount_recovered": 7965.16,
-    "cycle_time_hours": 4.2,
-    "provenance": "sample"
+    "cycle_time_hours": 4.2
   },
   {
     "invoice_id": "S2P-INV-0011",
@@ -538,6 +548,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.931,
       "amount_variance_ratio": 0.062,
@@ -545,7 +556,8 @@
       "supplier_exception_history": 0.119,
       "payment_terms_impact": 0.492,
       "commodity_index_correlation": 0.818,
-      "tax_regulatory_compliance": 0.972
+      "tax_regulatory_compliance": 0.972,
+      "environmental_risk": 0.525
     },
     "metadata": {
       "invoice_date": "2026-03-18",
@@ -588,8 +600,7 @@
     "amount_at_risk": 19775.3,
     "verified": true,
     "amount_recovered": 18391.03,
-    "cycle_time_hours": 4.57,
-    "provenance": "sample"
+    "cycle_time_hours": 4.57
   },
   {
     "invoice_id": "S2P-INV-0012",
@@ -600,6 +611,7 @@
     "currency": "USD",
     "category": "duplicate_risk",
     "ground_truth_action": "hold_for_review",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.626,
       "amount_variance_ratio": 0.323,
@@ -607,7 +619,8 @@
       "supplier_exception_history": 0.178,
       "payment_terms_impact": 0.364,
       "commodity_index_correlation": 0.508,
-      "tax_regulatory_compliance": 0.793
+      "tax_regulatory_compliance": 0.793,
+      "environmental_risk": 0.255
     },
     "metadata": {
       "invoice_date": "2026-03-25",
@@ -632,8 +645,7 @@
     "amount_at_risk": 10677.15,
     "verified": true,
     "amount_recovered": 9929.75,
-    "cycle_time_hours": 4.94,
-    "provenance": "sample"
+    "cycle_time_hours": 4.94
   },
   {
     "invoice_id": "S2P-INV-0013",
@@ -644,6 +656,7 @@
     "currency": "USD",
     "category": "format_compliance",
     "ground_truth_action": "hold_for_review",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.664,
       "amount_variance_ratio": 0.313,
@@ -651,7 +664,8 @@
       "supplier_exception_history": 0.185,
       "payment_terms_impact": 0.372,
       "commodity_index_correlation": 0.507,
-      "tax_regulatory_compliance": 0.68
+      "tax_regulatory_compliance": 0.68,
+      "environmental_risk": 0.64
     },
     "metadata": {
       "invoice_date": "2026-04-01",
@@ -682,8 +696,7 @@
     "amount_at_risk": 5057.38,
     "verified": true,
     "amount_recovered": 4703.36,
-    "cycle_time_hours": 5.31,
-    "provenance": "sample"
+    "cycle_time_hours": 5.31
   },
   {
     "invoice_id": "S2P-INV-0014",
@@ -694,6 +707,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.947,
       "amount_variance_ratio": 0.05,
@@ -701,7 +715,8 @@
       "supplier_exception_history": 0.023,
       "payment_terms_impact": 0.52,
       "commodity_index_correlation": 0.803,
-      "tax_regulatory_compliance": 0.931
+      "tax_regulatory_compliance": 0.931,
+      "environmental_risk": 0.345
     },
     "metadata": {
       "invoice_date": "2026-04-08",
@@ -738,8 +753,7 @@
     "amount_at_risk": 17536.79,
     "verified": true,
     "amount_recovered": 16309.21,
-    "cycle_time_hours": 5.68,
-    "provenance": "sample"
+    "cycle_time_hours": 5.68
   },
   {
     "invoice_id": "S2P-INV-0015",
@@ -750,6 +764,7 @@
     "currency": "USD",
     "category": "format_compliance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.918,
       "amount_variance_ratio": 0.037,
@@ -757,7 +772,8 @@
       "supplier_exception_history": 0.071,
       "payment_terms_impact": 0.465,
       "commodity_index_correlation": 0.797,
-      "tax_regulatory_compliance": 0.839
+      "tax_regulatory_compliance": 0.839,
+      "environmental_risk": 0.18
     },
     "metadata": {
       "invoice_date": "2026-04-15",
@@ -800,8 +816,7 @@
     "amount_at_risk": 39332.42,
     "verified": true,
     "amount_recovered": 36579.15,
-    "cycle_time_hours": 6.05,
-    "provenance": "sample"
+    "cycle_time_hours": 6.05
   },
   {
     "invoice_id": "S2P-INV-0016",
@@ -812,6 +827,7 @@
     "currency": "USD",
     "category": "contract_gap",
     "ground_truth_action": "escalate_to_buyer",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.676,
       "amount_variance_ratio": 0.156,
@@ -819,7 +835,8 @@
       "supplier_exception_history": 0.146,
       "payment_terms_impact": 0.851,
       "commodity_index_correlation": 0.22,
-      "tax_regulatory_compliance": 0.6
+      "tax_regulatory_compliance": 0.6,
+      "environmental_risk": 0.555
     },
     "metadata": {
       "invoice_date": "2026-04-22",
@@ -844,8 +861,7 @@
     "amount_at_risk": 1978.95,
     "verified": true,
     "amount_recovered": 1840.42,
-    "cycle_time_hours": 6.42,
-    "provenance": "sample"
+    "cycle_time_hours": 6.42
   },
   {
     "invoice_id": "S2P-INV-0017",
@@ -856,6 +872,7 @@
     "currency": "USD",
     "category": "duplicate_risk",
     "ground_truth_action": "flag_leakage",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.866,
       "amount_variance_ratio": 0.103,
@@ -863,7 +880,8 @@
       "supplier_exception_history": 0.394,
       "payment_terms_impact": 0.288,
       "commodity_index_correlation": 0.524,
-      "tax_regulatory_compliance": 0.809
+      "tax_regulatory_compliance": 0.809,
+      "environmental_risk": 0.37
     },
     "metadata": {
       "invoice_date": "2026-04-29",
@@ -894,8 +912,7 @@
     "amount_at_risk": 16622.98,
     "verified": true,
     "amount_recovered": 15459.37,
-    "cycle_time_hours": 6.79,
-    "provenance": "sample"
+    "cycle_time_hours": 6.79
   },
   {
     "invoice_id": "S2P-INV-0018",
@@ -906,6 +923,7 @@
     "currency": "USD",
     "category": "quantity_mismatch",
     "ground_truth_action": "hold_for_review",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.697,
       "amount_variance_ratio": 0.284,
@@ -913,7 +931,8 @@
       "supplier_exception_history": 0.151,
       "payment_terms_impact": 0.408,
       "commodity_index_correlation": 0.487,
-      "tax_regulatory_compliance": 0.769
+      "tax_regulatory_compliance": 0.769,
+      "environmental_risk": 0.165
     },
     "metadata": {
       "invoice_date": "2026-05-06",
@@ -950,8 +969,7 @@
     "amount_at_risk": 20096.36,
     "verified": true,
     "amount_recovered": 18689.61,
-    "cycle_time_hours": 7.16,
-    "provenance": "sample"
+    "cycle_time_hours": 7.16
   },
   {
     "invoice_id": "S2P-INV-0019",
@@ -962,6 +980,7 @@
     "currency": "USD",
     "category": "duplicate_risk",
     "ground_truth_action": "hold_for_review",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.668,
       "amount_variance_ratio": 0.317,
@@ -969,7 +988,8 @@
       "supplier_exception_history": 0.2,
       "payment_terms_impact": 0.378,
       "commodity_index_correlation": 0.506,
-      "tax_regulatory_compliance": 0.769
+      "tax_regulatory_compliance": 0.769,
+      "environmental_risk": 0.535
     },
     "metadata": {
       "invoice_date": "2026-05-13",
@@ -1012,8 +1032,7 @@
     "amount_at_risk": 35644.26,
     "verified": true,
     "amount_recovered": 33149.16,
-    "cycle_time_hours": 7.53,
-    "provenance": "sample"
+    "cycle_time_hours": 7.53
   },
   {
     "invoice_id": "S2P-INV-0020",
@@ -1024,6 +1043,7 @@
     "currency": "USD",
     "category": "duplicate_risk",
     "ground_truth_action": "flag_leakage",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.86,
       "amount_variance_ratio": 0.092,
@@ -1031,7 +1051,8 @@
       "supplier_exception_history": 0.391,
       "payment_terms_impact": 0.297,
       "commodity_index_correlation": 0.514,
-      "tax_regulatory_compliance": 0.824
+      "tax_regulatory_compliance": 0.824,
+      "environmental_risk": 0.47
     },
     "metadata": {
       "invoice_date": "2026-05-20",
@@ -1056,8 +1077,7 @@
     "amount_at_risk": 7241.13,
     "verified": true,
     "amount_recovered": 6734.25,
-    "cycle_time_hours": 7.9,
-    "provenance": "sample"
+    "cycle_time_hours": 7.9
   },
   {
     "invoice_id": "S2P-INV-0021",
@@ -1068,6 +1088,7 @@
     "currency": "USD",
     "category": "format_compliance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.915,
       "amount_variance_ratio": 0.031,
@@ -1075,7 +1096,8 @@
       "supplier_exception_history": 0.086,
       "payment_terms_impact": 0.464,
       "commodity_index_correlation": 0.777,
-      "tax_regulatory_compliance": 0.839
+      "tax_regulatory_compliance": 0.839,
+      "environmental_risk": 0.55
     },
     "metadata": {
       "invoice_date": "2026-05-27",
@@ -1106,8 +1128,7 @@
     "amount_at_risk": 21477.17,
     "verified": true,
     "amount_recovered": 19973.77,
-    "cycle_time_hours": 8.27,
-    "provenance": "sample"
+    "cycle_time_hours": 8.27
   },
   {
     "invoice_id": "S2P-INV-0022",
@@ -1118,6 +1139,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "flag_leakage",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.899,
       "amount_variance_ratio": 0.415,
@@ -1125,7 +1147,8 @@
       "supplier_exception_history": 0.345,
       "payment_terms_impact": 0.679,
       "commodity_index_correlation": 0.125,
-      "tax_regulatory_compliance": 0.827
+      "tax_regulatory_compliance": 0.827,
+      "environmental_risk": 0.51
     },
     "metadata": {
       "invoice_date": "2026-06-03",
@@ -1162,8 +1185,7 @@
     "amount_at_risk": 8110.87,
     "verified": true,
     "amount_recovered": 7543.11,
-    "cycle_time_hours": 8.64,
-    "provenance": "sample"
+    "cycle_time_hours": 8.64
   },
   {
     "invoice_id": "S2P-INV-0023",
@@ -1174,6 +1196,7 @@
     "currency": "USD",
     "category": "contract_gap",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.937,
       "amount_variance_ratio": 0.055,
@@ -1181,7 +1204,8 @@
       "supplier_exception_history": 0.043,
       "payment_terms_impact": 0.588,
       "commodity_index_correlation": 0.771,
-      "tax_regulatory_compliance": 0.904
+      "tax_regulatory_compliance": 0.904,
+      "environmental_risk": 0.45
     },
     "metadata": {
       "invoice_date": "2026-06-10",
@@ -1224,8 +1248,7 @@
     "amount_at_risk": 4340.5,
     "verified": true,
     "amount_recovered": 4036.67,
-    "cycle_time_hours": 9.01,
-    "provenance": "sample"
+    "cycle_time_hours": 9.01
   },
   {
     "invoice_id": "S2P-INV-0024",
@@ -1236,6 +1259,7 @@
     "currency": "USD",
     "category": "quantity_mismatch",
     "ground_truth_action": "hold_for_review",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.686,
       "amount_variance_ratio": 0.279,
@@ -1243,7 +1267,8 @@
       "supplier_exception_history": 0.16,
       "payment_terms_impact": 0.38,
       "commodity_index_correlation": 0.478,
-      "tax_regulatory_compliance": 0.8
+      "tax_regulatory_compliance": 0.8,
+      "environmental_risk": 0.58
     },
     "metadata": {
       "invoice_date": "2026-06-17",
@@ -1268,8 +1293,7 @@
     "amount_at_risk": 27275.81,
     "verified": true,
     "amount_recovered": 25366.5,
-    "cycle_time_hours": 9.38,
-    "provenance": "sample"
+    "cycle_time_hours": 9.38
   },
   {
     "invoice_id": "S2P-INV-0025",
@@ -1280,6 +1304,7 @@
     "currency": "USD",
     "category": "format_compliance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.916,
       "amount_variance_ratio": 0.039,
@@ -1287,7 +1312,8 @@
       "supplier_exception_history": 0.091,
       "payment_terms_impact": 0.466,
       "commodity_index_correlation": 0.805,
-      "tax_regulatory_compliance": 0.838
+      "tax_regulatory_compliance": 0.838,
+      "environmental_risk": 0.47
     },
     "metadata": {
       "invoice_date": "2026-06-24",
@@ -1318,8 +1344,7 @@
     "amount_at_risk": 43679.15,
     "verified": true,
     "amount_recovered": 40621.61,
-    "cycle_time_hours": 9.75,
-    "provenance": "sample"
+    "cycle_time_hours": 9.75
   },
   {
     "invoice_id": "S2P-INV-0026",
@@ -1330,6 +1355,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.927,
       "amount_variance_ratio": 0.065,
@@ -1337,7 +1363,8 @@
       "supplier_exception_history": 0.026,
       "payment_terms_impact": 0.517,
       "commodity_index_correlation": 0.785,
-      "tax_regulatory_compliance": 0.967
+      "tax_regulatory_compliance": 0.967,
+      "environmental_risk": 0.565
     },
     "metadata": {
       "invoice_date": "2026-07-01",
@@ -1374,8 +1401,7 @@
     "amount_at_risk": 1976.74,
     "verified": true,
     "amount_recovered": 1838.37,
-    "cycle_time_hours": 10.12,
-    "provenance": "sample"
+    "cycle_time_hours": 10.12
   },
   {
     "invoice_id": "S2P-INV-0027",
@@ -1386,6 +1412,7 @@
     "currency": "USD",
     "category": "quantity_mismatch",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.954,
       "amount_variance_ratio": 0.033,
@@ -1393,7 +1420,8 @@
       "supplier_exception_history": 0.03,
       "payment_terms_impact": 0.476,
       "commodity_index_correlation": 0.788,
-      "tax_regulatory_compliance": 0.938
+      "tax_regulatory_compliance": 0.938,
+      "environmental_risk": 0.32
     },
     "metadata": {
       "invoice_date": "2026-07-08",
@@ -1436,8 +1464,7 @@
     "amount_at_risk": 18160.44,
     "verified": true,
     "amount_recovered": 16889.21,
-    "cycle_time_hours": 10.49,
-    "provenance": "sample"
+    "cycle_time_hours": 10.49
   },
   {
     "invoice_id": "S2P-INV-0028",
@@ -1448,6 +1475,7 @@
     "currency": "USD",
     "category": "duplicate_risk",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.906,
       "amount_variance_ratio": 0.045,
@@ -1455,7 +1483,8 @@
       "supplier_exception_history": 0.047,
       "payment_terms_impact": 0.498,
       "commodity_index_correlation": 0.795,
-      "tax_regulatory_compliance": 0.93
+      "tax_regulatory_compliance": 0.93,
+      "environmental_risk": 0.325
     },
     "metadata": {
       "invoice_date": "2026-07-15",
@@ -1480,8 +1509,7 @@
     "amount_at_risk": 20463.91,
     "verified": true,
     "amount_recovered": 19031.44,
-    "cycle_time_hours": 10.86,
-    "provenance": "sample"
+    "cycle_time_hours": 10.86
   },
   {
     "invoice_id": "S2P-INV-0029",
@@ -1492,6 +1520,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.93,
       "amount_variance_ratio": 0.07,
@@ -1499,7 +1528,8 @@
       "supplier_exception_history": 0.037,
       "payment_terms_impact": 0.497,
       "commodity_index_correlation": 0.813,
-      "tax_regulatory_compliance": 0.94
+      "tax_regulatory_compliance": 0.94,
+      "environmental_risk": 0.325
     },
     "metadata": {
       "invoice_date": "2026-07-22",
@@ -1530,8 +1560,7 @@
     "amount_at_risk": 57867.41,
     "verified": true,
     "amount_recovered": 53816.69,
-    "cycle_time_hours": 11.23,
-    "provenance": "sample"
+    "cycle_time_hours": 11.23
   },
   {
     "invoice_id": "S2P-INV-0030",
@@ -1542,6 +1571,7 @@
     "currency": "USD",
     "category": "quantity_mismatch",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.945,
       "amount_variance_ratio": 0.048,
@@ -1549,7 +1579,8 @@
       "supplier_exception_history": 0.044,
       "payment_terms_impact": 0.523,
       "commodity_index_correlation": 0.811,
-      "tax_regulatory_compliance": 0.933
+      "tax_regulatory_compliance": 0.933,
+      "environmental_risk": 0.23
     },
     "metadata": {
       "invoice_date": "2026-07-29",
@@ -1586,8 +1617,7 @@
     "amount_at_risk": 8056.89,
     "verified": true,
     "amount_recovered": 7492.91,
-    "cycle_time_hours": 11.6,
-    "provenance": "sample"
+    "cycle_time_hours": 11.6
   },
   {
     "invoice_id": "S2P-INV-0031",
@@ -1598,6 +1628,7 @@
     "currency": "USD",
     "category": "format_compliance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.933,
       "amount_variance_ratio": 0.048,
@@ -1605,7 +1636,8 @@
       "supplier_exception_history": 0.074,
       "payment_terms_impact": 0.491,
       "commodity_index_correlation": 0.789,
-      "tax_regulatory_compliance": 0.859
+      "tax_regulatory_compliance": 0.859,
+      "environmental_risk": 0.555
     },
     "metadata": {
       "invoice_date": "2026-08-05",
@@ -1648,8 +1680,7 @@
     "amount_at_risk": 17710.8,
     "verified": true,
     "amount_recovered": 16471.04,
-    "cycle_time_hours": 11.97,
-    "provenance": "sample"
+    "cycle_time_hours": 11.97
   },
   {
     "invoice_id": "S2P-INV-0032",
@@ -1660,6 +1691,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "hold_for_review",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.686,
       "amount_variance_ratio": 0.32,
@@ -1667,7 +1699,8 @@
       "supplier_exception_history": 0.155,
       "payment_terms_impact": 0.412,
       "commodity_index_correlation": 0.53,
-      "tax_regulatory_compliance": 0.806
+      "tax_regulatory_compliance": 0.806,
+      "environmental_risk": 0.315
     },
     "metadata": {
       "invoice_date": "2026-08-12",
@@ -1692,8 +1725,7 @@
     "amount_at_risk": 8471.23,
     "verified": true,
     "amount_recovered": 7878.24,
-    "cycle_time_hours": 12.34,
-    "provenance": "sample"
+    "cycle_time_hours": 12.34
   },
   {
     "invoice_id": "S2P-INV-0033",
@@ -1704,6 +1736,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "hold_for_review",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.699,
       "amount_variance_ratio": 0.317,
@@ -1711,7 +1744,8 @@
       "supplier_exception_history": 0.229,
       "payment_terms_impact": 0.429,
       "commodity_index_correlation": 0.533,
-      "tax_regulatory_compliance": 0.804
+      "tax_regulatory_compliance": 0.804,
+      "environmental_risk": 0.47
     },
     "metadata": {
       "invoice_date": "2026-08-19",
@@ -1742,8 +1776,7 @@
     "amount_at_risk": 3414.6,
     "verified": true,
     "amount_recovered": 3175.58,
-    "cycle_time_hours": 12.71,
-    "provenance": "sample"
+    "cycle_time_hours": 12.71
   },
   {
     "invoice_id": "S2P-INV-0034",
@@ -1754,6 +1787,7 @@
     "currency": "USD",
     "category": "duplicate_risk",
     "ground_truth_action": "flag_leakage",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.858,
       "amount_variance_ratio": 0.103,
@@ -1761,7 +1795,8 @@
       "supplier_exception_history": 0.399,
       "payment_terms_impact": 0.31,
       "commodity_index_correlation": 0.509,
-      "tax_regulatory_compliance": 0.81
+      "tax_regulatory_compliance": 0.81,
+      "environmental_risk": 0.545
     },
     "metadata": {
       "invoice_date": "2026-08-26",
@@ -1798,8 +1833,7 @@
     "amount_at_risk": 33320.16,
     "verified": true,
     "amount_recovered": 30987.75,
-    "cycle_time_hours": 13.08,
-    "provenance": "sample"
+    "cycle_time_hours": 13.08
   },
   {
     "invoice_id": "S2P-INV-0035",
@@ -1810,6 +1844,7 @@
     "currency": "USD",
     "category": "contract_gap",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.927,
       "amount_variance_ratio": 0.075,
@@ -1817,7 +1852,8 @@
       "supplier_exception_history": 0.038,
       "payment_terms_impact": 0.58,
       "commodity_index_correlation": 0.802,
-      "tax_regulatory_compliance": 0.917
+      "tax_regulatory_compliance": 0.917,
+      "environmental_risk": 0.15
     },
     "metadata": {
       "invoice_date": "2026-09-02",
@@ -1860,8 +1896,7 @@
     "amount_at_risk": 39191.04,
     "verified": true,
     "amount_recovered": 36447.67,
-    "cycle_time_hours": 13.45,
-    "provenance": "sample"
+    "cycle_time_hours": 13.45
   },
   {
     "invoice_id": "S2P-INV-0036",
@@ -1872,6 +1907,7 @@
     "currency": "USD",
     "category": "contract_gap",
     "ground_truth_action": "escalate_to_buyer",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.69,
       "amount_variance_ratio": 0.151,
@@ -1879,7 +1915,8 @@
       "supplier_exception_history": 0.157,
       "payment_terms_impact": 0.828,
       "commodity_index_correlation": 0.224,
-      "tax_regulatory_compliance": 0.596
+      "tax_regulatory_compliance": 0.596,
+      "environmental_risk": 0.38
     },
     "metadata": {
       "invoice_date": "2026-09-09",
@@ -1904,8 +1941,7 @@
     "amount_at_risk": 1145.34,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 13.82,
-    "provenance": "sample"
+    "cycle_time_hours": 13.82
   },
   {
     "invoice_id": "S2P-INV-0037",
@@ -1916,6 +1952,7 @@
     "currency": "USD",
     "category": "format_compliance",
     "ground_truth_action": "hold_for_review",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.675,
       "amount_variance_ratio": 0.277,
@@ -1923,7 +1960,8 @@
       "supplier_exception_history": 0.175,
       "payment_terms_impact": 0.369,
       "commodity_index_correlation": 0.512,
-      "tax_regulatory_compliance": 0.702
+      "tax_regulatory_compliance": 0.702,
+      "environmental_risk": 0.19
     },
     "metadata": {
       "invoice_date": "2026-09-16",
@@ -1954,8 +1992,7 @@
     "amount_at_risk": 13125.43,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 14.19,
-    "provenance": "sample"
+    "cycle_time_hours": 14.19
   },
   {
     "invoice_id": "S2P-INV-0038",
@@ -1966,6 +2003,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.958,
       "amount_variance_ratio": 0.062,
@@ -1973,7 +2011,8 @@
       "supplier_exception_history": 0.026,
       "payment_terms_impact": 0.506,
       "commodity_index_correlation": 0.778,
-      "tax_regulatory_compliance": 0.94
+      "tax_regulatory_compliance": 0.94,
+      "environmental_risk": 0.37
     },
     "metadata": {
       "invoice_date": "2026-09-23",
@@ -2010,8 +2049,7 @@
     "amount_at_risk": 18392.05,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 14.56,
-    "provenance": "sample"
+    "cycle_time_hours": 14.56
   },
   {
     "invoice_id": "S2P-INV-0039",
@@ -2022,6 +2060,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.927,
       "amount_variance_ratio": 0.041,
@@ -2029,7 +2068,8 @@
       "supplier_exception_history": 0.02,
       "payment_terms_impact": 0.51,
       "commodity_index_correlation": 0.792,
-      "tax_regulatory_compliance": 0.959
+      "tax_regulatory_compliance": 0.959,
+      "environmental_risk": 0.305
     },
     "metadata": {
       "invoice_date": "2026-09-30",
@@ -2072,8 +2112,7 @@
     "amount_at_risk": 38567.61,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 14.93,
-    "provenance": "sample"
+    "cycle_time_hours": 14.93
   },
   {
     "invoice_id": "S2P-INV-0040",
@@ -2084,6 +2123,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "flag_leakage",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.881,
       "amount_variance_ratio": 0.375,
@@ -2091,7 +2131,8 @@
       "supplier_exception_history": 0.242,
       "payment_terms_impact": 0.723,
       "commodity_index_correlation": 0.163,
-      "tax_regulatory_compliance": 0.832
+      "tax_regulatory_compliance": 0.832,
+      "environmental_risk": 0.355
     },
     "metadata": {
       "invoice_date": "2026-10-07",
@@ -2116,8 +2157,7 @@
     "amount_at_risk": 7908.54,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 15.3,
-    "provenance": "sample"
+    "cycle_time_hours": 15.3
   },
   {
     "invoice_id": "S2P-INV-0041",
@@ -2128,6 +2168,7 @@
     "currency": "USD",
     "category": "contract_gap",
     "ground_truth_action": "refer_to_specialist",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.379,
       "amount_variance_ratio": 0.411,
@@ -2135,7 +2176,8 @@
       "supplier_exception_history": 0.488,
       "payment_terms_impact": 0.381,
       "commodity_index_correlation": 0.36,
-      "tax_regulatory_compliance": 0.448
+      "tax_regulatory_compliance": 0.448,
+      "environmental_risk": 0.315
     },
     "metadata": {
       "invoice_date": "2026-10-14",
@@ -2166,8 +2208,7 @@
     "amount_at_risk": 14826.79,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 15.67,
-    "provenance": "sample"
+    "cycle_time_hours": 15.67
   },
   {
     "invoice_id": "S2P-INV-0042",
@@ -2178,6 +2219,7 @@
     "currency": "USD",
     "category": "contract_gap",
     "ground_truth_action": "escalate_to_buyer",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.695,
       "amount_variance_ratio": 0.134,
@@ -2185,7 +2227,8 @@
       "supplier_exception_history": 0.158,
       "payment_terms_impact": 0.867,
       "commodity_index_correlation": 0.208,
-      "tax_regulatory_compliance": 0.591
+      "tax_regulatory_compliance": 0.591,
+      "environmental_risk": 0.57
     },
     "metadata": {
       "invoice_date": "2026-10-21",
@@ -2222,8 +2265,7 @@
     "amount_at_risk": 12937.95,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 16.04,
-    "provenance": "sample"
+    "cycle_time_hours": 16.04
   },
   {
     "invoice_id": "S2P-INV-0043",
@@ -2234,6 +2276,7 @@
     "currency": "USD",
     "category": "quantity_mismatch",
     "ground_truth_action": "escalate_to_buyer",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.476,
       "amount_variance_ratio": 0.586,
@@ -2241,7 +2284,8 @@
       "supplier_exception_history": 0.331,
       "payment_terms_impact": 0.611,
       "commodity_index_correlation": 0.275,
-      "tax_regulatory_compliance": 0.682
+      "tax_regulatory_compliance": 0.682,
+      "environmental_risk": 0.215
     },
     "metadata": {
       "invoice_date": "2026-10-28",
@@ -2284,8 +2328,7 @@
     "amount_at_risk": 4601.77,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 16.41,
-    "provenance": "sample"
+    "cycle_time_hours": 16.41
   },
   {
     "invoice_id": "S2P-INV-0044",
@@ -2296,6 +2339,7 @@
     "currency": "USD",
     "category": "duplicate_risk",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.891,
       "amount_variance_ratio": 0.066,
@@ -2303,7 +2347,8 @@
       "supplier_exception_history": 0.137,
       "payment_terms_impact": 0.471,
       "commodity_index_correlation": 0.801,
-      "tax_regulatory_compliance": 0.91
+      "tax_regulatory_compliance": 0.91,
+      "environmental_risk": 0.54
     },
     "metadata": {
       "invoice_date": "2026-11-04",
@@ -2328,8 +2373,7 @@
     "amount_at_risk": 35522.94,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 16.78,
-    "provenance": "sample"
+    "cycle_time_hours": 16.78
   },
   {
     "invoice_id": "S2P-INV-0045",
@@ -2340,6 +2384,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.948,
       "amount_variance_ratio": 0.047,
@@ -2347,7 +2392,8 @@
       "supplier_exception_history": 0.048,
       "payment_terms_impact": 0.475,
       "commodity_index_correlation": 0.787,
-      "tax_regulatory_compliance": 0.966
+      "tax_regulatory_compliance": 0.966,
+      "environmental_risk": 0.485
     },
     "metadata": {
       "invoice_date": "2026-11-11",
@@ -2378,8 +2424,7 @@
     "amount_at_risk": 34267.78,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 17.15,
-    "provenance": "sample"
+    "cycle_time_hours": 17.15
   },
   {
     "invoice_id": "S2P-INV-0046",
@@ -2390,6 +2435,7 @@
     "currency": "USD",
     "category": "format_compliance",
     "ground_truth_action": "escalate_to_buyer",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.467,
       "amount_variance_ratio": 0.595,
@@ -2397,7 +2443,8 @@
       "supplier_exception_history": 0.326,
       "payment_terms_impact": 0.591,
       "commodity_index_correlation": 0.268,
-      "tax_regulatory_compliance": 0.608
+      "tax_regulatory_compliance": 0.608,
+      "environmental_risk": 0.63
     },
     "metadata": {
       "invoice_date": "2026-11-18",
@@ -2434,8 +2481,7 @@
     "amount_at_risk": 2367.22,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 17.52,
-    "provenance": "sample"
+    "cycle_time_hours": 17.52
   },
   {
     "invoice_id": "S2P-INV-0047",
@@ -2446,6 +2492,7 @@
     "currency": "USD",
     "category": "duplicate_risk",
     "ground_truth_action": "flag_leakage",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.864,
       "amount_variance_ratio": 0.124,
@@ -2453,7 +2500,8 @@
       "supplier_exception_history": 0.407,
       "payment_terms_impact": 0.279,
       "commodity_index_correlation": 0.484,
-      "tax_regulatory_compliance": 0.823
+      "tax_regulatory_compliance": 0.823,
+      "environmental_risk": 0.31
     },
     "metadata": {
       "invoice_date": "2026-11-25",
@@ -2496,8 +2544,7 @@
     "amount_at_risk": 13179.46,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 17.89,
-    "provenance": "sample"
+    "cycle_time_hours": 17.89
   },
   {
     "invoice_id": "S2P-INV-0048",
@@ -2508,6 +2555,7 @@
     "currency": "USD",
     "category": "price_variance",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.931,
       "amount_variance_ratio": 0.071,
@@ -2515,7 +2563,8 @@
       "supplier_exception_history": 0.02,
       "payment_terms_impact": 0.478,
       "commodity_index_correlation": 0.787,
-      "tax_regulatory_compliance": 0.952
+      "tax_regulatory_compliance": 0.952,
+      "environmental_risk": 0.585
     },
     "metadata": {
       "invoice_date": "2026-12-02",
@@ -2540,8 +2589,7 @@
     "amount_at_risk": 22720.46,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 18.26,
-    "provenance": "sample"
+    "cycle_time_hours": 18.26
   },
   {
     "invoice_id": "S2P-INV-0049",
@@ -2552,6 +2600,7 @@
     "currency": "USD",
     "category": "quantity_mismatch",
     "ground_truth_action": "auto_approve",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.909,
       "amount_variance_ratio": 0.048,
@@ -2559,7 +2608,8 @@
       "supplier_exception_history": 0.066,
       "payment_terms_impact": 0.52,
       "commodity_index_correlation": 0.796,
-      "tax_regulatory_compliance": 0.926
+      "tax_regulatory_compliance": 0.926,
+      "environmental_risk": 0.195
     },
     "metadata": {
       "invoice_date": "2026-12-09",
@@ -2590,8 +2640,7 @@
     "amount_at_risk": 41332.77,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 18.63,
-    "provenance": "sample"
+    "cycle_time_hours": 18.63
   },
   {
     "invoice_id": "S2P-INV-0050",
@@ -2602,6 +2651,7 @@
     "currency": "USD",
     "category": "duplicate_risk",
     "ground_truth_action": "flag_leakage",
+    "provenance": "sample",
     "factors": {
       "match_status": 0.869,
       "amount_variance_ratio": 0.12,
@@ -2609,7 +2659,8 @@
       "supplier_exception_history": 0.425,
       "payment_terms_impact": 0.322,
       "commodity_index_correlation": 0.502,
-      "tax_regulatory_compliance": 0.777
+      "tax_regulatory_compliance": 0.777,
+      "environmental_risk": 0.55
     },
     "metadata": {
       "invoice_date": "2026-12-16",
@@ -2646,7 +2697,6 @@
     "amount_at_risk": 9217.58,
     "verified": false,
     "amount_recovered": null,
-    "cycle_time_hours": 19.0,
-    "provenance": "sample"
+    "cycle_time_hours": 19.0
   }
 ]

@@ -12,6 +12,22 @@ from app.services.centroid_explorer import CentroidExplorerError, S2PCentroidExp
 
 
 router = APIRouter(prefix="/api/s2p/centroid", tags=["s2p-centroid"])
+compat_router = APIRouter(prefix="/api/s2p", tags=["s2p-centroid"])
+
+
+def _validate_category(category: str) -> None:
+    if category not in S2PDomainConfig.categories:
+        raise HTTPException(status_code=404, detail=f"Unknown category: {category}")
+
+
+def _explain_decision(decision_id: str, request: Request) -> dict[str, Any]:
+    try:
+        return cast(
+            dict[str, Any],
+            _service(request).explain_decision(decision_id).to_dict(),
+        )
+    except CentroidExplorerError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @router.get("/all")
@@ -37,28 +53,32 @@ def all_centroids(request: Request) -> dict[str, Any]:
 
 @router.get("/explain/{decision_id}")
 def explain_decision(decision_id: str, request: Request) -> dict[str, Any]:
+    return _explain_decision(decision_id, request)
+
+
+@compat_router.get("/centroid-explorer")
+def centroid_explorer(category: str, request: Request) -> dict[str, Any]:
+    _validate_category(category)
     try:
-        return cast(
-            dict[str, Any],
-            _service(request).explain_decision(decision_id).to_dict(),
-        )
+        cells = [
+            cell.to_dict()
+            for cell in _service(request).get_all_centroid_cells()
+            if cell.category == category
+        ]
     except CentroidExplorerError as exc:
-        if exc.status_code == 404:
-            return {
-                "decision_id": decision_id,
-                "category": "",
-                "recommended_action": "",
-                "closest_action": "",
-                "closest_matches_recommendation": False,
-                "factor_names": list(S2PDomainConfig.factors),
-                "factor_contributions": [],
-                "centroid_distances": {},
-                "summary": f"No centroid explanation available for {decision_id}.",
-                "dk_status": "unavailable",
-                "p39_evidence": {},
-                "read_only": True,
-            }
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return {
+        "category": category,
+        "cells": cells,
+        "actions": list(S2PDomainConfig.actions),
+        "factors": list(S2PDomainConfig.factors),
+        "read_only": True,
+    }
+
+
+@compat_router.get("/centroid-explorer/explain")
+def centroid_explorer_explain(decision_id: str, request: Request) -> dict[str, Any]:
+    return _explain_decision(decision_id, request)
 
 
 @router.get("/drift/{category}/{action}")
@@ -69,15 +89,7 @@ def centroid_drift(category: str, action: str, request: Request, limit: int = 50
             _service(request).get_centroid_drift(category, action, limit=limit).to_dict(),
         )
     except CentroidExplorerError as exc:
-        if exc.status_code == 404:
-            return {
-                "category": category,
-                "action": action,
-                "supported": False,
-                "reason": str(exc),
-                "points": [],
-            }
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/{category}/{action}")
@@ -88,19 +100,7 @@ def centroid_cell(category: str, action: str, request: Request) -> dict[str, Any
             _service(request).get_centroid_cell(category, action).to_dict(),
         )
     except CentroidExplorerError as exc:
-        if exc.status_code == 404:
-            return {
-                "category": category,
-                "category_index": -1,
-                "action": action,
-                "action_index": -1,
-                "factor_names": list(S2PDomainConfig.factors),
-                "centroid_vector": [],
-                "source": "unavailable",
-                "read_only": True,
-                "sample_count": 0,
-            }
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 def _service(request: Request) -> S2PCentroidExplorerService:
